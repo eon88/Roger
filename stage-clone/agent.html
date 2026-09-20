@@ -6,9 +6,8 @@
 <link rel="stylesheet" href="/dash.css">
 </head>
 <body>
-<div class="watermark">DEMO — shared data, no login yet</div>
 <div class="shell">
-  <header class="header">
+  <header class="header stuck">
     <div class="brand"><h1>Agent Desk</h1><span class="who" id="stamp">…</span></div>
     <nav class="tabs">
       <a href="#" class="tab on" data-view="overview">Overview</a>
@@ -17,11 +16,11 @@
       <a href="#" class="tab" data-view="registrations">Registrations</a>
       <a href="#" class="tab" data-view="properties">Properties</a>
       <a href="#" class="tab" data-view="history">History</a>
-      <a href="/" class="tab out">Public site</a><a href="/logout" class="tab out">Log out</a>
+      <a href="/" class="tab out">Lettings site</a><a href="/logout" class="tab out">Log out</a>
     </nav>
   </header>
-  <div id="api-error" class="banner danger" style="display:none">Couldn't reach the portal. <button class="btn" onclick="load(true)">Retry</button></div>
-  <main>
+  <div id="api-error" class="banner danger" style="display:none">Couldn't reach the portal. <button class="btn" onclick="load(true)">Try again</button></div>
+  <main id="main" aria-busy="true">
     <section id="view-overview"></section>
     <section id="view-cases" style="display:none"></section>
     <section id="view-jobs" style="display:none"></section>
@@ -30,12 +29,13 @@
     <section id="view-history" style="display:none"></section>
   </main>
 </div>
-<div id="toast-host"></div>
+<div id="toast-host" aria-live="polite"></div>
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = p => '£' + ((p ?? 0)/100).toFixed(2);
 const ago = iso => { if(!iso) return ''; const m=(Date.now()-new Date(iso))/60000;
   if(m<1)return 'just now'; if(m<60)return Math.round(m)+' min ago'; if(m<1440)return Math.round(m/60)+' h ago'; return Math.round(m/1440)+' days ago'; };
+const when = iso => iso ? `<span class="when" title="${esc(new Date(iso).toLocaleString('en-GB'))}">${ago(iso)}</span>` : '';
 let stage=null, lastGood='';
 
 async function api(p){const r=await fetch(p);if(!r.ok)throw new Error(p+': '+r.status);return r.json();}
@@ -43,31 +43,51 @@ async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-
   const j=await r.json().catch(()=>({})); if(!r.ok){toast(j.error||'Something went wrong','bad');throw new Error(j.error);} return j;}
 function toast(msg,kind){const el=document.createElement('div');el.className='toast '+(kind||'');el.textContent=msg;
   document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
+function busy(btn,fn){ if(!btn){return fn();}
+  if(btn.tagName==='INPUT') btn=btn.closest('.actions')?.querySelector('button')||btn;
+  if(btn.dataset.busy) return Promise.resolve();
+  btn.dataset.busy='1'; return Promise.resolve(fn()).finally(()=>delete btn.dataset.busy); }
 
 function triageLine(t){ if(!t) return '';
   const u=['Routine','Soon','Emergency'][t.urgency]||'?'; const uc=t.urgency>=2?'hot':t.urgency>=1?'warm':'';
   const risk=t.safety>=0.5?`<span class="hot">possible danger ${Math.round(t.safety*100)}%</span>`:`low risk (${Math.round((t.safety||0)*100)}%)`;
-  const eng=t.engine==='jev'?'<span class="ok">AI-checked</span>':`<span class="hot">⚠ keyword guess — verify yourself</span>`;
+  const eng=t.engine==='jev'?'<span class="ok">AI-checked</span>':`<span class="hot">keyword guess — verify yourself</span>`;
   return `<div class="triage-line"><b>${u}</b> · ${esc(t.category)}${t.trade&&t.trade!=='other'?' · '+esc(t.trade):''} · ${risk} · ${eng}</div>`;}
 function propLine(pid){const p=(stage.properties||[]).find(x=>x.id===pid);
   return p?`${esc(p.title)} · ${esc(p.area)}`:(pid?esc(pid):'<span class="hot">no property linked</span>');}
 function threadFor(c){ const jobs=(stage.jobs||[]).filter(j=>j.case_id===c.id);
   if(!jobs.length) return '';
-  return jobs.map(j=>{ let bits=[`job ${esc(j.id)} · ${esc(j.status)}`];
+  return jobs.map(j=>{ let bits=[`job ${esc(j.id)} · ${esc(j.status.replace('_',' '))}`];
     if(j.assigned_to)bits.push(`by ${esc(j.assigned_to)}`);
     if(j.invoice_pence!=null)bits.push(money(j.invoice_pence));
     const ap=(stage.approvals||[]).find(a=>a.job_id===j.id);
     if(ap)bits.push(`landlord: ${esc(ap.status)}${ap.reason_given?' — “'+esc(ap.reason_given)+'”':''}`);
     return `<div class="thread">↳ ${bits.join(' · ')}</div>`;}).join('');}
 
+/* flip tracking: items that changed status between polls get one quiet flash */
+let prevStatus={}, FL={flip:{},res:{}};
+function markFlips(){ const cur={};
+  (stage?.cases||[]).forEach(c=>cur['c'+c.id]=c.status);
+  (stage?.jobs||[]).forEach(j=>cur['j'+j.id]=j.status);
+  const flip={},res={};
+  for(const k in cur){ if(prevStatus[k]&&prevStatus[k]!==cur[k]){flip[k]=1;} }
+  prevStatus=cur; FL={flip,res}; }
+const fl=k=>FL.flip[k]?'flash-once':'';
+
 async function load(manual){
   try{ stage=await api('/api/stage'); lastGood=new Date().toLocaleTimeString('en-GB');
     document.getElementById('api-error').style.display='none';
     document.getElementById('stamp').textContent='live · updated '+lastGood+' · every 15s';
+    document.getElementById('stamp').title='Portal data last refreshed at '+lastGood;
   }catch(e){ document.getElementById('api-error').style.display=stage?'none':'flex'; if(!stage)return; }
   renderAll();
 }
-function renderAll(){ renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProps(); renderHistory(); }
+function renderAll(){
+  const y=window.scrollY;
+  markFlips(); renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProps(); renderHistory();
+  document.getElementById('main').setAttribute('aria-busy','false');
+  if(window.scrollY!==y) window.scrollTo(0,y);
+}
 
 function renderOverview(){
   const cases=(stage.cases||[]).filter(c=>!['closed','resolved','declined'].includes(c.status));
@@ -80,13 +100,15 @@ function renderOverview(){
   const regs=(stage.registrations||[]).filter(r=>r.status==='pending').length;
   const lim=(stage.authority?.standing_limit_pence||15000)/100;
   const tile=(n,label,view,hot)=>`<a class="stat ${hot?'hot':''}" href="#" onclick="show('${view}');return false"><div class="value">${n}</div><div class="label">${label}</div></a>`;
+  const quiet=(urg+gated+unassigned+waiting.length+regs)===0;
   document.getElementById('view-overview').innerHTML=`
     <div class="move">what needs you today</div>
+    ${quiet?'<div class="triage-line">All clear today. New reports land here as tenants send them.</div>':''}
     <div class="stats">
       ${tile(urg,'emergencies open','cases',urg>0)}
       ${tile(gated,'bookings needing your verification','jobs',gated>0)}
       ${tile(unassigned,'open jobs nobody took','jobs',unassigned>0)}
-      ${tile(waiting.length,'invoices waiting on landlord · '+waiting.map(a=>money(a.amount_pence)).join(', '),'jobs',waiting.length>0)}
+      ${tile(waiting.length,'invoices waiting on landlord'+(waiting.length?' · '+waiting.map(a=>money(a.amount_pence)).join(', '):''),'jobs',waiting.length>0)}
       ${tile(money(settledToday.reduce((s,j)=>s+(j.invoice_pence||0),0)),'settled today','jobs')}
       ${tile(regs,'registrations to review','registrations',regs>0)}
     </div>
@@ -99,64 +121,65 @@ function renderCases(){
   const cases=(stage.cases||[]).slice().sort((a,b)=>rank(a)-rank(b)||b.id-a.id);
   document.getElementById('view-cases').innerHTML=`<div class="move">every case — emergencies first</div>`+
     (cases.length?cases.map(c=>`
-    <div class="card ${c.triage&&c.triage.urgency>=2?'flagged':''}">
+    <div class="card ${c.triage&&c.triage.urgency>=2?'flagged':''} ${fl('c'+c.id)}">
       <div class="cardtop"><h3>#${c.id} · ${esc(c.type||'case')}</h3><span class="badge ${esc(c.status)}">${esc(c.status.replace('_',' '))}</span></div>
-      <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${ago(c.submitted_at)}</div>
+      <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${when(c.submitted_at)}</div>
       <div class="details">${esc(c.message)}</div>
       ${triageLine(c.triage)}${threadFor(c)}
       ${c.closed_reason?`<div class="fineprint">Closed: ${esc(c.closed_reason)}</div>`:''}
-      ${c.status!=='closed'?`<div class="actions closebox"><input placeholder="closing reason (kept on record)" id="cl-${c.id}" style="max-width:280px"><button class="btn" onclick="closeCase(${c.id})">Close case</button></div>`:''}
-    </div>`).join(''):'<div class="empty">Case book is empty.</div>');
+      ${c.status!=='closed'?`<div class="actions closebox"><input placeholder="closing reason (kept on record)" id="cl-${c.id}" autocomplete="off" style="max-width:280px" onkeydown="if(event.key==='Enter')closeCase(this,${c.id})"><button class="btn" onclick="closeCase(this,${c.id})">Close case</button></div>`:''}
+    </div>`).join(''):'<div class="empty">Case book is empty — tenant reports land here the moment they arrive, emergencies first.</div>');
 }
-async function closeCase(id){ const r=document.getElementById('cl-'+id).value.trim();
+async function closeCase(btn,id){ const r=document.getElementById('cl-'+id).value.trim();
   if(!r){toast('A closing reason is required — it stays on the record.','bad');return;}
-  await post('/api/case-action',{id,action:'close',reason:r}); toast('Case #'+id+' closed'); load(); }
+  await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'close',reason:r}); toast('Case #'+id+' closed — logged with your reason.'); load(); }catch(e){} }); }
 
 function renderJobs(){
   const jobs=(stage.jobs||[]).slice().reverse();
   const g=s=>jobs.filter(j=>j.status===s);
   const card=j=>`
-    <div class="card ${j.status==='pending_verification'?'flagged':''}">
+    <div class="card ${j.status==='pending_verification'?'flagged':''} ${fl('j'+j.id)}">
       <div class="cardtop"><h3>${esc(j.id)} · case #${j.case_id}</h3><span class="badge ${esc(j.status)}">${esc(j.status.replace('_',' '))}</span></div>
-      <div class="meta">${propLine(j.property_id)}${j.required_trade?` · needs <b>${esc(j.required_trade)}</b>`:''} · ${ago(j.created_at)}</div>
+      <div class="meta">${propLine(j.property_id)}${j.required_trade?` · needs <b>${esc(j.required_trade)}</b>`:''} · ${when(j.created_at)}</div>
       <div class="details">${esc(j.message)}</div>
       ${j.assigned_to?`<div class="meta">by ${esc(j.assigned_to)}</div>`:''}
       ${j.gate_reason?`<div class="fineprint hot">Blocked: ${esc(j.gate_reason)} — booked by ${esc(j.requested_by)}</div>
-        <div class="actions"><button class="btn primary" onclick="jobAct('${esc(j.id)}','verify_approve')">Allow anyway</button>
-        <button class="btn danger" onclick="jobAct('${esc(j.id)}','verify_decline')">Send back</button></div>`:''}
+        <div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','verify_approve')">Allow anyway</button>
+        <button class="btn danger" onclick="jobAct(this,'${esc(j.id)}','verify_decline')">Send back</button></div>`:''}
       ${j.invoice_pence!=null?`<div class="meta">invoice ${money(j.invoice_pence)}</div>`:''}
     </div>`;
-  const sec=(list,title,note)=>`<h2>${title}</h2>${note?`<p class="fineprint">${note}</p>`:''}${list.length?list.map(card).join(''):'<div class="empty">Nothing here.</div>'}`;
+  const sec=(list,title,note,none)=>`<h2>${title}</h2>${note?`<p class="fineprint">${note}</p>`:''}${list.length?list.map(card).join(''):`<div class="empty">${none}</div>`}`;
   document.getElementById('view-jobs').innerHTML=`<div class="move">jobs — who took what</div>`+
-    sec(g('pending_verification'),'Needs verification','credential mismatch — your call before anyone visits')+
-    sec(g('open'),'Unassigned','take these or route them yourself')+
-    sec(g('in_progress'),'In progress','')+
-    sec(g('awaiting_approval'),'Waiting on landlord','')+
-    sec(g('paid'),'Settled','')+
-    sec(g('rejected'),'Declined by landlord','');
+    sec(g('pending_verification'),'Needs verification','credential mismatch — your call before anyone visits','Nothing held back. A booking appears here only when the trade\u0027s credentials need your eye.')+
+    sec(g('open'),'Unassigned','take these or route them yourself','No open jobs. Tenant reports become jobs here the moment the agent dispatches them.')+
+    sec(g('in_progress'),'In progress','','Nothing on the go. Jobs arrive here once a tradesperson takes them.')+
+    sec(g('awaiting_approval'),'Waiting on landlord','','No bills over the standing limit are waiting on a landlord.')+
+    sec(g('paid'),'Settled','','Nothing settled yet. Paid invoices move here.')+
+    sec(g('rejected'),'Declined by landlord','','No landlord has declined a quote.');
 }
-async function jobAct(id,action){ await post('/api/job-action',{id,action,tradesperson:'agent'}); toast('Done'); load(); }
+async function jobAct(btn,id,action){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:'agent'});
+  toast(action==='verify_approve'?'Booking released to the tradesperson.':'Booking sent back — it returns to the open board.'); load(); }catch(e){} }); }
 
 function renderRegs(){
   const all=stage.registrations||[]; const pend=all.filter(r=>r.status==='pending');
   const decided=all.filter(r=>r.status!=='pending').slice().reverse();
   const reg=r=>`<div class="card">
     <div class="cardtop"><h3>${esc(r.name)}</h3><span class="badge ${esc(r.status)}">${esc(r.role)}</span></div>
-    <div class="meta">${esc(r.email)}${r.phone?' · '+esc(r.phone):''} · ${ago(r.submitted_at)}</div>
+    <div class="meta">${esc(r.email)}${r.phone?' · '+esc(r.phone):''} · ${when(r.submitted_at)}</div>
     <div class="details">${esc(r.details)}</div>
     ${r.role==='trades'?`<div class="meta">trades: ${esc((r.trades||['not stated']).join(', '))}${r.gas_safe_number?' · Gas Safe '+esc(r.gas_safe_number):' · <span class="hot">no Gas Safe number</span>'}${r.insurance_expiry?' · insurance to '+esc(r.insurance_expiry):''}${r.coverage?' · covers '+esc(r.coverage):''}</div>`:''}
     ${r.property_address?`<div class="meta">${esc(r.property_address)}${r.units?' · '+esc(r.units)+' unit(s)':''}</div>`:''}
-    ${r.status==='pending'?`<div class="actions"><input placeholder="note for the record (optional)" id="rn-${esc(r.id)}" style="max-width:240px">
-      <button class="btn primary" onclick="regAct('${esc(r.id)}','approve')">Approve</button>
-      <button class="btn danger" onclick="regAct('${esc(r.id)}','reject')">Reject</button></div>`:
-      `<div class="fineprint">${esc(r.status)} ${ago(r.actioned_at)}${r.decision_note?' — '+esc(r.decision_note):''}</div>`}
+    ${r.status==='pending'?`<div class="actions"><input placeholder="note for the record (optional)" id="rn-${esc(r.id)}" autocomplete="off" style="max-width:240px" onkeydown="if(event.key==='Enter')regAct(this,'${esc(r.id)}','approve')">
+      <button class="btn primary" onclick="regAct(this,'${esc(r.id)}','approve')">Approve</button>
+      <button class="btn danger" onclick="regAct(this,'${esc(r.id)}','reject')">Reject</button></div>`:
+      `<div class="fineprint">${esc(r.status)} ${when(r.actioned_at)}${r.decision_note?' — '+esc(r.decision_note):''}</div>`}
   </div>`;
   document.getElementById('view-registrations').innerHTML=`<div class="move">waiting to be approved</div>`+
-    (pend.length?pend.map(reg).join(''):'<div class="empty">No pending registrations.</div>')+
+    (pend.length?pend.map(reg).join(''):'<div class="empty">No registrations waiting. New landlord and tradesperson sign-ups land here for your approval.</div>')+
     (decided.length?`<h2>Decided</h2>`+decided.map(reg).join(''):'');
 }
-async function regAct(id,action){ const n=document.getElementById('rn-'+id); const note=n?n.value.trim():'';
-  await post('/api/registration-action',{id,action,note}); toast(action==='approve'?'Approved — they can be booked now':'Rejected, with your note on record'); load(); }
+async function regAct(btn,id,action){ await busy(btn,async()=>{ try{ const n=document.getElementById('rn-'+id); const note=n?n.value.trim():'';
+  await post('/api/registration-action',{id,action,note}); toast(action==='approve'?'Approved — they can be booked now':'Rejected, with your note on record'); load(); }catch(e){} }); }
 
 function renderProps(){
   document.getElementById('view-properties').innerHTML=`<div class="move">your properties</div><div class="grid2">`+
@@ -167,13 +190,21 @@ function renderProps(){
 function renderHistory(){
   const log=(stage.audit_log||[]).slice().reverse();
   document.getElementById('view-history').innerHTML=`<div class="move">activity log</div>`+
-    (log.length?`<div class="card"><table class="log">${log.map(e=>`<tr><td>${new Date(e.at).toLocaleTimeString('en-GB')}</td><td>${esc(e.actor)}</td><td><b>${esc(e.action)}</b> ${esc(e.target||'')}</td><td>${esc(e.note||'')}</td></tr>`).join('')}</table></div>`:'<div class="empty">No actions logged yet.</div>');
+    (log.length?`<div class="card"><table class="log">`+log.map(e=>`<tr><td><span class="when" title="${esc(new Date(e.at).toLocaleString('en-GB'))}">${new Date(e.at).toLocaleTimeString('en-GB')}</span></td><td>${esc(e.actor)}</td><td><b>${esc(e.action)}</b> ${esc(e.target||'')}</td><td>${esc(e.note||'')}</td></tr>`).join('')+`</table></div>`:'<div class="empty">Nothing logged yet. Every decision on this desk writes a line here.</div>');
 }
 
 function show(v){ document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
   document.querySelectorAll('[id^=view-]').forEach(s=>s.style.display='none');
   document.getElementById('view-'+v).style.display='block'; }
 document.querySelectorAll('.tabs .tab[data-view]').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();show(t.dataset.view);}));
+
+/* sticky-header shadow only once the page actually scrolls */
+const head=document.querySelector('.header');
+addEventListener('scroll',()=>head.classList.toggle('scrolled',window.scrollY>8),{passive:true});
+
+/* skeleton until the first real data lands */
+const skel=n=>Array.from({length:n},()=>'<div class="skel c"></div><div class="skel l"></div>').join('');
+document.getElementById('view-overview').innerHTML='<div class="move">what needs you today</div>'+skel(2);
 load(); setInterval(load,15000);
 </script>
 </body>

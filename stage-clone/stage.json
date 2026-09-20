@@ -115,7 +115,7 @@
       "role": "tenant",
       "name": "Priya Shah",
       "message": "I can smell gas in the kitchen since this morning. My toddler plays on the floor there.",
-      "status": "resolved",
+      "status": "closed",
       "submitted_at": "2026-09-20T19:58:50.962352Z",
       "triage": {
         "category": "maintenance",
@@ -125,7 +125,9 @@
         "confidence": 100,
         "engine": "jev"
       },
-      "status_at": "2026-09-20T20:49:29.437412Z"
+      "status_at": "2026-09-20T20:49:29.437412Z",
+      "closed_reason": "Verification visit complete; tenant confirmed fixed. Closing for record.",
+      "actioned_at": "2026-09-20T22:04:52.653937Z"
     },
     {
       "id": 495,
@@ -191,7 +193,7 @@
       "role": "tenant",
       "name": "Daniel Mensah",
       "message": "Bathroom ceiling is wet and the paint is blistering \u2014 water is dripping from the extractor fan.",
-      "status": "declined",
+      "status": "closed",
       "submitted_at": "2026-09-20T20:14:55.119522Z",
       "triage": {
         "category": "maintenance",
@@ -202,7 +204,9 @@
         "engine": "jev",
         "cost_usd": 2e-05
       },
-      "status_at": "2026-09-20T20:49:29.437444Z"
+      "status_at": "2026-09-20T20:49:29.437444Z",
+      "closed_reason": "Duplicate of an earlier report; next steps agreed with the tenant directly.",
+      "actioned_at": "2026-09-20T22:15:55.581966Z"
     },
     {
       "id": 499,
@@ -245,9 +249,33 @@
       },
       "submitted_at": "2026-09-20T20:32:42.343262Z",
       "status_at": "2026-09-20T20:32:42.451966Z"
+    },
+    {
+      "id": 503,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "email": "daniel.mensah@example.com",
+      "message": "Test of the polish pass: kitchen tap drips steadily.",
+      "status": "closed",
+      "triage": {
+        "category": "maintenance",
+        "trade": "plumbing",
+        "urgency": 1,
+        "urgency_raw": 0.8,
+        "safety": 0.42,
+        "confidence": 99,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "submitted_at": "2026-09-20T22:17:28.576413Z",
+      "status_at": "2026-09-20T22:20:28.597529Z",
+      "closed_reason": "Test report used to verify the polish pass \u2014 no fault found at property.",
+      "actioned_at": "2026-09-20T22:20:55.743514Z"
     }
   ],
-  "next_case_id": 503,
+  "next_case_id": 504,
   "registrations": [
     {
       "id": "reg-1",
@@ -460,6 +488,29 @@
       "override_by": "agent",
       "completed_at": "2026-09-20T20:32:42.451947Z",
       "paid_at": "2026-09-20T20:32:42.451958Z"
+    },
+    {
+      "id": "job-10",
+      "case_id": 503,
+      "property_id": "parkside",
+      "message": "Test of the polish pass: kitchen tap drips steadily.",
+      "triage": {
+        "category": "maintenance",
+        "trade": "plumbing",
+        "urgency": 1,
+        "urgency_raw": 0.8,
+        "safety": 0.42,
+        "confidence": 99,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "required_trade": "plumbing",
+      "status": "paid",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": 20000,
+      "created_at": "2026-09-20T22:17:28.576435Z",
+      "completed_at": "2026-09-20T22:20:12.687026Z",
+      "paid_at": "2026-09-20T22:20:28.597525Z"
     }
   ],
   "approvals": [
@@ -495,6 +546,23 @@
       "status": "approved",
       "created_at": "2026-09-20T20:16:06.719269Z",
       "actioned_at": "2026-09-20T20:16:21.380009Z"
+    },
+    {
+      "id": "appr-4",
+      "job_id": "job-10",
+      "property_id": "parkside",
+      "landlord": "T. Blackwood",
+      "amount_pence": 20000,
+      "reason": "Test of the polish pass: kitchen tap drips steadily.",
+      "evidence": {
+        "tradesperson": "R. Doyle Gas & Heat",
+        "job_created": "2026-09-20T22:17:28.576435Z",
+        "work_completed": "2026-09-20T22:20:12.687026Z"
+      },
+      "status": "approved",
+      "requested_at": "2026-09-20T22:20:12.687040Z",
+      "reason_given": null,
+      "decided_at": "2026-09-20T22:20:28.597515Z"
     }
   ],
   "audit_log": [
@@ -579,6 +647,54 @@
       "action": "status_synced",
       "target": 499,
       "note": "job job-7 paid"
+    },
+    {
+      "at": "2026-09-20T22:04:52.653951Z",
+      "actor": "agent",
+      "action": "case_closed",
+      "target": 494,
+      "note": "Verification visit complete; tenant confirmed fixed. Closing for record."
+    },
+    {
+      "at": "2026-09-20T22:15:55.581974Z",
+      "actor": "agent",
+      "action": "case_closed",
+      "target": 498,
+      "note": "Duplicate of an earlier report; next steps agreed with the tenant directly."
+    },
+    {
+      "at": "2026-09-20T22:17:28.576442Z",
+      "actor": "system",
+      "action": "case_created",
+      "target": 503,
+      "note": "maintenance/plumbing urgency 1"
+    },
+    {
+      "at": "2026-09-20T22:20:10.658098Z",
+      "actor": "R. Doyle Gas & Heat",
+      "action": "job_booked",
+      "target": "job-10"
+    },
+    {
+      "at": "2026-09-20T22:20:12.687055Z",
+      "actor": "R. Doyle Gas & Heat",
+      "action": "invoice_submitted",
+      "target": "job-10",
+      "note": "\u00a3200.00 above standing authority"
+    },
+    {
+      "at": "2026-09-20T22:20:28.597532Z",
+      "actor": "T. Blackwood",
+      "action": "invoice_approved",
+      "target": "appr-4",
+      "note": null
+    },
+    {
+      "at": "2026-09-20T22:20:55.743525Z",
+      "actor": "agent",
+      "action": "case_closed",
+      "target": 503,
+      "note": "Test report used to verify the polish pass \u2014 no fault found at property."
     }
   ]
 }

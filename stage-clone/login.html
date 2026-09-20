@@ -9,16 +9,16 @@
 <div class="shell" style="max-width:460px;padding-top:8vh">
   <header class="header" style="border:none;margin-bottom:8px">
     <div class="brand"><h1>Stage portal</h1><span class="who">private — accounts are issued by the agency</span></div>
-    <nav class="tabs"><a href="/">Public site</a></nav>
+    <nav class="tabs"><a href="/">Lettings site</a></nav>
   </header>
-  <div class="card">
+  <main class="card">
     <div class="move">sign in</div>
-    <div class="field"><label>Username</label><input id="u" autocomplete="username" autofocus></div>
-    <div class="field"><label>Password</label><input id="p" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="u">Username</label><input id="u" autocomplete="username" autofocus></div>
+    <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"></div>
     <div class="actions"><button class="btn primary" id="go" onclick="login()">Sign in</button>
-      <span class="who" id="err" style="color:var(--danger)"></span></div>
+      <span class="who" id="err" role="alert" style="color:var(--danger)"></span></div>
     <p class="fineprint">Need access for a developer or a new landlord? Ask the agency desk — accounts are created by hand.</p>
-  </div>
+  </main>
 </div>
 <script>
 const LANDING = {agent:"/agent", dev:"/agent", tenant:"/tenant", landlord:"/landlord", trades:"/trades"};

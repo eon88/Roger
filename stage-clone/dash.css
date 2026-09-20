@@ -1,11 +1,13 @@
 :root{
   --paper:#faf7f2; --card:#fffdfa; --ink:#211d18; --muted:#5b5348;
-  --line:#e6dfd3; --line-soft:#eee8dc;
+  --line:#e6dfd3; --line-soft:#eee8dc; --line-strong:#8f8474;
   --accent:#1e6b4f; --accent-deep:#14503a; --accent-soft:#e7f0ea;
   --danger:#a33528; --danger-soft:#f7e9e7;
-  --warn:#8a5d14; --warn-soft:#f6eedd;
+  --warn:#7d5210; --warn-soft:#f6eedd;
   --blue:#2c5a8a; --blue-soft:#e8eef5;
   --r:10px; --r-sm:7px;
+  --dur:160ms; --ease:ease-out;
+  --lift:0 2px 10px rgba(33,29,24,.08);
   --font-ui:"Instrument Sans",system-ui,-apple-system,sans-serif;
   --font-display:"Fraunces",Georgia,serif;
 }
@@ -13,13 +15,15 @@
 body{font-family:var(--font-ui);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
 a{color:var(--accent);text-decoration:none}
 .shell{max-width:980px;margin:0 auto;padding:0 20px 60px}
-.header{display:flex;align-items:center;justify-content:space-between;padding:20px 0 16px;border-bottom:1px solid var(--line);margin-bottom:24px;gap:12px;flex-wrap:wrap}
+.header{display:flex;align-items:center;justify-content:space-between;padding:20px 0 16px;border-bottom:1px solid var(--line);margin-bottom:24px;gap:12px;flex-wrap:wrap;background:var(--paper)}
+.header.stuck{position:sticky;top:0;z-index:60;transition:box-shadow var(--dur) var(--ease),padding var(--dur) var(--ease)}
+.header.stuck.scrolled{box-shadow:0 6px 12px -8px rgba(33,29,24,.18);padding-top:12px;padding-bottom:10px}
 .brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .brand h1{font-family:var(--font-display);font-size:26px;font-weight:600}
 .who{font-size:13px;color:var(--muted)}
 .who b{color:var(--ink);font-weight:600}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
-.tabs a{padding:9px 14px;border:1px solid var(--line);background:var(--card);border-radius:var(--r-sm);font-size:13px;color:var(--ink)}
+.tabs a{padding:9px 14px;min-height:44px;display:inline-flex;align-items:center;border:1px solid var(--line-strong);background:var(--card);border-radius:var(--r-sm);font-size:13px;color:var(--ink);transition:border-color var(--dur) var(--ease),background-color var(--dur) var(--ease)}
 .tabs a:hover{border-color:var(--accent)}
 .tabs a.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .move{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--accent-deep);text-transform:uppercase;margin-bottom:10px}
@@ -30,32 +34,36 @@ a{color:var(--accent);text-decoration:none}
 .card.flagged{border-left:4px solid var(--danger)}
 .cardtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px}
 .card h3{font-family:var(--font-display);font-size:17px;font-weight:600}
-a.card{display:block;color:inherit;border:1px solid var(--line)}
-a.card:hover{border-color:var(--accent);text-decoration:none}
+a.card{display:block;color:inherit;border:1px solid var(--line);transition:border-color var(--dur) var(--ease),transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+a.card:hover{border-color:var(--accent);text-decoration:none;transform:translateY(-1px);box-shadow:var(--lift)}
 a.door{padding:26px}
-a.stat{display:block;color:inherit}
+a.stat{display:block;color:inherit;transition:border-color var(--dur) var(--ease),transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+a.stat:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:var(--lift)}
 .meta{font-size:13px;color:var(--muted);margin-bottom:8px}
 .details{font-size:15px;white-space:pre-wrap;margin-bottom:10px;overflow-wrap:anywhere}
 .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.btn{padding:11px 16px;min-height:44px;border-radius:var(--r-sm);font-family:var(--font-ui);font-size:14px;font-weight:500;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.btn{padding:11px 16px;min-height:44px;border-radius:var(--r-sm);font-family:var(--font-ui);font-size:14px;font-weight:500;cursor:pointer;border:1px solid var(--line-strong);background:var(--card);color:var(--ink);transition:border-color var(--dur) var(--ease),background-color var(--dur) var(--ease),transform 120ms var(--ease)}
 .btn:hover{border-color:var(--accent)}
+.btn:active{transform:translateY(1px)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.primary:hover{background:var(--accent-deep)}
-.btn.primary:disabled{opacity:.6;cursor:wait}
 .btn.danger{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
 .btn.ghost{background:transparent}
+.btn:disabled,.btn[data-busy]{opacity:.55;cursor:wait;pointer-events:none}
 .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
 .badge.reported,.badge.new,.badge.open,.badge.pending,.badge.pending_verification{background:var(--warn-soft);color:var(--warn)}
 .badge.dispatched{background:var(--blue-soft);color:var(--blue)}
 .badge.in_progress,.badge.awaiting_approval{background:var(--blue-soft);color:var(--blue)}
 .badge.resolved,.badge.paid,.badge.approved,.badge.closed,.badge.settled{background:var(--accent-soft);color:var(--accent-deep)}
 .badge.declined,.badge.rejected{background:var(--danger-soft);color:var(--danger)}
-.empty{text-align:center;padding:32px 20px;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r);background:var(--card);margin-bottom:16px}
+.empty{text-align:center;padding:32px 20px;color:var(--muted);border:1px dashed var(--line-strong);border-radius:var(--r);background:var(--card);margin-bottom:16px}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:5px}
-.field input,.field textarea,.actions input,input[type=email],input[type=number],input[type=text]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r-sm);font-family:var(--font-ui);font-size:15px;background:var(--paper);color:var(--ink)}
+.field input,.field textarea,.actions input,input[type=email],input[type=number],input[type=text]{width:100%;padding:11px 12px;border:1px solid var(--line-strong);border-radius:var(--r-sm);font-family:var(--font-ui);font-size:15px;background:var(--paper);color:var(--ink);transition:border-color var(--dur) var(--ease)}
 .actions input{width:auto;flex:1;min-width:160px}
-.field input:focus,textarea:focus,input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.field .hint{display:none;font-size:13px;color:var(--danger);margin-top:5px}
+.field .hint.show{display:block}
+.field input[aria-invalid="true"],.field textarea[aria-invalid="true"]{border-color:var(--danger);background:var(--danger-soft)}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
 .money{font-family:var(--font-display);font-size:24px;font-weight:600;color:var(--accent-deep)}
 .fineprint{font-size:13px;color:var(--muted);margin-top:10px;line-height:1.5}
@@ -104,6 +112,29 @@ table.log{width:100%;border-collapse:collapse;font-size:13px}
 table.log td{padding:6px 8px;border-top:1px solid var(--line-soft);vertical-align:top}
 table.log td:first-child{color:var(--muted);white-space:nowrap}
 .closebox input{flex:1}
+
+/* focus discipline: one ring style everywhere */
+:where(a,button,input,textarea,select,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
+:focus:not(:focus-visible){outline:none}
+
+/* skeletons: first paint and quiet refreshes never flash blank */
+.skel{position:relative;overflow:hidden;background:var(--line-soft);border-radius:var(--r-sm);margin-bottom:10px}
+.skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent);animation:shimmer 1.4s var(--ease) infinite}
+.skel.t{height:22px;width:45%}
+.skel.l{height:14px;width:80%}
+.skel.c{height:96px;border-radius:var(--r);margin-bottom:16px}
+@keyframes shimmer{to{transform:translateX(100%)}}
+
+/* one-shot motion: a card that just changed state between polls — one quiet pine pulse */
+.flash-once{animation:flashmove 150ms var(--ease) 1}
+@keyframes flashmove{from{background:var(--accent-soft)}to{background:var(--card)}}
+.when{white-space:nowrap;border-bottom:1px dotted var(--line-strong)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  a.card:hover,a.stat:hover{transform:none;box-shadow:none}
+  .btn:active{transform:none}
+}
 
 @media (max-width:640px){
   .header{padding:14px 0 12px}
