@@ -21,6 +21,19 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 STAGE_FILE = os.path.join(ROOT, "stage.json")
 USERS_FILE = os.path.join(ROOT, "users.json")
 SESSION_TTL = timedelta(days=7)
+LOGIN_TRIES = {}  # ip -> [timestamps]; in-memory, resets on restart (acceptable for demo-scale)
+
+def login_throttled(ip):
+    nowts = datetime.now(timezone.utc)
+    tries = [t for t in LOGIN_TRIES.get(ip, []) if (nowts - t).total_seconds() < 300]
+    LOGIN_TRIES[ip] = tries
+    return len(tries) >= 5
+
+def login_note(ip, ok):
+    if ok:
+        LOGIN_TRIES.pop(ip, None)
+    else:
+        LOGIN_TRIES.setdefault(ip, []).append(datetime.now(timezone.utc))
 
 def load_users():
     with open(USERS_FILE, "r") as f:
@@ -55,7 +68,8 @@ class H(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=ROOT, **kw)
 
     # ---------- auth plumbing ----------
-    PUBLIC_GET = {"/", "/login", "/logout", "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
+    PUBLIC_GET = {"/", "/login", "/logout", "/signin", "/register/landlord", "/register/trades",
+              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
     PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry"}
 
     def parse_cookies(self):
@@ -111,6 +125,9 @@ class H(SimpleHTTPRequestHandler):
         return path in self.PUBLIC_GET or path.startswith("/_next/") or path == "/api/public"
 
     def do_POST_login(self, data):
+        ip = self.client_address[0]
+        if login_throttled(ip):
+            return self._json({"error": "too many attempts — try again in 5 minutes"}, 429)
         username = str(data.get("username", ""))[:40]
         password = str(data.get("password", ""))[:200]
         users = load_users()
@@ -120,7 +137,9 @@ class H(SimpleHTTPRequestHandler):
             if not hmac.compare_digest(h, u["hash"]):
                 u = None
         if not u:
+            login_note(ip, ok=False)
             return self._json({"error": "wrong username or password"}, 401)
+        login_note(ip, ok=True)
         tok = secrets.token_urlsafe(32)
         nowiso = datetime.now(timezone.utc)
         users["sessions"] = {k: v for k, v in users.get("sessions", {}).items()
@@ -153,7 +172,7 @@ class H(SimpleHTTPRequestHandler):
             u = self.session_user()
             return self._json({"authenticated": False} if not u else
                               {"username": u["username"], "role": u["role"], "display_name": u["display_name"]})
-        if not self.is_public(path) and path != "/signin":
+        if not self.is_public(path):
             if not self.require(self.ROLE_PAGES.get(path)):
                 return
         routes = {

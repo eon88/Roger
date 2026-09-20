@@ -13,7 +13,7 @@
   </header>
 
   <main id="main" aria-busy="true">
-  <div class="banner emergency"><b>Gas smell, no heat in winter, flooding, or you feel unsafe?</b> Call National Gas free on <a href="tel:+44800111999">0800 111 999</a>, 24 hours a day. For anything that can wait until morning, ring your agent on <a href="tel:+441****0123">0121 496 0123</a> or use the form below.</div>
+  <div class="banner emergency"><b>Gas smell, no heat in winter, flooding, or you feel unsafe?</b> Call National Gas free on <a href="tel:+44800111999">0800 111 999</a>, 24 hours a day. For anything that can wait until morning, ring your agent on <a href="tel:+441214960123">0121 496 0123</a> or use the form below.</div>
 
   <section class="section">
     <div class="move">your home</div>
@@ -51,7 +51,7 @@
   </section>
 
   <footer class="fineprint">Your reports are kept with dates and outcomes — useful evidence at the end of a tenancy.
-    <div class="meta">Phone the office on <a href="tel:+441****0123">0121 496 0123</a> — Monday to Saturday, 8am to 8pm, and a person will answer.</div>
+    <div class="meta">Phone the office on <a href="tel:+441214960123">0121 496 0123</a> — Monday to Saturday, 8am to 8pm, and a person will answer.</div>
     <div class="meta">Or email <a href="mailto:office@stage.example">office@stage.example</a> and we will reply within one working day.</div>
   </footer>
   </main>
@@ -96,7 +96,7 @@ function render(){
   document.getElementById('home-card').innerHTML=prop?`<div class="card"><h3>${esc(prop.title)}</h3>
     <div class="meta">${esc(prop.area)} · ${prop.beds} bed · managed by your agent</div>
     <div class="meta">One case book for your home: your reports, what the agent does, and when work is paid for. You only see this page.</div></div>`
-    :`<div class="empty">No home is linked to this sign-in yet. Ring the office on <a href="tel:+441****0123">0121 496 0123</a> and they will connect you to your property.</div>`;
+    :`<div class="empty">No home is linked to this sign-in yet. Ring the office on <a href="tel:+441214960123">0121 496 0123</a> and they will connect you to your property.</div>`;
   const mine=(stage.cases||[]).filter(c=>c.name===ME).slice().reverse();
   const flips={}; (stage.cases||[]).forEach(c=>{ const p=prevStatus[c.id]; if(p&&p!==c.status&&c.status==='resolved') flips[c.id]=1; prevStatus[c.id]=c.status; });
   document.getElementById('my-cases').innerHTML=mine.length?mine.map(c=>{
@@ -108,8 +108,8 @@ function render(){
       ${plainTriage(c)}${who}</div>`;}).join('')
     :`<div class="empty">Nothing reported yet. If something needs attention — a drip, a dead socket, a door that sticks — describe it in the box above and you will get a case number straight away.</div>`;
   document.getElementById('docs').innerHTML=prop?`
-    <div class="card"><h3>Tenancy</h3><div class="meta">Starts · ${esc(prop.tenancy_start||'—')}</div><div class="actions"><button class="btn ghost" onclick="toast('The tenancy agreement is being digitised — the office posted you a paper copy and can send another on request.')">Tenancy agreement</button><button class="btn ghost" onclick="toast('Your deposit is protected with the TDS — the office will send the certificate by email on request.')">Deposit receipt</button></div></div>
-    <div class="card"><h3>Rent</h3><div class="money">£${(prop.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div><div class="meta">Standing order — your agent never touches the money directly.</div></div>`:'';
+    <div class="card"><h3>Tenancy</h3><div class="meta">Starts · ${esc(prop.tenancy_start||'—')}</div><div class="actions"><button class="btn ghost" onclick="toast('The tenancy agreement is being digitised — the office posted you a paper copy and can send another on request.')">Tenancy agreement</button><button class="btn ghost" onclick="toast('Deposits for this letting are held by a government-approved scheme. The office can email your certificate today; it will be delivered here once document delivery lands.')">Deposit receipt</button></div></div>
+    <div class="card"><h3>Rent</h3><div class="money">£${(prop.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div><div class="meta">Paid to the account named in your tenancy agreement. Your payment history appears here in a future release.</div></div>`:'';
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }

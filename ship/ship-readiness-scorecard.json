@@ -1,0 +1,29 @@
+{
+  "assessed_at": "2026-09-20T22:52:00Z",
+  "assessor": "mvp-ship-readiness persona (walked live portal, all four personas)",
+  "verdict": "SHIP-CAREFUL",
+  "scorecard": {
+    "positioning": 5,
+    "first10_customers": 3,
+    "pricing_offer": 1,
+    "trust_stack": 2,
+    "compliance_floor": 1,
+    "onboarding_friction": 7,
+    "launch_infra": 2,
+    "sales_assets": 1
+  },
+  "counts": {"P0": 5, "P1": 6, "P2": 4},
+  "top_p0s": [
+    "Redress scheme membership (statutory for English letting agents) — badge on every footer",
+    "Real company identity on all public surfaces",
+    "/privacy + /fees pages (ICO, Tenant Fees Act, complaints)",
+    "No unenforced deposit-protection claims — or wire real TDS certificate upload",
+    "Publish landlord pricing (named packages, TFA-clean)"
+  ],
+  "commercial_lead": "Pitch the landlord money-approval loop — evidence-complete approval card that answers who/when/why-cost, the single most persuasive screen.",
+  "fixed_same_evening": [
+    "register/* pages were login-gated, killing the public funnel (opened + re-verified logged-out)",
+    "deposit TDS assertion softened to honest copy",
+    "login rate-limit added (5 fails/5min/IP, unit-tested)"
+  ]
+}

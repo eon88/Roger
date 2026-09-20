@@ -154,7 +154,7 @@
       "role": "tenant",
       "name": "Daniel Mensah",
       "message": "The front door lock is broken from outside and I am locked out with no way in.",
-      "status": "in_progress",
+      "status": "resolved",
       "submitted_at": "2026-09-20T20:04:00.378434Z",
       "triage": {
         "category": "maintenance",
@@ -165,7 +165,7 @@
         "engine": "jev",
         "cost_usd": 2e-05
       },
-      "status_at": "2026-09-20T20:49:29.437422Z"
+      "status_at": "2026-09-20T22:51:35.090676Z"
     },
     {
       "id": 497,
@@ -273,9 +273,96 @@
       "status_at": "2026-09-20T22:20:28.597529Z",
       "closed_reason": "Test report used to verify the polish pass \u2014 no fault found at property.",
       "actioned_at": "2026-09-20T22:20:55.743514Z"
+    },
+    {
+      "id": 504,
+      "type": "enquiry",
+      "property_id": null,
+      "role": "renter",
+      "name": "ZZ Test Probe",
+      "email": "",
+      "message": "",
+      "status": "new",
+      "triage": {
+        "category": "other",
+        "trade": "other",
+        "urgency": 0,
+        "urgency_raw": 0.06,
+        "safety": 0.32,
+        "confidence": 99,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "consent": false,
+      "submitted_at": "2026-09-20T22:47:30.422723Z"
+    },
+    {
+      "id": 505,
+      "type": "enquiry",
+      "property_id": "parkside",
+      "role": "renter",
+      "name": "CMO Probe (fictional)",
+      "email": "cmo.probe@example.invalid",
+      "message": "Fictional CMO review test - ignore.",
+      "status": "new",
+      "triage": {
+        "category": "other",
+        "trade": "other",
+        "urgency": 0,
+        "urgency_raw": 0.04,
+        "safety": 0.04,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "consent": true,
+      "submitted_at": "2026-09-20T22:49:43.619769Z"
+    },
+    {
+      "id": 506,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "email": "daniel.mensah@example.com",
+      "message": "CMO test: bathroom extractor fan is noisy (fictional review test).",
+      "status": "dispatched",
+      "triage": {
+        "category": "maintenance",
+        "trade": "electric",
+        "urgency": 1,
+        "urgency_raw": 0.57,
+        "safety": 0.43,
+        "confidence": 97,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "submitted_at": "2026-09-20T22:51:54.158153Z"
+    },
+    {
+      "id": 507,
+      "type": "enquiry",
+      "property_id": null,
+      "role": "renter",
+      "name": "<img src=x onerror=alert(1)>XSSPROBE",
+      "email": "x@example.invalid",
+      "message": "cmo xss probe",
+      "status": "new",
+      "triage": {
+        "category": "other",
+        "trade": "other",
+        "urgency": 1,
+        "urgency_raw": 1.19,
+        "safety": 0.21,
+        "confidence": 92,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "consent": true,
+      "submitted_at": "2026-09-20T22:52:22.676539Z"
     }
   ],
-  "next_case_id": 504,
+  "next_case_id": 508,
   "registrations": [
     {
       "id": "reg-1",
@@ -403,10 +490,12 @@
         "engine": "jev",
         "cost_usd": 2e-05
       },
-      "status": "in_progress",
+      "status": "paid",
       "assigned_to": "R. Doyle Gas & Heat",
-      "invoice_pence": null,
-      "created_at": "2026-09-20T20:04:00.958076Z"
+      "invoice_pence": 21000,
+      "created_at": "2026-09-20T20:04:00.958076Z",
+      "completed_at": "2026-09-20T22:51:14.032029Z",
+      "paid_at": "2026-09-20T22:51:35.090671Z"
     },
     {
       "id": "job-5",
@@ -511,6 +600,27 @@
       "created_at": "2026-09-20T22:17:28.576435Z",
       "completed_at": "2026-09-20T22:20:12.687026Z",
       "paid_at": "2026-09-20T22:20:28.597525Z"
+    },
+    {
+      "id": "job-11",
+      "case_id": 506,
+      "property_id": "parkside",
+      "message": "CMO test: bathroom extractor fan is noisy (fictional review test).",
+      "triage": {
+        "category": "maintenance",
+        "trade": "electric",
+        "urgency": 1,
+        "urgency_raw": 0.57,
+        "safety": 0.43,
+        "confidence": 97,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "required_trade": "electric",
+      "status": "open",
+      "assigned_to": null,
+      "invoice_pence": null,
+      "created_at": "2026-09-20T22:51:54.158178Z"
     }
   ],
   "approvals": [
@@ -563,6 +673,23 @@
       "requested_at": "2026-09-20T22:20:12.687040Z",
       "reason_given": null,
       "decided_at": "2026-09-20T22:20:28.597515Z"
+    },
+    {
+      "id": "appr-5",
+      "job_id": "job-4",
+      "property_id": "parkside",
+      "landlord": "T. Blackwood",
+      "amount_pence": 21000,
+      "reason": "The front door lock is broken from outside and I am locked out with no way in.",
+      "evidence": {
+        "tradesperson": "R. Doyle Gas & Heat",
+        "job_created": "2026-09-20T20:04:00.958076Z",
+        "work_completed": "2026-09-20T22:51:14.032029Z"
+      },
+      "status": "approved",
+      "requested_at": "2026-09-20T22:51:14.032045Z",
+      "reason_given": null,
+      "decided_at": "2026-09-20T22:51:35.090662Z"
     }
   ],
   "audit_log": [
@@ -695,6 +822,45 @@
       "action": "case_closed",
       "target": 503,
       "note": "Test report used to verify the polish pass \u2014 no fault found at property."
+    },
+    {
+      "at": "2026-09-20T22:47:30.422737Z",
+      "actor": "public-site",
+      "action": "renter_submission",
+      "target": "case-504"
+    },
+    {
+      "at": "2026-09-20T22:49:43.619783Z",
+      "actor": "public-site",
+      "action": "renter_submission",
+      "target": "case-505"
+    },
+    {
+      "at": "2026-09-20T22:51:14.032060Z",
+      "actor": "R. Doyle Gas & Heat",
+      "action": "invoice_submitted",
+      "target": "job-4",
+      "note": "\u00a3210.00 above standing authority"
+    },
+    {
+      "at": "2026-09-20T22:51:35.090679Z",
+      "actor": "T. Blackwood",
+      "action": "invoice_approved",
+      "target": "appr-5",
+      "note": null
+    },
+    {
+      "at": "2026-09-20T22:51:54.158184Z",
+      "actor": "system",
+      "action": "case_created",
+      "target": 506,
+      "note": "maintenance/electric urgency 1"
+    },
+    {
+      "at": "2026-09-20T22:52:22.676554Z",
+      "actor": "public-site",
+      "action": "renter_submission",
+      "target": "case-507"
     }
   ]
 }
