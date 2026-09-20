@@ -1,0 +1,584 @@
+{
+  "properties": [
+    {
+      "id": "parkside",
+      "title": "16 Parkside Mews",
+      "area": "Twickenham \u00b7 TW1",
+      "beds": 3,
+      "rent": 240000,
+      "landlord": "T. Blackwood",
+      "tenant": "Daniel Mensah"
+    },
+    {
+      "id": "alder",
+      "title": "Flat 2, 14 Alder Road",
+      "area": "Richmond",
+      "beds": 1,
+      "rent": 115000,
+      "landlord": "S. Okoye",
+      "tenant": "Priya Shah"
+    },
+    {
+      "id": "holloway",
+      "title": "5 Holloway Yard",
+      "area": "Kingston",
+      "beds": 2,
+      "rent": 180000,
+      "landlord": "T. Blackwood",
+      "tenant": null
+    },
+    {
+      "id": "garden",
+      "title": "Three-bedroom garden home",
+      "area": "Kingston",
+      "beds": 3,
+      "rent": 265000,
+      "landlord": "M. Ferreira",
+      "tenant": null
+    }
+  ],
+  "authority": {
+    "standing_limit_pence": 15000,
+    "currency": "GBP"
+  },
+  "cases": [
+    {
+      "id": 490,
+      "type": "enquiry",
+      "property_id": null,
+      "role": "renter",
+      "name": "Alice Tenant",
+      "email": "alice@example.com",
+      "message": "The boiler has stopped working and we have a newborn baby \u2014 is this urgent?",
+      "status": "new",
+      "submitted_at": "2026-09-20T19:49:22.346971Z",
+      "triage": {
+        "category": "maintenance",
+        "trade": "gas",
+        "urgency": 2,
+        "urgency_raw": 1.96,
+        "safety": 0.91,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "recalibrated_at": "2026-09-20T20:49:28.770218Z"
+    },
+    {
+      "id": 492,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "message": "Kitchen tap drips constantly and there is a leak under the sink \u2014 the cabinet is going soft.",
+      "status": "resolved",
+      "submitted_at": "2026-09-20T19:54:56.192273Z",
+      "triage": {
+        "category": "maintenance",
+        "trade": "plumbing",
+        "urgency": 2,
+        "urgency_raw": 1.63,
+        "safety": 0.9,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "recalibrated_at": "2026-09-20T20:49:29.178829Z",
+      "status_at": "2026-09-20T20:49:29.437394Z"
+    },
+    {
+      "id": 493,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "message": "The radiator in the bedroom makes a banging noise when the heating comes on.",
+      "status": "resolved",
+      "submitted_at": "2026-09-20T19:55:09.577782Z",
+      "triage": {
+        "category": "maintenance",
+        "trade": "plumbing",
+        "urgency": 1,
+        "urgency_raw": 0.68,
+        "safety": 0.37,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "recalibrated_at": "2026-09-20T20:49:29.437355Z",
+      "status_at": "2026-09-20T20:49:29.437404Z"
+    },
+    {
+      "id": 494,
+      "type": "issue",
+      "property_id": "alder",
+      "role": "tenant",
+      "name": "Priya Shah",
+      "message": "I can smell gas in the kitchen since this morning. My toddler plays on the floor there.",
+      "status": "resolved",
+      "submitted_at": "2026-09-20T19:58:50.962352Z",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 2.0,
+        "safety": 0.98,
+        "confidence": 100,
+        "engine": "jev"
+      },
+      "status_at": "2026-09-20T20:49:29.437412Z"
+    },
+    {
+      "id": 495,
+      "type": "issue",
+      "property_id": "alder",
+      "role": "tenant",
+      "name": "Priya Shah",
+      "message": "Could I repaint the spare room a pale grey when I get round to it?",
+      "status": "new",
+      "submitted_at": "2026-09-20T19:58:51.353900Z",
+      "triage": {
+        "category": "other",
+        "urgency": 0,
+        "urgency_raw": 0.01,
+        "safety": 0.02,
+        "confidence": 93,
+        "engine": "jev"
+      }
+    },
+    {
+      "id": 496,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "message": "The front door lock is broken from outside and I am locked out with no way in.",
+      "status": "in_progress",
+      "submitted_at": "2026-09-20T20:04:00.378434Z",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 1.82,
+        "safety": 0.66,
+        "confidence": 99,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      },
+      "status_at": "2026-09-20T20:49:29.437422Z"
+    },
+    {
+      "id": 497,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "message": "There is black mould spreading in my son's bedroom and he has asthma.",
+      "status": "new",
+      "submitted_at": "2026-09-20T20:14:27.371011Z",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 1.9,
+        "safety": 0.96,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      }
+    },
+    {
+      "id": 498,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "message": "Bathroom ceiling is wet and the paint is blistering \u2014 water is dripping from the extractor fan.",
+      "status": "declined",
+      "submitted_at": "2026-09-20T20:14:55.119522Z",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 1.83,
+        "safety": 0.93,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      },
+      "status_at": "2026-09-20T20:49:29.437444Z"
+    },
+    {
+      "id": 499,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "message": "The boiler pressure light is flashing and hot water has stopped.",
+      "status": "resolved",
+      "submitted_at": "2026-09-20T20:16:06.405818Z",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 1,
+        "urgency_raw": 1.2,
+        "safety": 0.66,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      },
+      "status_at": "2026-09-20T20:49:29.437448Z"
+    },
+    {
+      "id": 502,
+      "type": "issue",
+      "property_id": "parkside",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "email": "d@x.io",
+      "message": "A kitchen socket is sparking when I plug the kettle in and there is a burn mark on the wall.",
+      "status": "resolved",
+      "triage": {
+        "category": "maintenance",
+        "trade": "electric",
+        "urgency": 2,
+        "urgency_raw": 2.0,
+        "safety": 0.98,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "submitted_at": "2026-09-20T20:32:42.343262Z",
+      "status_at": "2026-09-20T20:32:42.451966Z"
+    }
+  ],
+  "next_case_id": 503,
+  "registrations": [
+    {
+      "id": "reg-1",
+      "role": "landlord",
+      "name": "Test Landlord",
+      "email": "roger-2056@agentmail.to",
+      "details": "I own a 2-bed flat in Digbeth, currently vacant, looking for management.",
+      "website": "",
+      "contact_consent": true,
+      "status": "approved",
+      "submitted_at": "2026-09-20T19:49:16.765094Z",
+      "actioned_at": "2026-09-20T19:49:43.022783Z"
+    },
+    {
+      "id": "reg-2",
+      "role": "trades",
+      "name": "Gas Safe Plumber",
+      "email": "plumber@example.com",
+      "details": "Gas Safe registered, covers B15/B26, boiler and heating specialist, 12 years experience.",
+      "website": "",
+      "contact_consent": true,
+      "status": "approved",
+      "submitted_at": "2026-09-20T19:49:16.777250Z",
+      "actioned_at": "2026-09-20T20:07:02.770029Z"
+    },
+    {
+      "id": "reg-3",
+      "role": "trades",
+      "name": "Curl Test Gas",
+      "email": "curl@gas.example",
+      "details": "Gas Safe 999 888 77, covers TW1, CP12 engineer, insured.",
+      "website": "",
+      "contact_consent": true,
+      "status": "approved",
+      "submitted_at": "2026-09-20T20:15:51.596388Z",
+      "actioned_at": "2026-09-20T20:16:21.578649Z"
+    },
+    {
+      "id": "reg-5",
+      "role": "trades",
+      "name": "Marina Kowalska",
+      "email": "marina@plumb.example",
+      "details": "Electrician, NICEIC registered, covers B-postcodes, 15 years domestic rewire.",
+      "status": "pending",
+      "consent": true,
+      "submitted_at": "2026-09-20T20:34:14.197282Z"
+    },
+    {
+      "id": "reg-6",
+      "role": "trades",
+      "name": "Public Bot Test",
+      "email": "b@b.io",
+      "details": "test public route still works",
+      "phone": "",
+      "status": "pending",
+      "submitted_at": "2026-09-20T21:03:36.731573Z",
+      "gas_safe_number": "",
+      "trades": [],
+      "insurance_expiry": "",
+      "coverage": ""
+    }
+  ],
+  "jobs": [
+    {
+      "id": "job-1",
+      "case_id": 492,
+      "property_id": "parkside",
+      "message": "Kitchen tap drips constantly and there is a leak under the sink \u2014 the cabinet is going soft.",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 1,
+        "safety": 0.9,
+        "confidence": 85
+      },
+      "status": "paid",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": 18000,
+      "created_at": "2026-09-20T19:54:56.192662Z"
+    },
+    {
+      "id": "job-2",
+      "case_id": 493,
+      "property_id": "parkside",
+      "message": "The radiator in the bedroom makes a banging noise when the heating comes on.",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "safety": 0.3,
+        "confidence": 85
+      },
+      "status": "paid",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": 4500,
+      "created_at": "2026-09-20T19:55:09.578228Z"
+    },
+    {
+      "id": "job-3",
+      "case_id": 494,
+      "property_id": "alder",
+      "message": "I can smell gas in the kitchen since this morning. My toddler plays on the floor there.",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 2.0,
+        "safety": 0.98,
+        "confidence": 100,
+        "engine": "jev"
+      },
+      "status": "paid",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": 6000,
+      "created_at": "2026-09-20T19:58:51.342001Z"
+    },
+    {
+      "id": "job-4",
+      "case_id": 496,
+      "property_id": "parkside",
+      "message": "The front door lock is broken from outside and I am locked out with no way in.",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 1.82,
+        "safety": 0.66,
+        "confidence": 99,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      },
+      "status": "in_progress",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": null,
+      "created_at": "2026-09-20T20:04:00.958076Z"
+    },
+    {
+      "id": "job-5",
+      "case_id": 497,
+      "property_id": "parkside",
+      "message": "There is black mould spreading in my son's bedroom and he has asthma.",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 1.9,
+        "safety": 0.96,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      },
+      "status": "open",
+      "assigned_to": null,
+      "invoice_pence": null,
+      "created_at": "2026-09-20T20:14:27.712248Z"
+    },
+    {
+      "id": "job-6",
+      "case_id": 498,
+      "property_id": "parkside",
+      "message": "Bathroom ceiling is wet and the paint is blistering \u2014 water is dripping from the extractor fan.",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 2,
+        "urgency_raw": 1.83,
+        "safety": 0.93,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      },
+      "status": "rejected",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": 22000,
+      "created_at": "2026-09-20T20:14:55.481064Z"
+    },
+    {
+      "id": "job-7",
+      "case_id": 499,
+      "property_id": "parkside",
+      "message": "The boiler pressure light is flashing and hot water has stopped.",
+      "triage": {
+        "category": "maintenance",
+        "urgency": 1,
+        "urgency_raw": 1.2,
+        "safety": 0.66,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 2e-05
+      },
+      "status": "paid",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": 16050,
+      "created_at": "2026-09-20T20:16:06.705400Z"
+    },
+    {
+      "id": "job-9",
+      "case_id": 502,
+      "property_id": "parkside",
+      "message": "A kitchen socket is sparking when I plug the kettle in and there is a burn mark on the wall.",
+      "triage": {
+        "category": "maintenance",
+        "trade": "electric",
+        "urgency": 2,
+        "urgency_raw": 2.0,
+        "safety": 0.98,
+        "confidence": 100,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "required_trade": "electric",
+      "status": "paid",
+      "assigned_to": "R. Doyle Gas & Heat",
+      "invoice_pence": 9000,
+      "created_at": "2026-09-20T20:32:42.343285Z",
+      "override_by": "agent",
+      "completed_at": "2026-09-20T20:32:42.451947Z",
+      "paid_at": "2026-09-20T20:32:42.451958Z"
+    }
+  ],
+  "approvals": [
+    {
+      "id": "appr-1",
+      "job_id": "job-1",
+      "property_id": "parkside",
+      "landlord": "T. Blackwood",
+      "amount_pence": 18000,
+      "reason": "Kitchen tap drips constantly and there is a leak under the sink \u2014 the cabinet is going soft.",
+      "status": "approved",
+      "created_at": "2026-09-20T19:54:56.216980Z",
+      "actioned_at": "2026-09-20T19:55:48.791737Z"
+    },
+    {
+      "id": "appr-2",
+      "job_id": "job-6",
+      "property_id": "parkside",
+      "landlord": "T. Blackwood",
+      "amount_pence": 22000,
+      "reason": "Bathroom ceiling is wet and the paint is blistering \u2014 water is dripping from the extractor fan.",
+      "status": "rejected",
+      "created_at": "2026-09-20T20:14:55.492651Z",
+      "actioned_at": "2026-09-20T20:15:38.861835Z"
+    },
+    {
+      "id": "appr-3",
+      "job_id": "job-7",
+      "property_id": "parkside",
+      "landlord": "T. Blackwood",
+      "amount_pence": 16050,
+      "reason": "The boiler pressure light is flashing and hot water has stopped.",
+      "status": "approved",
+      "created_at": "2026-09-20T20:16:06.719269Z",
+      "actioned_at": "2026-09-20T20:16:21.380009Z"
+    }
+  ],
+  "audit_log": [
+    {
+      "at": "2026-09-20T20:32:42.343306Z",
+      "actor": "system",
+      "action": "case_created",
+      "target": 502,
+      "note": "maintenance/electric urgency 2"
+    },
+    {
+      "at": "2026-09-20T20:32:42.391106Z",
+      "actor": "R. Doyle Gas & Heat",
+      "action": "job_booking_blocked_pending_verification",
+      "target": "job-9",
+      "note": "credentials list gas, plumbing, heating \u2014 job needs electric"
+    },
+    {
+      "at": "2026-09-20T20:32:42.427491Z",
+      "actor": "agent",
+      "action": "booking_overridden",
+      "target": "job-9"
+    },
+    {
+      "at": "2026-09-20T20:32:42.451977Z",
+      "actor": "system",
+      "action": "invoice_auto_settled",
+      "target": "job-9",
+      "note": "\u00a390.00 under limit"
+    },
+    {
+      "at": "2026-09-20T20:34:14.197294Z",
+      "actor": "public-site",
+      "action": "trades_submission",
+      "target": "reg-5"
+    },
+    {
+      "at": "2026-09-20T20:49:28.770239Z",
+      "actor": "system",
+      "action": "triage_recalibrated",
+      "target": 490,
+      "note": "2->2 via live Jev"
+    },
+    {
+      "at": "2026-09-20T20:49:29.178841Z",
+      "actor": "system",
+      "action": "triage_recalibrated",
+      "target": 492,
+      "note": "1->2 via live Jev"
+    },
+    {
+      "at": "2026-09-20T20:49:29.437371Z",
+      "actor": "system",
+      "action": "triage_recalibrated",
+      "target": 493,
+      "note": "2->1 via live Jev"
+    },
+    {
+      "at": "2026-09-20T20:49:29.437399Z",
+      "actor": "system",
+      "action": "status_synced",
+      "target": 492,
+      "note": "job job-1 paid"
+    },
+    {
+      "at": "2026-09-20T20:49:29.437408Z",
+      "actor": "system",
+      "action": "status_synced",
+      "target": 493,
+      "note": "job job-2 paid"
+    },
+    {
+      "at": "2026-09-20T20:49:29.437415Z",
+      "actor": "system",
+      "action": "status_synced",
+      "target": 494,
+      "note": "job job-3 paid"
+    },
+    {
+      "at": "2026-09-20T20:49:29.437451Z",
+      "actor": "system",
+      "action": "status_synced",
+      "target": 499,
+      "note": "job job-7 paid"
+    }
+  ]
+}

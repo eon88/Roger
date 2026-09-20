@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in | Stage</title>
+<link rel="stylesheet" href="/dash.css">
+</head>
+<body>
+<div class="shell" style="max-width:460px;padding-top:8vh">
+  <header class="header" style="border:none;margin-bottom:8px">
+    <div class="brand"><h1>Stage portal</h1><span class="who">private — accounts are issued by the agency</span></div>
+    <nav class="tabs"><a href="/">Public site</a></nav>
+  </header>
+  <div class="card">
+    <div class="move">sign in</div>
+    <div class="field"><label>Username</label><input id="u" autocomplete="username" autofocus></div>
+    <div class="field"><label>Password</label><input id="p" type="password" autocomplete="current-password"></div>
+    <div class="actions"><button class="btn primary" id="go" onclick="login()">Sign in</button>
+      <span class="who" id="err" style="color:var(--danger)"></span></div>
+    <p class="fineprint">Need access for a developer or a new landlord? Ask the agency desk — accounts are created by hand.</p>
+  </div>
+</div>
+<script>
+const LANDING = {agent:"/agent", dev:"/agent", tenant:"/tenant", landlord:"/landlord", trades:"/trades"};
+async function login(){
+  const b=document.getElementById('go'); b.disabled=true; b.textContent='Checking…';
+  document.getElementById('err').textContent='';
+  try{
+    const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value})});
+    const j=await r.json();
+    if(!r.ok){document.getElementById('err').textContent=j.error||'Login failed';return;}
+    location.href=LANDING[j.role]||'/agent';
+  }catch(e){document.getElementById('err').textContent='Could not reach the portal.';}
+  finally{b.disabled=false;b.textContent='Sign in';}
+}
+document.getElementById('p').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+document.getElementById('u').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('p').focus();});
+const q=new URLSearchParams(location.search); if(q.get('u'))document.getElementById('u').value=q.get('u');
+</script>
+</body>
+</html>

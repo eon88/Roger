@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Board | Stage</title>
+<link rel="stylesheet" href="/dash.css">
+</head>
+<body>
+
+<div class="shell">
+  <header class="header">
+    <div class="brand"><h1>Job Board</h1><span class="who">viewing as <b id="who">R. Doyle Gas &amp; Heat</b></span></div>
+    <nav class="tabs">
+      <a href="/" class="tab">Public site</a>
+      <a href="/logout" class="tab">Log out</a>
+    </nav>
+  </header>
+  <div id="toast-host"></div>
+
+  <section class="section">
+    <div class="move">jobs you can take</div>
+    <div id="open-jobs"></div>
+  </section>
+
+  <section class="section">
+    <div class="move">jobs you've taken</div>
+    <div id="my-jobs"></div>
+  </section>
+
+  <section class="section">
+    <div class="move">your invoices and money</div>
+    <div id="done-jobs"></div>
+  </section>
+</div>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let ME = "…";
+const money = p => '£' + ((p ?? 0)/100).toFixed(2);
+const ago = iso => { if(!iso) return ''; const h=(Date.now()-new Date(iso))/36e5;
+  return h<1?'under an hour ago':h<24?Math.round(h)+'h ago':Math.round(h/24)+' days ago'; };
+async function api(p){const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();}
+async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  const j=await r.json().catch(()=>({})); if(!r.ok){toast(j.error||'failed','bad');throw new Error(j.error);} return j;}
+function toast(m,k){const el=document.createElement('div');el.className='toast '+(k||'');el.textContent=m;
+  document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
+let stage;
+async function boot(){const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; document.getElementById('who').textContent=ME; await load();}
+async function load(){stage=await api('/api/stage');render();}
+function prop(id){const p=(stage.properties||[]).find(x=>x.id===id);return p?`<b>${esc(p.title)}</b> · ${esc(p.area)}`:'address pending from the agent';}
+function termsNote(){const lim=(stage.authority?.standing_limit_pence||15000)/100;
+  return `<div class="terms">Payment terms: invoices up to £${lim.toFixed(0)} settle the same day under the agency's standing authority. Above it, the landlord signs off first — we chase automatically at 3 days.</div>`;}
+
+function render(){
+  const jobs=stage.jobs||[];
+  const open=jobs.filter(j=>j.status==='open').slice().reverse();
+  document.getElementById('open-jobs').innerHTML=open.length?open.map(j=>{
+    const req=j.required_trade?`<span class="reqtag ${j.required_trade==='gas'?'hot':''}">needs ${esc(j.required_trade)}${j.required_trade==='gas'?' — Gas Safe only':''}</span>`:'';
+    const u=['Routine','Soon','Emergency'][j.triage?.urgency]||'';
+    return `<div class="card ${j.triage?.urgency>=2?'flagged':''}">
+      <div class="cardtop"><h3>${u==='Emergency'?'⚡ ':''}${esc(j.id)} · case #${j.case_id}</h3>${req}</div>
+      <div class="meta">${prop(j.property_id)} · posted ${ago(j.created_at)}</div>
+      <div class="details">${esc(j.message)}</div>
+      ${j.triage?`<div class="triage-line">AI triage: <b>${u}</b>${j.triage.safety>=0.5?` · possible danger ${Math.round(j.triage.safety*100)}%`:' · low risk'}</div>`:''}
+      ${termsNote()}
+      <div class="actions"><button class="btn primary" onclick="accept('${esc(j.id)}')">Take this job</button></div></div>`;}).join('')
+    :`<div class="empty">No open jobs — the agent sends work as reports come in.</div>`;
+
+  const mine=jobs.filter(j=>j.status==='in_progress'&&j.assigned_to===ME).slice().reverse();
+  const gated=jobs.filter(j=>j.status==='pending_verification'&&j.requested_by===ME);
+  document.getElementById('my-jobs').innerHTML=
+    (gated.length?gated.map(j=>`<div class="card flagged"><h3>${esc(j.id)} · waiting on the agent</h3>
+      <div class="meta">${prop(j.property_id)}</div><div class="details">${esc(j.message)}</div>
+      <div class="fineprint">Your booking is held: ${esc(j.gate_reason)}. The agent can release it to you or send it to a verified trade.</div></div>`).join(''):'')+
+    (mine.length?mine.map(j=>{const c=(stage.cases||[]).find(x=>x.id===j.case_id)||{};
+      return `<div class="card"><div class="cardtop"><h3>${esc(j.id)} · yours since ${ago(j.created_at)}</h3></div>
+      <div class="meta">${prop(j.property_id)}</div>
+      <div class="details">${esc(j.message)}</div>
+      <div class="meta">Contact through the office: <a href="tel:+441214960123">0121 496 0123</a> — they confirm who's home and access${c.email?' · reporter email: '+esc(c.email):''}.</div>
+      <div class="field" style="margin-top:10px"><label>Invoice amount (£)</label>
+        <input type="number" id="inv-${esc(j.id)}" min="0" step="0.01" placeholder="0.00" style="max-width:140px"></div>
+      <div class="actions"><button class="btn primary" onclick="complete('${esc(j.id)}')">Job done — submit invoice</button>
+      <button class="btn ghost" onclick="release('${esc(j.id)}')">Hand it back</button></div></div>`;}).join('')
+    :gated.length?'':`<div class="empty">Nothing in progress.</div>`);
+
+  const done=jobs.filter(j=>['awaiting_approval','paid','rejected'].includes(j.status)).slice().reverse();
+  document.getElementById('done-jobs').innerHTML=done.length?done.map(j=>{
+    const appr=(stage.approvals||[]).find(a=>a.job_id===j.id);
+    const age=appr?` · waiting ${ago(appr.requested_at)}`:'';
+    const label={awaiting_approval:`landlord sign-off pending${age} — auto-chased at 3 days`,paid:`settled ${ago(j.paid_at)} · reference ${esc(j.id)} (demo: settlement is simulated until a payment provider lands)`,rejected:`declined${appr?.reason_given?' — “'+esc(appr.reason_given)+'”':''} · the agent has a task to sort next steps`}[j.status];
+    return `<div class="card"><div class="cardtop"><h3>${esc(j.id)} · ${money(j.invoice_pence??0)}</h3>
+      <span class="badge ${esc(j.status)}">${j.status==='paid'?'settled':j.status}</span></div>
+      <div class="meta">${prop(j.property_id)}</div>
+      <div class="fineprint">${label}</div></div>`;}).join('')
+    :`<div class="empty">No completed jobs yet.</div>`;
+}
+async function accept(id){try{await post('/api/job-action',{id,action:'accept',tradesperson:ME});toast('Booked — details now on your in-progress list.');load();}catch(e){}}
+async function complete(id){const v=parseFloat(document.getElementById('inv-'+id).value||'0');
+  if(v<=0){toast('Enter the invoice amount first.','bad');return;}
+  try{await post('/api/job-action',{id,action:'complete',invoice_pence:Math.round(v*100),tradesperson:ME});
+  toast(v*100<=(stage.authority?.standing_limit_pence||15000)?'Invoice filed — settles under standing authority today.':'Invoice filed — the landlord signs off anything over the limit.');load();}catch(e){}}
+async function release(id){try{await post('/api/job-action',{id,action:'release',tradesperson:ME});toast('Handed back — it returns to the open board.');load();}catch(e){}}
+boot(); setInterval(load,20000);
+</script>
+</body>
+</html>

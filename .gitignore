@@ -1,0 +1,9 @@
+# secrets & sessions — never commit
+stage-clone/users.json
+# runtime noise
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+# agentmail/browser caches
+*.tmp

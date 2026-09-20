@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Home | Stage</title>
+<link rel="stylesheet" href="/dash.css">
+</head>
+<body>
+<div class="shell">
+  <header class="header">
+    <div class="brand"><h1>My Home</h1><span class="who">viewing as <b id="who">…</b></span></div>
+    <nav class="tabs"><a href="/" class="tab">Public site</a><a href="/logout" class="tab">Log out</a></nav>
+  </header>
+
+  <div class="banner emergency">Gas smell, no heat in winter, flooding, or you feel unsafe? <b>Call 0800 111 999 first</b> (National Gas — free, 24h). Then ring your agent on <a href="tel:+441214960123">0121 496 0123</a>. This form is for everything that can wait until morning.</div>
+
+  <section class="section">
+    <div class="move">your home</div>
+    <div id="home-card"></div>
+  </section>
+
+  <section class="section">
+    <div class="move">report a problem</div>
+    <h2>Something needs attention?</h2>
+    <div class="card">
+      <div class="field"><label>What's going on?</label>
+        <textarea id="issue-msg" rows="3" placeholder="e.g. The hallway light flickers when the door slams. No burning smell."></textarea>
+      </div>
+      <div class="field"><label>Your email (so we can reply)</label>
+        <input id="issue-email" type="email" placeholder="you@example.com">
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="report-btn" onclick="report()">Report it</button>
+        <span class="who" id="report-note"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="move">what you've reported</div>
+    <h2>Your reports</h2>
+    <div id="my-cases"></div>
+  </section>
+
+  <section class="section">
+    <div class="move">your paperwork</div>
+    <div class="grid2" id="docs"></div>
+  </section>
+
+  <footer class="fineprint">Your reports are kept with dates and outcomes — useful evidence at the end of a tenancy. For anything this page doesn't cover, phone the office on <a href="tel:+441214960123">0121 496 0123</a>, Monday to Saturday, 8am to 8pm, or email <a href="mailto:office@stage.example">office@stage.example</a> and a person will answer.</footer>
+</div>
+<div id="toast-host"></div>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let ME = "…";
+const DEMO_EMAIL = "daniel.mensah@example.com";
+const STATUS_LABEL = {
+  reported:"reported — the agent has it",
+  new:"reported — the agent has it",
+  dispatched:"a job is open for it",
+  in_progress:"someone is on it",
+  awaiting_approval:"fixed — waiting on the landlord to approve the bill",
+  resolved:"sorted — paid",
+  declined:"the landlord declined that quote — your agent will come back to you",
+  closed:"closed",
+  open:"reported — the agent has it"
+};
+async function api(p){const r=await fetch(p);if(!r.ok)throw new Error(r.status);return r.json();}
+async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  const j=await r.json().catch(()=>({})); if(!r.ok)throw new Error(j.error||'failed'); return j;}
+function toast(msg,kind){const el=document.createElement('div');el.className='toast '+(kind||'');el.textContent=msg;
+  document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
+const ago=iso=>{if(!iso)return '';const h=(Date.now()-new Date(iso))/36e5;
+  return h<1?'under an hour ago':h<24?Math.round(h)+'h ago':Math.round(h/24)+' days ago';};
+let stage;
+async function boot(){const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load();}
+async function load(){stage=await api('/api/stage');render();}
+
+function plainTriage(c){
+  const t=c.triage||{};
+  if(t.urgency>=2) return `<div class="triage-line hot">We're treating this as an emergency. Expect contact within 4 hours.</div>`;
+  if(t.urgency===1) return `<div class="triage-line warm">We've marked this as needing attention soon — usually sorted within a few days.</div>`;
+  return `<div class="triage-line">No rush — we'll reply when it's convenient, usually within a week.</div>`;
+}
+function render(){
+  document.getElementById('who').textContent=ME;
+  document.getElementById('issue-email').value=document.getElementById('issue-email').value||DEMO_EMAIL;
+  const prop=stage.properties.find(p=>p.tenant===ME);
+  document.getElementById('home-card').innerHTML=prop?`<div class="card"><h3>${esc(prop.title)}</h3>
+    <div class="meta">${esc(prop.area)} · ${prop.beds} bed · managed by your agent</div>
+    <div class="meta">One case book for your home: your reports, what the agent does, and when work is paid for. You only see this page.</div></div>`
+    :`<div class="empty">No home linked to this name yet.</div>`;
+  const mine=(stage.cases||[]).filter(c=>c.name===ME).slice().reverse();
+  document.getElementById('my-cases').innerHTML=mine.length?mine.map(c=>{
+    const job=(stage.jobs||[]).find(j=>j.case_id===c.id);
+    const who=job&&job.assigned_to?`<div class="meta">Being handled by <b>${esc(job.assigned_to)}</b>.</div>`:'';
+    return `<div class="card"><h3>#${c.id}</h3>
+      <div class="meta">${ago(c.status_at||c.submitted_at)} · <span class="badge ${esc(c.status)}">${esc(STATUS_LABEL[c.status]||c.status)}</span></div>
+      <div class="details">${esc(c.message)}</div>
+      ${plainTriage(c)}${who}</div>`;}).join('')
+    :`<div class="empty">Nothing reported yet. Use the box above when something needs attention.</div>`;
+  document.getElementById('docs').innerHTML=prop?`
+    <div class="card"><h3>Tenancy</h3><div class="meta">Starts · ${esc(prop.tenancy_start||'—')}</div><div class="actions"><button class="btn ghost" onclick="toast('Tenancy PDF lands in v2 — data model has no document store yet.')">Tenancy agreement</button><button class="btn ghost" onclick="toast('Receipt lands in v2 — deposit is held by the TDS in the real system.')">Deposit receipt</button></div></div>
+    <div class="card"><h3>Rent</h3><div class="money">£${(prop.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div><div class="meta">Standing order — your agent never touches the money directly.</div></div>`:'';
+}
+async function report(){
+  const msg=document.getElementById('issue-msg').value.trim();
+  if(!msg){toast('Tell us what is going on first.','bad');return;}
+  const btn=document.getElementById('report-btn');btn.disabled=true;
+  try{
+    const prop=stage.properties.find(p=>p.tenant===ME);
+    const email=document.getElementById('issue-email').value.trim();
+    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email,message:msg});
+    document.getElementById('issue-msg').value='';
+    toast(`Logged as #${res.case_id}. ${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
+    await load();
+  }catch(e){toast('Could not send — try again or ring the office.','bad');}
+  finally{btn.disabled=false;}
+}
+boot(); setInterval(load,20000);
+</script>
+</body>
+</html>

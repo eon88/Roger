@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keyhouse — Portal Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#faf7f2; --card:#fffdfa; --ink:#211d18; --muted:#6f675c;
+  --line:#e6dfd3; --line-soft:#eee8dc;
+  --accent:#1e6b4f; --accent-deep:#14503a; --accent-soft:#e7f0ea;
+  --danger:#b3423a; --danger-soft:#f7e9e7;
+  --warn:#a06f1f; --warn-soft:#f6eedd;
+  --ok:#2c7d4f;
+  --chrome:#191510; --chrome-ink:#d9d2c5;
+  --r:10px; --r-sm:7px;
+  --shadow:0 1px 2px rgba(33,29,24,.06),0 4px 14px rgba(33,29,24,.05);
+  --font-ui:"Instrument Sans",system-ui,-apple-system,sans-serif;
+  --font-display:"Fraunces",Georgia,serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font-ui);background:var(--paper);color:var(--ink);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;text-wrap:pretty}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- prototype chrome ---------- */
+.chrome{position:sticky;top:0;z-index:100;background:var(--chrome);color:var(--chrome-ink);display:flex;align-items:center;gap:16px;padding:0 16px;height:48px;overflow-x:auto}
+.chrome .brand{font-family:var(--font-display);font-weight:600;font-size:15px;color:#fff;white-space:nowrap;display:flex;align-items:center;gap:8px}
+.chrome .brand .dot{width:9px;height:9px;border-radius:2px;background:#3f9e77;flex:none}
+.chrome .tag{font-size:11px;color:#8d8577;border:1px solid #3a342b;border-radius:99px;padding:2px 8px;white-space:nowrap}
+.seg{display:flex;background:#2a251d;border-radius:8px;padding:3px;gap:2px;margin:0 auto}
+.seg button{padding:5px 14px;border-radius:6px;font-size:13px;font-weight:500;color:#a89f8f;white-space:nowrap;transition:background .15s,color .15s}
+.seg button:hover{color:#e5ded0}
+.seg button.on{background:#413a2e;color:#fff}
+.seg button .ct{font-size:10px;background:#5c5342;border-radius:99px;padding:0 5px;margin-left:5px;color:#fff}
+.chrome .hint{font-size:12px;color:#8d8577;white-space:nowrap}
+
+/* ---------- shared bits ---------- */
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;border-radius:99px;padding:2px 9px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
+.pill .d{width:7px;height:7px;border-radius:50%;flex:none}
+.d.ok{background:var(--ok)} .d.warn{background:var(--warn)} .d.bad{background:var(--danger)} .d.off{background:#c9c1b2}
+.pill.ok{background:var(--accent-soft);border-color:#cfe2d6;color:var(--accent-deep)}
+.pill.bad{background:var(--danger-soft);border-color:#ecd2cf;color:var(--danger)}
+.pill.warn{background:var(--warn-soft);border-color:#e9dcc0;color:var(--warn)}
+.btn{display:inline-flex;align-items:center;gap:7px;font-weight:500;font-size:14px;padding:9px 16px;border-radius:var(--r-sm);border:1px solid var(--line);background:var(--card);transition:border-color .15s,background .15s}
+.btn:hover{border-color:#c9bfae;background:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-deep)}
+.btn.sm{padding:5px 11px;font-size:13px}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{background:#f1ece2;color:var(--ink)}
+.btn.done{background:var(--accent-soft);border-color:#cfe2d6;color:var(--accent-deep);pointer-events:none}
+.move{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--accent-deep);background:var(--accent-soft);border-radius:4px;padding:1px 6px}
+.move.gray{color:var(--muted);background:#f1ece2}
+.mono{font-size:12px;color:var(--muted)}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:999;box-shadow:var(--shadow)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.view{display:none}.view.on{display:block}
+
+/* ---------- PUBLIC ---------- */
+.pub-nav{display:flex;align-items:center;gap:28px;padding:18px 5vw;max-width:1200px;margin:0 auto}
+.pub-nav .logo{font-family:var(--font-display);font-size:21px;font-weight:600;display:flex;align-items:center;gap:9px}
+.pub-nav .logo .dot{width:11px;height:11px;border-radius:3px;background:var(--accent)}
+.pub-nav nav{display:flex;gap:22px;margin-left:auto;font-size:14px;color:var(--muted)}
+.pub-nav nav a:hover{color:var(--ink)}
+.hero{max-width:1200px;margin:0 auto;padding:56px 5vw 64px;display:grid;grid-template-columns:1.15fr .85fr;gap:56px;align-items:center}
+.hero h1{font-size:clamp(34px,4.6vw,52px);line-height:1.08;margin-bottom:18px}
+.hero h1 em{font-style:italic;color:var(--accent-deep)}
+.hero p{font-size:17px;color:var(--muted);max-width:46ch;margin-bottom:26px}
+.hero .ctas{display:flex;gap:12px;flex-wrap:wrap}
+.hero-visual{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px;font-size:13px}
+.hero-visual .vh{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;color:var(--muted);font-size:12px}
+.hero-visual .vh b{color:var(--ink);font-size:13px}
+.hv-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;border:1px solid var(--line-soft);margin-bottom:7px;background:#fff}
+.hv-row .t{flex:1;min-width:0}
+.hv-row .t b{display:block;font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hv-row .t span{font-size:12px;color:var(--muted)}
+.strip{display:flex;gap:6px;margin-top:12px}
+.strip .s{flex:1;border:1px solid var(--line-soft);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--muted)}
+.strip .s b{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink)}
+.doors{max-width:1200px;margin:0 auto;padding:0 5vw 72px}
+.doors h2{font-size:26px;margin-bottom:22px}
+.door-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:16px;align-items:stretch}
+.door{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
+.door.big{background:#f4f0e6}
+.door .k{font-size:11px;letter-spacing:.1em;font-weight:600;color:var(--muted)}
+.door h3{font-size:20px}
+.door p{font-size:14px;color:var(--muted)}
+.door ul{list-style:none;font-size:13.5px;color:var(--ink);display:flex;flex-direction:column;gap:7px;margin-top:2px}
+.door ul li{display:flex;gap:9px;align-items:baseline}
+.door ul li::before{content:"—";color:var(--accent);flex:none}
+.door .go{margin-top:auto;padding-top:10px}
+.dance{background:#211d18;color:#e8e2d5;padding:64px 5vw}
+.dance-in{max-width:1200px;margin:0 auto}
+.dance h2{color:#fff;font-size:26px;margin-bottom:8px}
+.dance p{color:#a89f8f;font-size:15px;max-width:60ch;margin-bottom:34px}
+.steps{display:flex;flex-wrap:wrap;gap:10px}
+.step{border:1px solid #3a342b;border-radius:10px;padding:14px 16px;min-width:128px;flex:1}
+.step .mv{font-size:11px;letter-spacing:.08em;color:#7fc7a4;font-weight:600}
+.step b{display:block;color:#fff;font-size:14px;font-weight:500;margin-top:5px}
+.step span{font-size:12px;color:#a89f8f}
+.pub-footer{padding:36px 5vw;font-size:12.5px;color:var(--muted);max-width:1200px;margin:0 auto;display:flex;gap:24px;flex-wrap:wrap;border-top:1px solid var(--line)}
+
+/* search */
+.pub-page{max-width:1200px;margin:0 auto;padding:8px 5vw 72px}
+.crumbs{font-size:13px;color:var(--muted);padding:20px 0 14px}
+.search-layout{display:grid;grid-template-columns:230px 1fr;gap:32px}
+.filters h3{font-size:13px;font-family:var(--font-ui);font-weight:600;letter-spacing:.06em;color:var(--muted);margin:20px 0 10px}
+.chipset{display:flex;flex-wrap:wrap;gap:7px}
+.chip{font-size:13px;border:1px solid var(--line);border-radius:99px;padding:5px 12px;background:var(--card)}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.listings{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.lcard{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);transition:transform .15s,border-color .15s;cursor:pointer;text-align:left;padding:0}
+.lcard:hover{transform:translateY(-2px);border-color:#cfc4b0}
+.lcard .ph{height:150px;position:relative;display:flex;align-items:flex-end;padding:12px}
+.ph.g1{background:linear-gradient(135deg,#ddd2bd,#b8a888)}
+.ph.g2{background:linear-gradient(135deg,#d5d8cb,#9aa588)}
+.ph.g3{background:linear-gradient(135deg,#e0d3c8,#b09283)}
+.ph .num-big{position:absolute;top:10px;right:14px;font-family:var(--font-display);font-size:44px;color:rgba(255,255,255,.5);font-weight:600}
+.lcard .ph .pill{background:rgba(255,255,255,.92)}
+.lcard .bd{padding:14px 16px 16px}
+.lcard .bd b{font-size:15.5px;font-weight:600;display:block}
+.lcard .bd .sub{font-size:13px;color:var(--muted);margin:3px 0 10px}
+.lcard .bd .meta{display:flex;gap:14px;font-size:13px;color:var(--muted);align-items:center}
+.price{font-weight:600;font-variant-numeric:tabular-nums}
+.detail-hero{height:280px;border-radius:14px;position:relative;margin-bottom:24px;overflow:hidden}
+.detail-hero .num-big{font-size:88px;right:24px;top:60px;position:absolute;font-family:var(--font-display);color:rgba(255,255,255,.45);font-weight:600}
+.detail-grid{display:grid;grid-template-columns:1fr 320px;gap:40px}
+.facts{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 24px;font-size:14.5px;margin:18px 0 26px}
+.facts div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line-soft);padding:8px 0}
+.facts span{color:var(--muted)}
+.happens{margin:26px 0}
+.happens .track{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.happens .hp{display:flex;align-items:center;gap:8px;font-size:13px;border:1px solid var(--line);border-radius:99px;padding:6px 13px;background:var(--card)}
+.happens .hp b{font-size:11px;letter-spacing:.07em;color:var(--accent-deep)}
+.rent-card{position:sticky;top:70px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px}
+.rent-card .big{font-family:var(--font-display);font-size:30px;font-weight:600}
+.rent-card .big span{font-size:14px;font-family:var(--font-ui);color:var(--muted);font-weight:400}
+.rent-card ul{list-style:none;margin:16px 0;display:flex;flex-direction:column;gap:8px;font-size:13.5px;color:var(--muted)}
+.rent-card ul li::before{content:"✓";color:var(--ok);margin-right:8px}
+.book-ok{background:var(--accent-soft);border:1px solid #cfe2d6;border-radius:10px;padding:14px;font-size:14px;color:var(--accent-deep);display:none}
+.book-ok.show{display:block}
+
+/* ---------- APP SHELL (agent / landlord / trades) ---------- */
+.app{display:grid;grid-template-columns:210px 1fr;min-height:calc(100vh - 48px)}
+.rail{background:var(--card);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:2px}
+.rail .who{padding:8px 12px 16px;border-bottom:1px solid var(--line-soft);margin-bottom:12px}
+.rail .who b{display:block;font-size:14px}
+.rail .who span{font-size:12px;color:var(--muted)}
+.rail button{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;font-size:14px;color:var(--muted);text-align:left;width:100%}
+.rail button:hover{background:#f1ece2;color:var(--ink)}
+.rail button.on{background:var(--accent-soft);color:var(--accent-deep);font-weight:500}
+.rail button .ct{margin-left:auto;font-size:11px;background:#ece5d8;color:var(--muted);border-radius:99px;padding:0 7px}
+.rail button.on .ct{background:#cfe2d6;color:var(--accent-deep)}
+.rail .sp{flex:1}
+.rail .foot{font-size:11.5px;color:var(--muted);padding:10px 12px;line-height:1.6}
+.main{padding:0 28px 48px;min-width:0}
+.topbar{display:flex;align-items:center;gap:14px;padding:18px 0 16px;flex-wrap:wrap}
+.topbar h2{font-size:22px}
+.topbar .sub{font-size:13px;color:var(--muted);width:100%}
+.content{display:none}.content.on{display:block}
+.today-strip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+.today-strip .ts{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:9px 14px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.today-strip .ts b{color:var(--ink)}
+
+/* inbox */
+.inbox-layout{display:grid;grid-template-columns:1fr;gap:0}
+.filters-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.case-row{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:13px 16px;margin-bottom:9px;cursor:pointer;text-align:left;width:100%;transition:border-color .15s}
+.case-row:hover{border-color:#c4b9a4}
+.case-row .ic{width:38px;height:38px;border-radius:9px;background:var(--accent-soft);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;letter-spacing:.05em;flex:none}
+.case-row.em .ic{background:var(--danger-soft);color:var(--danger)}
+.case-row .bd{flex:1;min-width:0}
+.case-row .bd .l1{display:flex;gap:8px;align-items:center;font-weight:500;font-size:14.5px}
+.case-row .bd .l1 .pid{color:var(--muted);font-weight:400;font-size:13px}
+.case-row .bd .l2{font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case-row .act{flex:none}
+/* drawer */
+.drawer{position:fixed;top:48px;right:0;bottom:0;width:460px;max-width:94vw;background:var(--card);border-left:1px solid var(--line);box-shadow:-12px 0 40px rgba(33,29,24,.12);z-index:90;transform:translateX(105%);transition:transform .22s;display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.drawer .dh{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.drawer .dh h3{font-size:18px}
+.drawer .db{padding:20px 22px;overflow-y:auto;flex:1}
+.drawer .ai{background:#f2f6f0;border:1px solid #d8e4da;border-radius:10px;padding:13px 15px;font-size:13.5px;color:#2c4a3a;margin-bottom:18px}
+.drawer .ai b{display:flex;gap:7px;align-items:center;font-size:12px;letter-spacing:.07em;margin-bottom:5px;color:var(--accent-deep)}
+.tl{list-style:none;font-size:13.5px}
+.tl li{display:flex;gap:12px;padding-bottom:16px;position:relative}
+.tl li::before{content:"";position:absolute;left:4.5px;top:16px;bottom:0;width:1px;background:var(--line)}
+.tl li:last-child::before{display:none}
+.tl .dot2{width:10px;height:10px;border-radius:50%;background:var(--accent);flex:none;margin-top:4px;position:relative;z-index:1}
+.tl b{display:block;font-weight:500}
+.tl span{color:var(--muted);font-size:12.5px}
+.drawer .df{padding:16px 22px;border-top:1px solid var(--line);display:flex;gap:10px;flex-wrap:wrap}
+/* tables */
+.tbl{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px}
+.tbl-wrap{border:1px solid var(--line);border-radius:12px;overflow:auto;background:var(--card)}
+.tbl th{font-size:11.5px;letter-spacing:.07em;color:var(--muted);text-align:left;font-weight:600;padding:11px 14px;border-bottom:1px solid var(--line);background:#fbf8f2;white-space:nowrap}
+.tbl td{padding:11px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;white-space:nowrap}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:#fbf9f4}
+.comp{display:inline-flex;gap:4px}
+.comp i{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;font-style:normal;color:#fff}
+.comp i.g{background:#3e8763}.comp i.a{background:#c09532}.comp i.r{background:#bd4b42}.comp i.o{background:#d8d0bf;color:var(--muted)}
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.stat b{font-size:24px;font-family:var(--font-display);font-weight:600;display:block;font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--muted)}
+.note-card{border:1px dashed #cfc4ae;border-radius:12px;padding:18px 20px;color:var(--muted);font-size:13.5px;background:#fbf8f1}
+.note-card b{color:var(--ink)}
+
+/* landlord */
+.land-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:24px}
+.prop-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+.prop-card .ph2{height:64px;border-radius:8px;margin-bottom:12px;position:relative}
+.prop-card b{font-size:15px;display:block}
+.prop-card .sub{font-size:13px;color:var(--muted);margin:2px 0 10px}
+.prop-card .row{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);border-top:1px solid var(--line-soft);padding-top:9px}
+.appr-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:10px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.appr-card .bd{flex:1;min-width:230px}
+.appr-card .bd b{font-size:15px}
+.appr-card .bd .sub{font-size:13px;color:var(--muted);margin-top:3px}
+.appr-card .amt{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.appr-card.done{opacity:.65}
+.comp-list{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.comp-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.comp-row:last-child{border-bottom:none}
+.comp-row .bd{flex:1;min-width:200px}
+.comp-row b{font-size:14.5px}
+.comp-row .sub{font-size:13px;color:var(--muted)}
+
+/* tenant phone */
+.tenant-wrap{display:flex;justify-content:center;padding:28px 16px 60px}
+.phone{width:392px;max-width:100%;background:#fdfcf9;border:1px solid var(--line);border-radius:34px;box-shadow:0 24px 60px rgba(33,29,24,.14);overflow:hidden;display:flex;flex-direction:column;height:780px}
+.p-status{display:flex;justify-content:space-between;padding:12px 22px 6px;font-size:12px;color:var(--muted)}
+.p-head{padding:6px 22px 14px}
+.p-head h3{font-size:22px}
+.p-head .sub{font-size:13px;color:var(--muted)}
+.p-body{flex:1;overflow-y:auto;padding:0 18px 18px}
+.p-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:12px;box-shadow:0 1px 3px rgba(33,29,24,.05)}
+.p-card .lab{font-size:11px;letter-spacing:.09em;color:var(--muted);font-weight:600;margin-bottom:8px}
+.p-card .rent{font-family:var(--font-display);font-size:30px;font-weight:600}
+.p-tabbar{display:flex;border-top:1px solid var(--line);background:#fff;padding:8px 8px 14px}
+.p-tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--muted);padding:7px 2px;border-radius:10px}
+.p-tabbar button.on{color:var(--accent-deep);font-weight:600}
+.p-tabbar button .glyph{font-size:17px;line-height:1}
+.p-page{display:none}.p-page.on{display:block}
+.rep-chip{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:#fff;font-size:15px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+.rep-chip:hover{border-color:var(--accent)}
+.rep-chip .arr{color:var(--muted)}
+.sev{display:block;width:100%;border:1px solid var(--line);border-radius:12px;padding:13px 16px;background:#fff;margin-bottom:9px;text-align:left}
+.sev b{display:block;font-size:15px}
+.sev span{font-size:12.5px;color:var(--muted)}
+.sev.on{border-color:var(--accent);background:var(--accent-soft)}
+.photo-row{display:flex;gap:8px;margin:14px 0}
+.photo-row .pz{width:64px;height:64px;border-radius:10px;border:1.5px dashed #cfc4ae;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px;background:#fbf8f1}
+textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font:inherit;font-size:14px;resize:vertical;min-height:70px;background:#fff;color:var(--ink)}
+.trackv{list-style:none;margin-top:10px}
+.trackv li{display:flex;gap:10px;font-size:13px;padding:6px 0;color:var(--muted);align-items:center}
+.trackv li .d{width:8px;height:8px}
+.trackv li.on{color:var(--ink);font-weight:500}
+.p-back{font-size:13.5px;color:var(--muted);display:inline-flex;gap:6px;align-items:center;margin-bottom:12px}
+
+/* trades */
+.job-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--shadow)}
+.job-card .jh{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px}
+.job-card .jh b{font-size:16px}
+.job-card .desc{font-size:14px;color:var(--muted);margin-bottom:12px}
+.job-card .constraints{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.job-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.quote-box{display:none;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap}
+.quote-box.show{display:flex}
+.quote-box input{border:1px solid var(--line);border-radius:8px;padding:8px 12px;font:inherit;font-size:14px;width:120px;background:#fff;color:var(--ink)}
+
+@media (max-width:960px){
+  .app{grid-template-columns:1fr}
+  .rail{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);padding:10px}
+  .rail .who,.rail .foot,.rail .sp{display:none}
+  .rail button{width:auto;white-space:nowrap}
+  .hero{grid-template-columns:1fr}
+  .door-grid{grid-template-columns:1fr}
+  .search-layout{grid-template-columns:1fr}
+  .detail-grid{grid-template-columns:1fr}
+  .drawer{width:100vw;max-width:100vw}
+}
+/* ---------- front page v0.2: sections, roles, form, modal ---------- */
+.sec-head h2{font-size:28px}
+.sec-head p{color:var(--muted);margin-top:6px;max-width:62ch}
+.ll-band{background:var(--chrome);color:#e8e2d5;margin-top:26px}
+.ll-in{max-width:1200px;margin:0 auto;padding:60px 5vw;display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+.ll-band .k{font-size:11px;letter-spacing:.1em;font-weight:600;color:#7fc7a4}
+.ll-band h2{color:#fff;font-size:28px;margin:10px 0 12px}
+.ll-band p{color:#a89f8f}
+.ll-band ul{list-style:none;margin:18px 0 24px;display:flex;flex-direction:column;gap:9px;font-size:14.5px;color:#e8e2d5}
+.ll-band ul li{display:flex;gap:9px;align-items:baseline}
+.ll-band ul li::before{content:"\2014";color:#7fc7a4;flex:none}
+.connect-card{max-width:780px;margin:6px auto 70px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:26px}
+.roles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.role-card{border:1px solid var(--line);border-radius:12px;padding:15px 14px;text-align:left;background:#fff;transition:border-color .15s,background .15s;display:block}
+.role-card b{display:block;font-size:15px}
+.role-card span{font-size:12.5px;color:var(--muted);display:block;margin-top:3px}
+.role-card.on{border-color:var(--accent);background:var(--accent-soft)}
+.f-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.f{display:flex;flex-direction:column;gap:5px}
+.f label{font-size:11.5px;font-weight:600;letter-spacing:.05em;color:var(--muted)}
+.f input,.f select{border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink)}
+.f.full{grid-column:1/-1}
+.rf{display:none}
+.rf.on{display:flex}
+.pmodal{position:fixed;inset:0;background:rgba(33,29,24,.45);display:none;align-items:center;justify-content:center;z-index:120;padding:20px}
+.pmodal.on{display:flex}
+.pmodal-panel{background:var(--paper);border-radius:16px;max-width:620px;width:100%;max-height:86vh;overflow-y:auto;padding-bottom:22px;box-shadow:0 24px 60px rgba(33,29,24,.25)}
+.pmodal-hero{height:170px;position:relative;border-radius:16px 16px 0 0;display:flex;align-items:flex-end;padding:14px}
+.pmodal-body{padding:20px 24px 0}
+@media (max-width:960px){
+  .roles{grid-template-columns:1fr}
+  .ll-in{grid-template-columns:1fr;gap:30px}
+  .f-grid{grid-template-columns:1fr}
+}
+/* ---------- v0.3 polish pass: editorial scale, focus states, card depth ---------- */
+.pub-nav{position:sticky;top:48px;z-index:60;background:var(--paper);border-bottom:1px solid var(--line);max-width:none;margin:0;padding:14px 5vw}
+.eyebrow{display:block;font-size:11px;font-weight:600;letter-spacing:.14em;color:var(--accent-deep);margin-bottom:10px}
+.sec-head h2{font-size:clamp(34px,4vw,46px);line-height:1.06}
+.sec-head h2 em{font-style:italic;color:var(--accent-deep)}
+.sec-head p{font-size:16px;margin-top:12px}
+#sec-props{padding-top:52px!important}
+.chip{padding:7px 15px;font-weight:500}
+.chip:hover{border-color:#c4b9a4}
+#sec-props .chipset{gap:8px}
+.lcard .ph{height:192px}
+.lcard .bd b{font-size:16.5px}
+.lcard .price{font-family:var(--font-display);font-size:17.5px}
+.lcard:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(33,29,24,.10)}
+.ph.g1,.pmodal-hero.g1{background:radial-gradient(130% 130% at 18% 12%,#ece2cc 0%,#cbbc97 55%,#a4926a 100%)}
+.ph.g2,.pmodal-hero.g2{background:radial-gradient(130% 130% at 18% 12%,#e2e5d6 0%,#b4bfa0 55%,#8b9a7a 100%)}
+.ph.g3,.pmodal-hero.g3{background:radial-gradient(130% 130% at 18% 12%,#ecdcd0 0%,#c8a794 55%,#a07f6c 100%)}
+.ll-in{padding:78px 5vw;gap:56px}
+.ll-band h2{font-size:clamp(30px,3.6vw,44px);line-height:1.08}
+.ll-band h2 em{font-style:italic;color:#8fd4b0}
+.ll-band .hero-visual{box-shadow:0 24px 60px rgba(0,0,0,.4)}
+.connect-card{max-width:840px;padding:30px;border-radius:18px}
+.role-card{padding:18px 16px;position:relative}
+.role-card:hover{border-color:#b9ad97}
+.role-card.on{box-shadow:inset 0 0 0 1px var(--accent)}
+.role-card.on::after{content:"\2713";position:absolute;top:10px;right:13px;color:var(--accent-deep);font-weight:700;font-size:14px}
+.f input,.f select{padding:12px 14px;border-radius:10px;border-color:#d8cfbe}
+#f-msg{border-radius:10px;border-color:#d8cfbe}
+.f input:focus,.f select:focus,#f-msg:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(30,107,79,.13)}
+.pub-footer{padding:46px 5vw 60px;gap:16px 28px}
+
+/* ---------- v0.4 stage-style public face ---------- */
+#view-public{background:#fff}
+.s-shell{max-width:1060px;margin:0 auto;padding:0 20px}
+.s-nav{display:flex;align-items:center;gap:16px;padding:20px 0 8px;flex-wrap:wrap}
+.s-logo{font-weight:700;font-size:20px;color:#1d3a2c;letter-spacing:-.02em}
+.s-logo .s-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#2e5c43;margin-left:3px}
+.s-signin{margin-left:auto;font-size:14px;font-weight:500;color:#1a1a1a;border:1px solid #e4e4e4;border-radius:9px;padding:8px 15px;background:#fff}
+.s-signin:hover{border-color:#1d3a2c}
+.s-sub{width:100%;display:flex;gap:20px;font-size:13.5px;color:#6b6b6b;padding:2px 0 6px}
+.s-sub a:hover{color:#1a1a1a}
+.s-eyebrow{font-size:11px;letter-spacing:.12em;font-weight:600;color:#2e5c43}
+.s-eyebrow.lt{color:#bcd8c4}
+.s-ll{background:#1d3a2c;color:#fff;border-radius:16px;padding:30px 28px;margin-top:12px;max-width:640px}
+.s-ll h2,.s-trades h2,.s-big{font-family:var(--font-ui);font-weight:700;letter-spacing:-.02em}
+.s-ll h2{font-size:clamp(24px,2.6vw,30px);margin:10px 0 8px}
+.s-ll p{color:#c9d6cc;font-size:14.5px;max-width:52ch;margin-bottom:18px}
+.s-btn{display:inline-flex;align-items:center;gap:8px;background:#2f5a41;color:#fff;font-weight:600;font-size:14px;border-radius:9px;padding:11px 18px;transition:background .15s}
+.s-btn:hover{background:#264a35}
+.s-btn.sm{padding:9px 15px;font-size:13.5px}
+.s-cap{font-size:12px;color:#8a8a8a;margin:8px 4px 0}
+.s-big{font-size:clamp(26px,3vw,32px);margin:54px 0 6px}
+.s-sub-line{font-size:14.5px;color:#6b6b6b;max-width:56ch;margin-bottom:18px}
+.s-list-head{display:flex;align-items:baseline;justify-content:space-between;margin:22px 0 12px}
+.s-list-head h3{font-size:16px;font-weight:600;font-family:var(--font-ui)}
+.s-list-head span{font-size:13px;color:#6b6b6b}
+.s-filters{margin-bottom:20px}
+.s-filters .chip{border-color:#e4e4e4;background:#fff}
+.s-filters .chip.on{background:#1d3a2c;border-color:#1d3a2c}
+.s-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:34px 28px;margin-top:6px}
+.s-card{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.s-ph{width:100%;height:215px;border-radius:14px;position:relative}
+.s-imgtag{position:absolute;left:10px;bottom:10px;background:#fff;border-radius:99px;padding:4px 11px;font-size:11.5px;font-weight:500;color:#1a1a1a}
+.s-loc{background:#e7f0e8;color:#2e5c43;font-size:12px;font-weight:500;border-radius:99px;padding:4px 11px}
+.s-price{font-size:19px;font-weight:700;color:#1a1a1a}
+.s-price span{font-size:12.5px;color:#6b6b6b;font-weight:400;margin-left:2px}
+.s-meta{font-size:13px;color:#6b6b6b}
+.s-desc{font-size:14px;color:#6b6b6b;line-height:1.55;margin:2px 0 6px}
+.s-card .s-btn{margin-top:auto}
+.s-trades{background:#e7f0e8;border-radius:16px;padding:28px;margin:54px 0 0;max-width:640px}
+.s-trades h2{font-size:clamp(22px,2.4vw,27px);color:#1a1a1a;margin:10px 0 8px}
+.s-trades p{color:#4c5a50;font-size:14.5px;max-width:50ch;margin-bottom:14px}
+.s-link{color:#1d3a2c;font-weight:600;font-size:14.5px;display:inline-flex;gap:8px;align-items:center}
+.s-link:hover{text-decoration:underline}
+#s-connect{margin-bottom:26px}
+.connect-card{border:none;box-shadow:none;background:#fff;border:1px solid #ececec}
+.role-card{border-radius:12px}
+.role-card b{color:#1a1a1a}
+.f input,.f select{border-color:#e0e0e0;border-radius:9px}
+#f-msg{border-color:#e0e0e0;border-radius:9px}
+.f input:focus,.f select:focus,#f-msg:focus{border-color:#2e5c43;box-shadow:0 0 0 3px rgba(29,58,44,.10)}
+.s-btn:focus-visible,.s-link:focus-visible,.s-signin:focus-visible{outline:2px solid #2e5c43;outline-offset:2px}
+.s-note{font-size:12.5px;color:#8a8a8a}
+.s-footer{display:flex;flex-direction:column;gap:6px;padding:44px 0 54px;border-top:1px solid #f0f0f0;margin-top:54px;font-size:12.5px;color:#8a8a8a}
+.ph.g1,.s-ph.g1{background:radial-gradient(120% 140% at 20% 10%,#efe9dd 0%,#d8cdb8 55%,#b9a988 100%)}
+.ph.g2,.s-ph.g2{background:radial-gradient(120% 140% at 20% 10%,#e8ebe0 0%,#ccd4bf 55%,#a4b191 100%)}
+.ph.g3,.s-ph.g3{background:radial-gradient(120% 140% at 20% 10%,#f0e4da 0%,#dcc0ae 55%,#bb957f 100%)}
+@media (max-width:700px){
+  .s-cards{grid-template-columns:1fr}
+  .s-ll,.s-trades{max-width:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+}
+/* ---------- v0.5 live Jev triage strip ---------- */
+.jev{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 2px}
+.jev-tag{flex:100%;font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--muted);display:flex;align-items:center;gap:8px}
+.jev-tag i{flex:1;height:1px;background:var(--line)}
+.jev-metric{display:flex;flex-direction:column;gap:2px;background:var(--accent-soft);border-radius:8px;padding:7px 11px;min-width:96px}
+.jev-metric b{font-size:15px;color:var(--accent-deep)}
+.jev-metric span{font-size:10px;letter-spacing:.08em;color:var(--accent-deep);opacity:.75}
+.jev-metric.hot{background:var(--danger-soft)}
+.jev-metric.hot b,.jev-metric.hot span{color:var(--danger)}
+.jev-metric.warm{background:var(--warn-soft)}
+.jev-metric.warm b,.jev-metric.warm span{color:var(--warn)}
+.jev-note{flex:100%;font-size:12px;color:var(--muted);margin-top:2px}
+</style>
+</head>
+<body>
+
+<!-- ======== PROTOTYPE CHROME ======== -->
+<header class="chrome">
+  <span class="brand"><span class="dot"></span>Keyhouse</span>
+  <span class="tag">portal prototype v0.5 · jev triage live</span>
+  <div class="seg" role="tablist" aria-label="Portal views">
+    <button data-go="public" class="on">Public site</button>
+    <button data-go="agent">Agent cockpit <span class="ct">7</span></button>
+    <button data-go="landlord">Landlord</button>
+    <button data-go="tenant">Tenant</button>
+    <button data-go="trades">Trades</button>
+  </div>
+  <span class="hint">one portal · five faces</span>
+</header>
+
+<!-- ============================================================
+     PUBLIC SITE
+============================================================ -->
+<section class="view on" id="view-public">
+  <div class="s-shell">
+
+    <header class="s-nav">
+      <span class="s-logo">keyhouse<span class="s-dot"></span></span>
+      <button class="s-signin" onclick="showView('tenant')">Sign in</button>
+      <nav class="s-sub">
+        <a href="#s-listings">To rent</a>
+        <a href="#s-landlords">Landlords</a>
+        <a href="#s-trades">Trades</a>
+        <a href="#s-connect">Contact</a>
+      </nav>
+    </header>
+
+    <!-- landlord banner -->
+    <section class="s-ll" id="s-landlords">
+      <span class="s-eyebrow lt">FOR LANDLORDS</span>
+      <h2>Your property. Our care.</h2>
+      <p>Full letting and management, run through your own landlord dashboard &mdash; approvals in one tap, monthly statements, and every certificate tracked to expiry.</p>
+      <button class="s-btn" onclick="openForm('landlord')">Register your property <span>&rarr;</span></button>
+    </section>
+    <p class="s-cap">Let us look after your property management.</p>
+
+    <!-- listings -->
+    <section id="s-listings">
+      <h2 class="s-big">Find your next home.</h2>
+      <div class="s-list-head">
+        <h3>Properties to rent</h3>
+        <span id="prop-count">6 properties</span>
+      </div>
+      <div class="s-filters chipset">
+        <button class="chip on" onclick="filterProps(this,'all')">All homes</button>
+        <button class="chip" onclick="filterProps(this,'1')">1 bed</button>
+        <button class="chip" onclick="filterProps(this,'2')">2 beds</button>
+        <button class="chip" onclick="filterProps(this,'3')">3+ beds</button>
+        <button class="chip" onclick="filterProps(this,'pets')">Pets considered</button>
+      </div>
+      <div class="s-cards" id="prop-grid">
+
+        <article class="s-card" data-beds="2" data-pets="1">
+          <div class="s-ph g1"><span class="s-imgtag">Freshly refitted kitchen</span></div>
+          <span class="s-loc">Alder Road &middot; Manchester</span>
+          <div class="s-price">&pound;795 <span>per month</span></div>
+          <div class="s-meta">2 bedrooms &middot; 1 bathroom &middot; EPC C</div>
+          <p class="s-desc">First-floor two-bed, five minutes from the tram stop. Fully managed &mdash; repairs reported in the portal and tracked to done. Available 12 Oct.</p>
+          <button class="s-btn sm" onclick="enquireProp(this)" data-title="Flat 2, 14 Alder Road">Enquire <span>&rarr;</span></button>
+        </article>
+
+        <article class="s-card" data-beds="3" data-pets="0">
+          <div class="s-ph g2"><span class="s-imgtag">Rear garden &amp; off-street parking</span></div>
+          <span class="s-loc">Croft Rise &middot; Leeds</span>
+          <div class="s-price">&pound;1,050 <span>per month</span></div>
+          <div class="s-meta">3 bedrooms &middot; 1 bathroom &middot; EPC B</div>
+          <p class="s-desc">Bay-fronted three-bed walkable to two schools. Managed directly by Keyhouse. Available now.</p>
+          <button class="s-btn sm" onclick="enquireProp(this)" data-title="9 Croft Rise">Enquire <span>&rarr;</span></button>
+        </article>
+
+        <article class="s-card" data-beds="2" data-pets="0">
+          <div class="s-ph g3"><span class="s-imgtag">Let agreed</span></div>
+          <span class="s-loc">Millbrook &middot; Sheffield</span>
+          <div class="s-price">&pound;875 <span>per month</span></div>
+          <div class="s-meta">2 bedrooms &middot; 1 bathroom &middot; EPC D</div>
+          <p class="s-desc">Period terrace with a courtyard, freshly redecorated. Register your interest and we&rsquo;ll tell you about similar homes first.</p>
+          <button class="s-btn sm" onclick="enquireProp(this)" data-title="22 Millbrook Lane">Enquire <span>&rarr;</span></button>
+        </article>
+
+        <article class="s-card" data-beds="3" data-pets="0">
+          <div class="s-ph g2"><span class="s-imgtag">EPC B &mdash; low running bills</span></div>
+          <span class="s-loc">Bramble Court &middot; Manchester</span>
+          <div class="s-price">&pound;1,275 <span>per month</span></div>
+          <div class="s-meta">3 bedrooms &middot; 2 bathrooms &middot; EPC B</div>
+          <p class="s-desc">Modern semi with two bathrooms and an integral garage. Managed directly by Keyhouse. Available 1 Nov.</p>
+          <button class="s-btn sm" onclick="enquireProp(this)" data-title="7 Bramble Court">Enquire <span>&rarr;</span></button>
+        </article>
+
+        <article class="s-card" data-beds="1" data-pets="0">
+          <div class="s-ph g1"><span class="s-imgtag">Furnished &middot; bills-inclusive option</span></div>
+          <span class="s-loc">Weir Street &middot; Manchester</span>
+          <div class="s-price">&pound;695 <span>per month</span></div>
+          <div class="s-meta">Studio &middot; 1 bathroom &middot; EPC C</div>
+          <p class="s-desc">Converted-mill studio in the city centre, ideal for a single professional. Available now.</p>
+          <button class="s-btn sm" onclick="enquireProp(this)" data-title="Studio 31, Weir Street">Enquire <span>&rarr;</span></button>
+        </article>
+
+        <article class="s-card" data-beds="2" data-pets="1">
+          <div class="s-ph g3"><span class="s-imgtag">Let agreed</span></div>
+          <span class="s-loc">Holloway Yard &middot; Leeds</span>
+          <div class="s-price">&pound;940 <span>per month</span></div>
+          <div class="s-meta">2 bedrooms &middot; 1 bathroom &middot; EPC C</div>
+          <p class="s-desc">Two-bed mews in a quiet cul-de-sac with a shared garden. One well-behaved pet considered with consent.</p>
+          <button class="s-btn sm" onclick="enquireProp(this)" data-title="5 Holloway Yard">Enquire <span>&rarr;</span></button>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- trades band -->
+    <section class="s-trades" id="s-trades">
+      <span class="s-eyebrow">FOR TRADESPEOPLE</span>
+      <h2>Put your skills to work.</h2>
+      <p>Join our contractor network for property maintenance jobs &mdash; job sheets arrive with photos and access details up front, and invoices are raised from your completion form.</p>
+      <button class="s-link" onclick="openForm('trader')">Register as a tradesperson <span>&rarr;</span></button>
+    </section>
+
+    <!-- connect form -->
+    <section id="s-connect">
+      <h2 class="s-big">Connect with the agent.</h2>
+      <p class="s-sub-line">One form, whichever side of the tenancy you&rsquo;re on. It goes straight to the agent &mdash; usually answered the same day.</p>
+      <div class="connect-card">
+        <div class="roles" id="roles-row">
+          <button type="button" class="role-card" onclick="pickRole(this,'landlord')"><b>I'm a landlord</b><span>Rent appraisal, management, or a question about your property</span></button>
+          <button type="button" class="role-card" onclick="pickRole(this,'trader')"><b>I'm a tradesperson</b><span>Join the approved network for repairs, checks and inspections</span></button>
+          <button type="button" class="role-card" onclick="pickRole(this,'renter')"><b>I'm looking to rent</b><span>Ask about a home, book a viewing or check what's coming up</span></button>
+        </div>
+        <form id="connect-form" onsubmit="submitConnect(event)">
+          <div class="f-grid">
+            <div class="f"><label>FULL NAME</label><input type="text" required placeholder="Alex Morgan"></div>
+            <div class="f"><label>EMAIL</label><input type="email" required placeholder="alex@example.com"></div>
+            <div class="f"><label>PHONE <span class="opt">(optional)</span></label><input type="text" placeholder="07&hellip;"></div>
+            <div class="f rf" data-role="landlord"><label>PROPERTIES TO LET</label><select><option>1</option><option>2&ndash;4</option><option>5+</option></select></div>
+            <div class="f rf" data-role="landlord"><label>AREA / POSTCODE</label><input type="text" placeholder="e.g. M14"></div>
+            <div class="f rf" data-role="trader"><label>YOUR TRADE</label><input type="text" placeholder="e.g. plumbing, electrics"></div>
+            <div class="f rf" data-role="trader"><label>CERT / REGISTRATION <span class="opt">(optional)</span></label><input type="text" placeholder="e.g. Gas Safe #"></div>
+            <div class="f rf" data-role="renter"><label>AREA YOU'RE SEARCHING</label><input type="text" placeholder="e.g. south Manchester"></div>
+            <div class="f rf" data-role="renter"><label>BUDGET PCM <span class="opt">(optional)</span></label><input type="text" placeholder="&pound;&hellip;"></div>
+            <div class="f full">
+              <label>MESSAGE</label>
+              <textarea id="f-msg" placeholder="Tell the agent what you need&hellip;"></textarea>
+              <span class="pill" id="prop-ref" style="display:none;margin-top:8px;align-self:flex-start"><span class="d ok"></span><span></span></span>
+              <input type="hidden" id="f-prop">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap">
+            <button class="s-btn" type="submit">Send to the agent <span>&rarr;</span></button>
+            <span class="s-note">No spam, no call centres &mdash; replies come from the agent.</span>
+          </div>
+        </form>
+        <div id="form-ok" style="display:none">
+          <span class="pill ok"><span class="d ok"></span>Sent</span>
+          <h3 style="font-size:19px;margin:12px 0 6px">Thanks &mdash; it's with the agent.</h3>
+          <p style="color:#6b6b6b;font-size:14.5px"></p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="s-footer">
+      <span class="s-logo" style="font-size:16px">keyhouse<span class="s-dot"></span></span>
+      <span>Listings shown are sample data &mdash; prototype only.</span>
+      <span>CMP certificate &middot; Property Redress Scheme &middot; ICO registered &middot; Deposits: TDS / DPS</span>
+    </footer>
+
+  </div>
+</section>
+
+<!-- ============================================================
+     AGENT COCKPIT
+============================================================ -->
+<section class="view" id="view-agent">
+  <div class="app">
+    <aside class="rail">
+      <div class="who"><b>Solopreneur mode</b><span>1 agent · 6 landlords · 24 properties</span></div>
+      <button class="on" data-agent="inbox">Triage inbox <span class="ct">7</span></button>
+      <button data-agent="exceptions">Exceptions <span class="ct">3</span></button>
+      <button data-agent="approvals">Approvals <span class="ct">5</span></button>
+      <button data-agent="portfolio">Portfolio</button>
+      <button data-agent="money">Money</button>
+      <button data-agent="automation">Automation</button>
+      <span class="sp"></span>
+      <div class="foot">AI handled 61 matters this week.<br>3 were escalated to you.</div>
+    </aside>
+    <div class="main">
+      <div class="topbar"><h2>Good morning</h2><div class="sub">Friday 26 Sep · 4 viewings today · 1 certificate expires in 9 days · 2 rent payments pending</div></div>
+
+      <!-- INBOX -->
+      <div class="content on" id="ag-inbox">
+        <div class="filters-row">
+          <button class="chip on">Needs me · 3</button>
+          <button class="chip">Landlord approvals · 2</button>
+          <button class="chip">Emergencies · 1</button>
+          <button class="chip">Auto-handled · 12</button>
+        </div>
+        <div class="inbox-layout">
+          <div>
+            <button class="case-row em" onclick="openCase(481)">
+              <span class="ic">RPT</span>
+              <span class="bd"><span class="l1">No heating or hot water <span class="pid">· 9 Croft Rise · case #481</span></span><span class="l2">AI: vulnerable occupant (81). Emergency dispatch needs a human decision — spend over standing authority.</span></span>
+              <span class="act"><span class="pill bad"><span class="d bad"></span>Emergency</span></span>
+            </button>
+            <button class="case-row" onclick="openCase(482)">
+              <span class="ic">RPT</span>
+              <span class="bd"><span class="l1">Leak under kitchen sink <span class="pid">· 14 Alder Road · case #482</span></span><span class="l2">AI: verified, water contained, no electrical risk. Within landlord's £150 authority — recommend booking T. Walsh directly.</span></span>
+              <span class="act"><span class="pill ok"><span class="d ok"></span>Ready to book</span></span>
+            </button>
+            <button class="case-row" onclick="openCase(479)">
+              <span class="ic">ASK</span>
+              <span class="bd"><span class="l1">"Can I keep a cat?" <span class="pid">· 5 Holloway Yard · case #479</span></span><span class="l2">AI: clause 6.2 permits pets with consent. This landlord declined once before — draft reply staged, needs landlord consent first.</span></span>
+              <span class="act"><span class="pill warn"><span class="d warn"></span>Consent needed</span></span>
+            </button>
+            <button class="case-row" onclick="toast('Opening auto-handled item…')">
+              <span class="ic">SYS</span>
+              <span class="bd"><span class="l1">Gas safety due — 22 Millbrook Lane <span class="pid">· system event</span></span><span class="l2">AI: access booked Tue 14 Oct 9–12, tenant confirmed, GasSafe engineer #4471 assigned. Nothing needed from you.</span></span>
+              <span class="act"><span class="pill ok"><span class="d ok"></span>Auto-handled</span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXCEPTIONS -->
+      <div class="content" id="ag-exceptions">
+        <div class="today-strip">
+          <span class="ts"><b>Human review only.</b>&nbsp;These never get automated — law, money, disputes, safety.</span>
+        </div>
+        <button class="case-row em" style="cursor:default">
+          <span class="ic">ARR</span>
+          <span class="bd"><span class="l1">Arrears: 3 weeks behind, arrangement requested <span class="pid">· 22 Millbrook Lane</span></span><span class="l2">AI: tenant proposes £60/week on top. Enforcement decisions stay human — your call, repayment plan drafted and ready.</span></span>
+          <span class="act"><button class="btn sm" onclick="toast('Case opened — repayment plan attached')">Take case</button></span>
+        </button>
+        <button class="case-row em" style="cursor:default">
+          <span class="ic">REF</span>
+          <span class="bd"><span class="l1">Referencing failed — document inconsistency <span class="pid">· applicant for 7 Bramble Court</span></span><span class="l2">AI: payslips don't match declared employer. Possible fraud flag. Rejection without human review is not permitted.</span></span>
+          <span class="act"><button class="btn sm" onclick="toast('Case opened — evidence pack ready')">Take case</button></span>
+        </button>
+        <button class="case-row em" style="cursor:default">
+          <span class="ic">CMP</span>
+          <span class="bd"><span class="l1">Complaint: damp history not disclosed <span class="pid">· 9 Croft Rise</span></span><span class="l2">AI: tenant alleges the 2023 damp report was withheld. Complaints route to a human, always. Full document trail assembled.</span></span>
+          <span class="act"><button class="btn sm" onclick="toast('Case opened — document trail attached')">Take case</button></span>
+        </button>
+      </div>
+
+      <!-- APPROVALS -->
+      <div class="content" id="ag-approvals">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>Matter</th><th>Property</th><th>Amount</th><th>Authority</th><th style="text-align:right">Action</th></tr></thead>
+            <tbody>
+              <tr><td><b>Repaint hallway</b> <span class="mono">· after inspection</span></td><td>22 Millbrook Lane</td><td class="num">£240</td><td><span class="pill warn"><span class="d warn"></span>Needs landlord</span></td><td style="text-align:right"><button class="btn sm" onclick="toast('Sent to Margaret Ellison with quote attached')">Send to landlord</button></td></tr>
+              <tr><td><b>Walsh Plumbing — invoice</b> <span class="mono">· case #477</span></td><td>14 Alder Road</td><td class="num">£85</td><td><span class="pill ok"><span class="d ok"></span>Within authority</span></td><td style="text-align:right" class="appr-actions"><button class="btn sm primary" onclick="apprRow(this,'Approved — payment scheduled')">Approve</button> <button class="btn sm" onclick="apprRow(this,'Declined')">Decline</button></td></tr>
+              <tr><td><b>Extractor fan replacement</b></td><td>22 Millbrook Lane</td><td class="num">£118</td><td><span class="pill ok"><span class="d ok"></span>Auto-approved by rule</span></td><td style="text-align:right"><span class="pill ok"><span class="d ok"></span>Done</span></td></tr>
+              <tr><td><b>Renewal offer +£25 pcm</b> <span class="mono">· 12-month</span></td><td>9 Croft Rise</td><td class="num">£1,075</td><td><span class="pill warn"><span class="d warn"></span>Landlord agreed — send</span></td><td style="text-align:right" class="appr-actions"><button class="btn sm primary" onclick="apprRow(this,'Renewal offer sent to tenant')">Send to tenant</button></td></tr>
+              <tr><td><b>Tenancy agreement for signature</b> <span class="mono">· 5 Holloway Yard</span></td><td>5 Holloway Yard</td><td class="num">—</td><td><span class="pill warn"><span class="d warn"></span>Landlord signature needed</span></td><td style="text-align:right"><button class="btn sm" onclick="toast('Signature request sent to landlord')">Request signature</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PORTFOLIO -->
+      <div class="content" id="ag-portfolio">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>Property</th><th>Landlord</th><th>Tenant</th><th>Rent</th><th>Status</th><th>Compliance</th><th>Next action</th></tr></thead>
+            <tbody>
+              <tr><td><b>14 Alder Road</b> · Flat 2</td><td>M. Ellison</td><td>P. Shah</td><td class="num">£795</td><td><span class="pill ok"><span class="d ok"></span>Let</span></td><td><span class="comp"><i class="g" title="Gas valid">G</i><i class="g" title="EICR valid">E</i><i class="g" title="EPC valid">P</i></span></td><td class="mono">Leak repair booked Thu</td></tr>
+              <tr><td><b>9 Croft Rise</b></td><td>M. Ellison</td><td>D. Mensah</td><td class="num">£1,050</td><td><span class="pill ok"><span class="d ok"></span>Let</span></td><td><span class="comp"><i class="a" title="Gas expires in 9 days">G</i><i class="g">E</i><i class="g">P</i></span></td><td class="mono">Emergency heating case #481</td></tr>
+              <tr><td><b>22 Millbrook Lane</b></td><td>R. Osei</td><td>J. Kowalczyk</td><td class="num">£875</td><td><span class="pill warn"><span class="d warn"></span>Let agreed</span></td><td><span class="comp"><i class="g">G</i><i class="g">E</i><i class="a" title="EPC expires soon">P</i></span></td><td class="mono">Sign agreement</td></tr>
+              <tr><td><b>7 Bramble Court</b></td><td>R. Osei</td><td>— void</td><td class="num">£1,275</td><td><span class="pill bad"><span class="d bad"></span>Void</span></td><td><span class="comp"><i class="g">G</i><i class="g">E</i><i class="g">P</i></span></td><td class="mono">2 viewings Sat</td></tr>
+              <tr><td><b>31 Weir Street</b></td><td>T. Blackwood</td><td>A. Fontaine</td><td class="num">£695</td><td><span class="pill ok"><span class="d ok"></span>Let</span></td><td><span class="comp"><i class="g">G</i><i class="g">E</i><i class="g">P</i></span></td><td class="mono">Rent pending day+2</td></tr>
+              <tr><td><b>5 Holloway Yard</b></td><td>T. Blackwood</td><td>— void</td><td class="num">£940</td><td><span class="pill warn"><span class="d warn"></span>Let agreed</span></td><td><span class="comp"><i class="g">G</i><i class="a">E</i><i class="g">P</i></span></td><td class="mono">Pet consent case #479</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- MONEY -->
+      <div class="content" id="ag-money">
+        <div class="stat-cards">
+          <div class="stat"><b class="num">£14,310</b><span>Rent received · Sep</span></div>
+          <div class="stat"><b class="num">£2,560</b><span>Pending · 2 properties</span></div>
+          <div class="stat"><b class="num">£1,204</b><span>Client account balance</span></div>
+          <div class="stat"><b class="num">£517</b><span>Contractor invoices to settle</span></div>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>Property</th><th>Rent due</th><th>Status</th><th>Fees due to you</th></tr></thead>
+            <tbody>
+              <tr><td>14 Alder Road</td><td class="num">£795</td><td><span class="pill ok"><span class="d ok"></span>Paid 1 Sep</span></td><td class="num">£159</td></tr>
+              <tr><td>9 Croft Rise</td><td class="num">£1,050</td><td><span class="pill ok"><span class="d ok"></span>Paid 1 Sep</span></td><td class="num">£210</td></tr>
+              <tr><td>31 Weir Street</td><td class="num">£695</td><td><span class="pill warn"><span class="d warn"></span>Day +2 · chase scheduled</span></td><td class="num">£139</td></tr>
+              <tr><td>7 Bramble Court</td><td class="num">—</td><td><span class="pill bad"><span class="d bad"></span>Void</span></td><td class="num">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- AUTOMATION -->
+      <div class="content" id="ag-automation">
+        <div class="note-card" style="margin-bottom:16px"><b>Where the solopreneur leverage lives.</b> Rules the AI is allowed to run on your behalf, per landlord. In the real build this screen edits the authority matrix.</div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>Rule</th><th>Scope</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><b>Approve repairs up to £150</b></td><td>M. Ellison — all properties</td><td><span class="pill ok"><span class="d ok"></span>Active</span></td></tr>
+              <tr><td><b>Chase rent day +3, then day +7</b></td><td>All properties</td><td><span class="pill ok"><span class="d ok"></span>Active</span></td></tr>
+              <tr><td><b>Book compliance visits 30 days before expiry</b></td><td>All properties</td><td><span class="pill ok"><span class="d ok"></span>Active</span></td></tr>
+              <tr><td><b>Out-of-hours responder (safety → emergency script)</b></td><td>All properties</td><td><span class="pill warn"><span class="d warn"></span>Draft</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- case drawer -->
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="dh"><div><h3 id="d-title">Case</h3><p class="mono" id="d-sub"></p></div><button class="btn ghost sm" onclick="closeCase()">Close ✕</button></div>
+    <div class="db">
+      <div class="ai" id="d-ai"></div>
+      <div class="jev" id="d-jev"></div>
+      <ul class="tl" id="d-tl"></ul>
+    </div>
+    <div class="df" id="d-actions"></div>
+  </aside>
+</section>
+
+<!-- ============================================================
+     LANDLORD
+============================================================ -->
+<section class="view" id="view-landlord">
+  <div class="app">
+    <aside class="rail">
+      <div class="who"><b>Margaret Ellison</b><span>Landlord · 2 properties</span></div>
+      <button class="on" data-agent="l-overview">Overview</button>
+      <button data-agent="l-approvals">Approvals <span class="ct">2</span></button>
+      <button data-agent="l-compliance">Compliance</button>
+      <button data-agent="l-statements">Statements</button>
+      <span class="sp"></span>
+      <div class="foot">Everything the agent does on your properties shows up here.</div>
+    </aside>
+    <div class="main">
+      <div class="topbar"><h2>Your portfolio</h2><div class="sub">September rent on time · one approval waiting on you</div></div>
+
+      <div class="content on" id="ag-l-overview">
+        <div class="land-strip">
+          <div class="prop-card">
+            <div class="ph2 g1"></div>
+            <b>Flat 2, 14 Alder Road</b><div class="sub">Priya Shah · tenancy to 30 Jun 2027</div>
+            <div class="row"><span>Rent</span><b class="price num">£795 <span class="mono">/paid ✓</span></b></div>
+            <div class="row"><span>Next</span><b>Leak repair — Thu</b></div>
+          </div>
+          <div class="prop-card">
+            <div class="ph2 g2"></div>
+            <b>9 Croft Rise</b><div class="sub">Daniel Mensah · tenancy to 31 Jan 2027</div>
+            <div class="row"><span>Rent</span><b class="price num">£1,050 <span class="mono">/paid ✓</span></b></div>
+            <div class="row"><span>Next</span><b>Heating case #481</b></div>
+          </div>
+          <div class="prop-card" style="opacity:.85">
+            <div class="ph2 g3"></div>
+            <b>22 Millbrook Lane</b><div class="sub">Offer accepted · agreement out for signature</div>
+            <div class="row"><span>Rent</span><b class="price num">£875 <span class="mono">/from 15 Oct</span></b></div>
+            <div class="row"><span>Next</span><b>Sign tenancy</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content" id="ag-l-approvals">
+        <div class="appr-card">
+          <div class="bd"><b>Boiler repair — 9 Croft Rise</b><div class="sub">Case #481 · emergency · quote attached · your standing instruction covers repairs to £150</div></div>
+          <span class="amt num">£142</span>
+          <span class="appr-actions"><button class="btn sm primary" onclick="apprRow(this,'Approved — plumber dispatched')">Approve</button> <button class="btn sm" onclick="apprRow(this,'Declined — agent notified')">Decline</button></span>
+        </div>
+        <div class="appr-card">
+          <div class="bd"><b>Repaint hallway — 22 Millbrook Lane</b><div class="sub">After pre-let inspection · quote attached · two colours to choose from in the quote</div></div>
+          <span class="amt num">£240</span>
+          <span class="appr-actions"><button class="btn sm primary" onclick="apprRow(this,'Approved — work scheduled')">Approve</button> <button class="btn sm" onclick="apprRow(this,'Declined — agent notified')">Decline</button></span>
+        </div>
+        <div class="appr-card done">
+          <div class="bd"><b>Leak under kitchen sink — 14 Alder Road</b><div class="sub">Within your £150 standing instruction — approved automatically, you're informed, not asked</div></div>
+          <span class="amt num">£85</span><span class="pill ok"><span class="d ok"></span>Auto-approved</span>
+        </div>
+      </div>
+
+      <div class="content" id="ag-l-compliance">
+        <div class="comp-list">
+          <div class="comp-row"><span class="pill warn"><span class="d warn"></span>9 days</span><div class="bd"><b>Gas safety — 9 Croft Rise</b><div class="sub">Engineer booked Tue 14 Oct, 9–12 · tenant has confirmed access</div></div><span class="comp-done"><button class="btn sm" onclick="apprRow(this,'Details opened')">View booking</button></span></div>
+          <div class="comp-row"><span class="pill ok"><span class="d ok"></span>48 days</span><div class="bd"><b>EPC — 22 Millbrook Lane</b><div class="sub">Renewal assessment will be arranged automatically before expiry</div></div><span class="pill ok"><span class="d ok"></span>Scheduled</span></div>
+          <div class="comp-row"><span class="pill ok"><span class="d ok"></span>7 months</span><div class="bd"><b>EICR — 14 Alder Road</b><div class="sub">Next test due Apr 2027</div></div><span class="pill ok"><span class="d ok"></span>Valid</span></div>
+          <div class="comp-row"><span class="pill ok"><span class="d ok"></span>11 months</span><div class="bd"><b>Gas safety — 14 Alder Road</b><div class="sub">Last checked Sep 2025</div></div><span class="pill ok"><span class="d ok"></span>Valid</span></div>
+        </div>
+      </div>
+
+      <div class="content" id="ag-l-statements">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>Month</th><th>Rent in</th><th>Fees</th><th>Repairs</th><th>Net to you</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Sep 2026</td><td class="num">£1,845</td><td class="num">−£369</td><td class="num">−£85</td><td class="num"><b>£1,391</b></td><td><button class="btn ghost sm" onclick="toast('PDF statement downloaded')">Download</button></td></tr>
+              <tr><td>Aug 2026</td><td class="num">£1,845</td><td class="num">−£369</td><td class="num">£0</td><td class="num"><b>£1,476</b></td><td><button class="btn ghost sm" onclick="toast('PDF statement downloaded')">Download</button></td></tr>
+              <tr><td>Jul 2026</td><td class="num">£1,845</td><td class="num">−£369</td><td class="num">−£240</td><td class="num"><b>£1,236</b></td><td><button class="btn ghost sm" onclick="toast('PDF statement downloaded')">Download</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     TENANT (phone)
+============================================================ -->
+<section class="view" id="view-tenant">
+  <div class="tenant-wrap">
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>Keyhouse</span></div>
+      <div class="p-head"><h3>Priya</h3><div class="sub">Flat 2, 14 Alder Road</div></div>
+
+      <div class="p-body">
+        <!-- HOME -->
+        <div class="p-page on" id="tp-home">
+          <div class="p-card">
+            <div class="lab">RENT · DUE 1 OCT</div>
+            <div class="rent num">£795.00</div>
+            <p class="mono" style="margin-top:6px">September paid ✓ · nothing to do until Thursday</p>
+          </div>
+          <div class="p-card">
+            <div class="lab">UP NEXT · BOILER SERVICE</div>
+            <b style="font-size:15.5px">Tuesday 14 Oct, 9am–12pm</b>
+            <p class="mono" style="margin:4px 0 12px">Annual service · engineer ID verified in the portal</p>
+            <div style="display:flex;gap:8px"><button class="btn sm primary" onclick="toast('Confirmed — see you Tuesday')">Confirm</button><button class="btn sm" onclick="toast('Reschedule options sent')">Reschedule</button></div>
+          </div>
+          <div class="p-card">
+            <div class="lab">CASE #482 · LEAK UNDER SINK</div>
+            <ul class="trackv">
+              <li class="on"><span class="d ok"></span>Reported with photos</li>
+              <li class="on"><span class="d ok"></span>Verified by the agent</li>
+              <li><span class="d warn"></span>Plumber booked — Thu AM</li>
+              <li><span class="d off"></span>Confirm it's fixed</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- REPORT -->
+        <div class="p-page" id="tp-report">
+          <!-- step 1 -->
+          <div class="tw" id="tw-1">
+            <span class="p-back">Report an issue</span>
+            <div class="p-card"><div class="lab">WHAT'S WRONG?</div>
+              <button class="rep-chip" onclick="twStep(2)">💧 Water leak / plumbing <span class="arr">›</span></button>
+              <button class="rep-chip" onclick="twStep(2)">🔥 Heating or hot water <span class="arr">›</span></button>
+              <button class="rep-chip" onclick="twStep(2)">⚡ Electrical <span class="arr">›</span></button>
+              <button class="rep-chip" onclick="twStep(2)">Appliance <span class="arr">›</span></button>
+              <button class="rep-chip" onclick="twStep(2)">Something else <span class="arr">›</span></button>
+            </div>
+          </div>
+          <!-- step 2 -->
+          <div class="tw" id="tw-2" style="display:none">
+            <button class="p-back" onclick="twStep(1)">← Back</button>
+            <div class="p-card"><div class="lab">HOW URGENT?</div>
+              <button class="sev" onclick="twStep(3,this)"><b>Emergency</b><span>Uncontained water, no heating in winter, safety risk — call out same day</span></button>
+              <button class="sev" onclick="twStep(3,this)"><b>Soon</b><span>Needs fixing this week but contained</span></button>
+              <button class="sev" onclick="twStep(3,this)"><b>When convenient</b><span>Can wait for a planned visit</span></button>
+            </div>
+          </div>
+          <!-- step 3 -->
+          <div class="tw" id="tw-3" style="display:none">
+            <button class="p-back" onclick="twStep(2)">← Back</button>
+            <div class="p-card">
+              <div class="lab">ANY DETAIL? (OPTIONAL)</div>
+              <div class="photo-row"><button class="pz" onclick="toast('Camera would open')">＋</button><div class="pz" style="border-style:solid;align-items:center;justify-content:center;display:flex">sink.jpg</div></div>
+              <textarea placeholder="e.g. dripping from the trap when the washing machine runs…"></textarea>
+              <div class="lab" style="margin-top:14px">ACCESS</div>
+              <div class="chipset"><button class="chip on">Any time</button><button class="chip">Mornings</button><button class="chip">Afternoons</button><button class="chip">I'll be out</button></div>
+              <button class="btn primary" style="width:100%;justify-content:center;margin-top:16px" onclick="twSubmit()">Submit report</button>
+            </div>
+          </div>
+          <!-- success -->
+          <div class="tw" id="tw-4" style="display:none">
+            <div class="p-card" style="text-align:center;padding:28px 18px">
+              <div style="font-size:38px">✓</div>
+              <b style="font-size:17px;display:block;margin:8px 0 4px">Case #483 created</b>
+              <p class="mono" style="margin-bottom:16px">We'll confirm access within 2 hours.<br>You'll see every step here.</p>
+              <ul class="trackv" style="text-align:left">
+                <li class="on"><span class="d ok"></span>Reported with photos</li>
+                <li><span class="d warn"></span>Agent verifying</li>
+                <li><span class="d off"></span>Contractor booked</li>
+                <li><span class="d off"></span>Confirm it's fixed</li>
+              </ul>
+              <button class="btn sm" style="margin-top:14px" onclick="twStep(1)">Report another</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAYMENTS -->
+        <div class="p-page" id="tp-pay">
+          <div class="p-card">
+            <div class="lab">RENT HISTORY</div>
+            <div class="comp-list" style="border:none">
+              <div class="comp-row" style="padding:10px 0"><div class="bd"><b>£795 · Sep 2026</b><div class="sub">Paid 1 Sep · reference KH-482</div></div><span class="pill ok"><span class="d ok"></span>Paid</span></div>
+              <div class="comp-row" style="padding:10px 0"><div class="bd"><b>£795 · Aug 2026</b><div class="sub">Paid 1 Aug</div></div><span class="pill ok"><span class="d ok"></span>Paid</span></div>
+              <div class="comp-row" style="padding:10px 0"><div class="bd"><b>£795 · Jul 2026</b><div class="sub">Paid 1 Jul</div></div><span class="pill ok"><span class="d ok"></span>Paid</span></div>
+            </div>
+          </div>
+          <div class="p-card"><div class="lab">DEPOSIT</div><b style="font-size:15.5px">£917 · protected with TDS</b><p class="mono" style="margin-top:4px">Deposit ID sent to your email · returned within 10 days of moving out, per the portal timeline</p></div>
+        </div>
+      </div>
+
+      <div class="p-tabbar">
+        <button class="on" data-tp="tp-home"><span class="glyph">⌂</span>Home</button>
+        <button data-tp="tp-report"><span class="glyph">🔧</span>Report</button>
+        <button data-tp="tp-pay"><span class="glyph">£</span>Payments</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     TRADES
+============================================================ -->
+<section class="view" id="view-trades">
+  <div class="app">
+    <aside class="rail">
+      <div class="who"><b>T. Walsh Plumbing</b><span>Trade partner · GasSafe #4471</span></div>
+      <button class="on" data-agent="t-jobs">Job board <span class="ct">2</span></button>
+      <button data-agent="t-schedule">Schedule</button>
+      <button data-agent="t-invoices">Invoices</button>
+      <button data-agent="t-creds">Credentials</button>
+      <span class="sp"></span>
+      <div class="foot">Job sheets arrive with photos and access details up front.</div>
+    </aside>
+    <div class="main">
+      <div class="topbar"><h2>Job board</h2><div class="sub">Quotes are checked against the landlord's authority automatically</div></div>
+
+      <div class="content on" id="ag-t-jobs">
+        <div class="job-card">
+          <div class="jh"><b>Leak under kitchen sink</b><span class="pill warn"><span class="d warn"></span>This week · £85/hr agreed rate</span></div>
+          <div class="desc">Case #482 · Flat 2, 14 Alder Road · tenant reports dripping from the trap when the washing machine runs. 2 photos attached in the real build.</div>
+          <div class="constraints"><span class="pill">Access: Thu AM confirmed</span><span class="pill">Parking: resident permit provided</span></div>
+          <div class="job-actions">
+            <button class="btn primary sm" onclick="acceptJob(this)">Accept job</button>
+            <button class="btn sm" onclick="this.nextElementSibling.classList.toggle('show')">Quote instead</button>
+            <div class="quote-box"><input type="text" placeholder="£ amount" aria-label="quote amount"><button class="btn sm primary" onclick="quoteJob(this)">Submit quote</button></div>
+          </div>
+        </div>
+        <div class="job-card">
+          <div class="jh"><b>Annual boiler service</b><span class="pill ok"><span class="d ok"></span>Compliance visit</span></div>
+          <div class="desc">Case #477 · 9 Croft Rise · gas safety record required for the compliance calendar. Landmark job — certificate auto-files to landlord and agent on completion.</div>
+          <div class="constraints"><span class="pill">Access: Tue 14 Oct, 9–12 confirmed</span></div>
+          <div class="job-actions"><button class="btn primary sm" onclick="acceptJob(this)">Accept job</button></div>
+        </div>
+        <div class="job-card done" style="opacity:.7">
+          <div class="jh"><b>Extractor fan replacement</b><span class="pill ok"><span class="d ok"></span>Completed · invoice paid</span></div>
+          <div class="desc">Case #466 · 22 Millbrook Lane · completion form with photos auto-raised the invoice. Paid next business day.</div>
+        </div>
+      </div>
+
+      <div class="content" id="ag-t-schedule">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>When</th><th>Job</th><th>Property</th><th>Access</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Thu 2 Oct · AM</td><td><b>Leak repair</b> · #482</td><td>Flat 2, 14 Alder Road</td><td>Tenant confirmed</td><td><span class="pill warn"><span class="d warn"></span>Scheduled</span></td></tr>
+              <tr><td>Tue 14 Oct · 9–12</td><td><b>Boiler service</b> · #477</td><td>9 Croft Rise</td><td>Tenant confirmed</td><td><span class="pill warn"><span class="d warn"></span>Scheduled</span></td></tr>
+              <tr><td>Mon 28 Sep</td><td><b>Extractor fan</b> · #466</td><td>22 Millbrook Lane</td><td>—</td><td><span class="pill ok"><span class="d ok"></span>Completed</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="content" id="ag-t-invoices">
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>Invoice</th><th>Case</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>INV-0231</td><td>#466 Extractor fan</td><td class="num">£118</td><td><span class="pill ok"><span class="d ok"></span>Paid</span></td></tr>
+              <tr><td>INV-0230</td><td>#459 Outdoor tap</td><td class="num">£95</td><td><span class="pill ok"><span class="d ok"></span>Paid</span></td></tr>
+              <tr><td>INV-0232 <span class="mono">· draft from completion form</span></td><td>#477 Boiler service</td><td class="num">£90</td><td><span class="pill warn"><span class="d warn"></span>Awaiting visit</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="content" id="ag-t-creds">
+        <div class="comp-list">
+          <div class="comp-row"><span class="pill ok"><span class="d ok"></span>Valid</span><div class="bd"><b>Gas Safe registration · #4471</b><div class="sub">Expires Mar 2027 · renewal reminder comes 60 days out</div></div></div>
+          <div class="comp-row"><span class="pill ok"><span class="d ok"></span>Valid</span><div class="bd"><b>Public liability insurance · £2m</b><div class="sub">Expires Jun 2027</div></div></div>
+          <div class="comp-row"><span class="pill warn"><span class="d warn"></span>90 days</span><div class="bd"><b>Water hygiene (legionella) cert</b><div class="sub">Expires Dec 2026 — book the refresher</div></div><button class="btn sm" onclick="toast('Renewal reminder set')">Remind me</button></div>
+        </div>
+        <div class="note-card" style="margin-top:14px">Lapsed credentials suspend job offers automatically — that's the trust model working.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ---- top-level router ---- */
+const views=['public','agent','landlord','tenant','trades'];
+document.querySelectorAll('.seg [data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
+function showView(v){
+  views.forEach(x=>document.getElementById('view-'+x).classList.toggle('on',x===v));
+  document.querySelectorAll('.seg [data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===v));
+  window.scrollTo(0,0);
+}
+/* ---- side rails (agent/landlord/trades) ---- */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-agent]');
+  if(!b)return;
+  const rail=b.closest('.rail');
+  rail.querySelectorAll('[data-agent]').forEach(x=>x.classList.toggle('on',x===b));
+  const sec=b.dataset.agent;
+  const root=b.closest('.app').querySelector('.main');
+  root.querySelectorAll('.content').forEach(c=>c.classList.toggle('on',c.id==='ag-'+sec));
+  window.scrollTo(0,0);
+});
+/* ---- case drawer ---- */
+const CASES={
+ 481:{jev:{category:'maintenance',urgency:2,safety:0.97,conf:100},title:'No heating or hot water',sub:'Case #481 · 9 Croft Rise · Daniel Mensah',
+   ai:'Vulnerable occupant flag (age 81). Emergency protocol reached: immediate dispatch is recommended, but emergency spend exceeds the standing £150 authority. Human decision required — this is why it lit up your screen.',
+   tl:[['Tenant','REPORT — no heating since yesterday evening, property at 16°C','Today 07:12'],['AI','VERIFY — identity, tenancy and severity confirmed. Emergency classification applied','Today 07:12'],['AI','ASSESS — Walsh Plumbing available within 3 hours · £142 call-out + repair','Today 07:13'],['AI','ESCALATE — spend above standing authority → human review','Today 07:13']],
+   act:[['Approve emergency dispatch','primary','Approved — Walsh dispatched, ETA 11:00'],['Call tenant first','','Ring-back requested — number shown in real build']]},
+ 482:{jev:{category:'maintenance',urgency:1.01,safety:0.44,conf:89},title:'Leak under kitchen sink',sub:'Case #482 · Flat 2, 14 Alder Road · Priya Shah',
+   ai:'Verified tenant, tenancy and severity from photos. Water contained, no electrical risk. T. Walsh is the approved plumber at agreed rate £85/hr; total estimate £85 sits within the landlord\u2019s £150 standing instruction — you can book directly without asking.',
+   tl:[['Tenant','REPORT — 3 photos, dripping from trap when washing machine runs','Thu 18:42'],['AI','VERIFY — identity, property, severity. Classified: Soon (contained)','Thu 18:43'],['AI','ASSESS — approved contractor matched, within authority → auto-cleared to book','Thu 18:44'],['AI','TELL — tenant informed: "plumber will be booked for Thursday morning"','Thu 18:44']],
+   act:[['Book Walsh — Thu AM','primary','Booked — both parties notified'],['Reply to tenant','','Reply drafted and opened']]},
+ 479:{jev:{category:'general',urgency:0.06,safety:0.07,conf:92},title:'"Can I keep a cat?"',sub:'Case #479 · 5 Holloway Yard · applicant enquiry',
+   ai:'Tenancy clause 6.2 permits pets with landlord written consent. This landlord declined a pet at another property (2024). Draft reply staged but consent must come from the landlord first — the AI will not send it unilaterally.',
+   tl:[['Tenant','ASK — pet enquiry during application for 5 Holloway Yard','Wed 14:20'],['AI','VERIFY — clause located, precedent checked','Wed 14:20'],['AI','DRAFT — reply staged; ESCALATE to landlord for consent','Wed 14:21']],
+   act:[['Ask landlord for consent','primary','Consent request sent to T. Blackwood'],['Send draft','','(Requires consent first — draft locked)']]}
+};
+function jevRoute(s){if(s.safety>=0.5||s.urgency>=2)return['human decision required','hot'];if(s.urgency>=1)return['auto-booking permitted','warm'];return['no rush \u2014 reply when convenient',''];}
+function jevStrip(s){const[r,cls]=jevRoute(s);const u=['Routine','Soon','Emergency'][Math.min(2,Math.round(s.urgency))];
+  return '<span class="jev-tag"><i></i>JEV TRIAGE \u00b7 SYSTEM ONE<i></i></span>'
+   +'<div class="jev-metric"><b>'+s.category+'</b><span>CATEGORY</span></div>'
+   +'<div class="jev-metric'+(s.urgency>=2?' hot':s.urgency>=1?' warm':'')+'"><b>'+u+'</b><span>URGENCY '+s.urgency+'</span></div>'
+   +'<div class="jev-metric'+(s.safety>=0.5?' hot':'')+'"><b>'+Math.round(s.safety*100)+'%</b><span>SAFETY RISK</span></div>'
+   +'<div class="jev-metric"><b>'+s.conf+'%</b><span>CONFIDENCE</span></div>'
+   +'<span class="jev-note">Routed: '+r+'</span>';}
+function openCase(id){
+  const c=CASES[id];if(!c)return;
+  document.getElementById('d-title').textContent=c.title;
+  document.getElementById('d-sub').textContent=c.sub;
+  document.getElementById('d-ai').innerHTML='<b>⚡ AI SUMMARY</b>'+c.ai;
+  document.getElementById('d-jev').innerHTML=c.jev?jevStrip(c.jev):'';
+  document.getElementById('d-tl').innerHTML=c.tl.map(t=>`<li><span class="dot2"></span><div><b>${t[0]} · ${t[1]}</b><span>${t[2]}</span></div></li>`).join('');
+  document.getElementById('d-actions').innerHTML=c.act.map(a=>`<button class="btn ${a[1]} sm" onclick="caseAct(this,'${a[0].replace(/'/g,"\'")}','${a[2].replace(/'/g,"\'")}')">${a[0]}</button>`).join('');
+  document.getElementById('drawer').classList.add('on');
+  document.getElementById('drawer').setAttribute('aria-hidden','false');
+}
+function closeCase(){document.getElementById('drawer').classList.remove('on');document.getElementById('drawer').setAttribute('aria-hidden','true');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCase();});
+function caseAct(btn,label,msg){toast(msg);btn.classList.add('done');btn.textContent='✓ '+label;}
+/* ---- approvals ---- */
+function apprRow(btn,msg){
+  const row=btn.closest('tr, .appr-card, .comp-row');
+  toast(msg);
+  if(row){
+    row.querySelectorAll('button').forEach(b=>{if(!b.classList.contains('ghost'))b.style.display='none';});
+    const pill=document.createElement('span');pill.className='pill ok';pill.innerHTML='<span class="d ok"></span>Done';
+    row.querySelector('.appr-actions, .comp-done')?.replaceWith(pill)||row.appendChild(pill);
+  }
+}
+/* ---- trades ---- */
+function acceptJob(btn){btn.textContent='✓ Accepted — in your schedule';btn.classList.add('done');toast('Job accepted — added to schedule, agent notified');}
+function quoteJob(btn){const v=btn.parentElement.querySelector('input').value||'£—';btn.closest('.job-card').querySelector('.job-actions').innerHTML='<span class="pill ok"><span class="d ok"></span>Quote '+v+' submitted — awaiting authority check</span>';toast('Quote submitted — the portal checks it against landlord authority');}
+/* ---- tenant wizard ---- */
+function twStep(n,el){
+  for(let i=1;i<=4;i++)document.getElementById('tw-'+i).style.display=i===n?'block':'none';
+  if(el){el.parentElement.querySelectorAll('.sev').forEach(s=>s.classList.remove('on'));el.classList.add('on');}
+  document.querySelector('#view-tenant .p-body').scrollTo(0,0);
+}
+function twSubmit(){twStep(4);toast('Case #483 created — confirmation sent');}
+/* ---- tenant tabs ---- */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-tp]');if(!b)return;
+  document.querySelectorAll('[data-tp]').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.p-page').forEach(p=>p.classList.toggle('on',p.id===b.dataset.tp));
+  document.querySelector('.p-body').scrollTo(0,0);
+});
+/* ---- front page: property filters ---- */
+function filterProps(btn,f){
+  btn.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c===btn));
+  let n=0;
+  document.querySelectorAll('#prop-grid .s-card').forEach(card=>{
+    let show=f==='all'||(f==='pets'?card.dataset.pets==='1':(f==='3'?+card.dataset.beds>=3:card.dataset.beds===f));
+    card.style.display=show?'':'none';
+    if(show)n++;
+  });
+  document.getElementById('prop-count').textContent=n+(n===1?' property':' properties');
+}
+/* ---- front page: connect form ---- */
+let formRole=null;
+const ROLE_IDX={landlord:0,trader:1,renter:2};
+function openForm(role,propTitle){
+  showView('public');
+  if(role){
+    const card=document.querySelectorAll('.role-card')[ROLE_IDX[role]];
+    if(card)pickRole(card,role);
+  }
+  if(propTitle){
+    const pc=document.getElementById('prop-ref');
+    pc.style.display='inline-flex';
+    pc.querySelector('span:last-child').textContent=propTitle;
+    document.getElementById('f-prop').value=propTitle;
+  }
+  document.getElementById('s-connect').scrollIntoView({behavior:'smooth'});
+}
+function pickRole(el,role){
+  formRole=role;
+  document.querySelectorAll('.role-card').forEach(c=>c.classList.toggle('on',c===el));
+  document.querySelectorAll('.rf').forEach(x=>x.classList.toggle('on',x.dataset.role===role));
+}
+function submitConnect(e){
+  e.preventDefault();
+  if(!formRole){toast('First choose what describes you');return;}
+  const msgs={landlord:"Thanks — we'll reply within one working day with your rent appraisal and the next steps.",
+    trader:"Thanks — we'll verify your credentials and be in touch about joining the approved network.",
+    renter:"Thanks — the agent will come back within 2 hours."+(document.getElementById('f-prop').value?' Property noted: '+document.getElementById('f-prop').value+'.':'')};
+  document.getElementById('connect-form').style.display='none';
+  document.getElementById('roles-row').style.display='none';
+  const ok=document.getElementById('form-ok');
+  ok.querySelector('p').textContent=msgs[formRole];
+  ok.style.display='block';
+  toast('Enquiry sent to the agent');
+}
+function enquireProp(btn){
+  const t=btn.dataset.title;
+  openForm('renter',t);
+  document.getElementById('f-msg').value="I'm interested in "+t+" — is it still available, and when could I view it?";
+  toast('Enquiry started — the agent replies to this address');
+}
+/* ---- misc ---- */
+let toastTimer;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600);}
+</script></script>
+</body>
+</html>
