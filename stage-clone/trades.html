@@ -22,6 +22,12 @@
   </section>
 
   <section class="section">
+    <div class="move">addressed to you</div>
+    <h2>Assignments &amp; quote requests</h2>
+    <div id="foryou-jobs"></div>
+  </section>
+
+  <section class="section">
     <div class="move">jobs you've taken</div>
     <div id="my-jobs"></div>
   </section>
@@ -57,7 +63,7 @@ async function load(){ try{ stage=await api('/api/stage'); render(); }
   catch(e){ toast('Could not refresh the board. We will try again shortly.','bad'); } }
 function prop(id){const p=(stage.properties||[]).find(x=>x.id===id);return p?`<b>${esc(p.title)}</b> · ${esc(p.area)}`:'address pending from the agent';}
 function termsNote(){const lim=(stage.authority?.standing_limit_pence||15000)/100;
-  return `<div class="terms">Payment terms: invoices up to £${lim.toFixed(0)} settle the same day under the agency's standing authority. Above it, the landlord signs off first — we chase automatically at 3 days.</div>`;}
+  return `<div class="terms">Payment terms: invoices up to £${lim.toFixed(0)} settle the same day under the agency's standing authority. Above it, the landlord signs off first — the office chases if it sits.</div>`;}
 
 function render(){
   const y=window.scrollY;
@@ -77,6 +83,22 @@ function render(){
       ${termsNote()}
       <div class="actions"><button class="btn primary" onclick="accept(this,'${esc(j.id)}')">Take this job</button></div></div>`;}).join('')
     :`<div class="empty">No open jobs right now. The agent posts work here as tenant reports come in — worth a look each morning.</div>`;
+
+  const foryou=jobs.filter(j=>['assigned','quote_requested','quoted'].includes(j.status)&&j.assigned_to===ME).slice().reverse();
+  document.getElementById('foryou-jobs').innerHTML=foryou.length?foryou.map(j=>{
+    const th=((stage.threads||{})[j.case_id]||[]);
+    const msgs=th.length?`<details class="msgs"><summary>Conversation · ${th.length}</summary>`+th.map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> · ${when(t.at)}</span><div>${esc(t.text)}</div></div>`).join('')+`</details>`:'';
+    const cta={assigned:`<button class="btn primary" onclick="jobGo(this,'${esc(j.id)}','start')">Start job</button>`,
+      quote_requested:`<div class="field" style="margin:4px 0"><label for="q-${esc(j.id)}">Your quote (£)</label><input type="number" id="q-${esc(j.id)}" min="0" step="0.01" placeholder="0.00" style="max-width:140px" autocomplete="off"></div><div class="field" style="margin:0 0 6px"><label for="qn-${esc(j.id)}">Note (what's included)</label><input id="qn-${esc(j.id)}" placeholder="parts, labour, visit count" autocomplete="off" style="max-width:260px"></div><button class="btn primary" onclick="sendQuote(this,'${esc(j.id)}')">Send quote</button>`,
+      quoted:`<span class="badge quoted">quote sent — waiting for the agency to approve</span>`}[j.status];
+    const label={assigned:'assigned to you — nothing agreed on price yet',quote_requested:'the agency wants a price before work',quoted:'you quoted, agent reviewing'}[j.status];
+    return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · ${label}</h3><span class="badge ${esc(j.status)}">${esc(j.status.replace('_',' '))}</span></div>
+      <div class="meta">${prop(j.property_id)} · ${when(j.created_at)}</div>
+      <div class="details">${esc(j.message)}</div>
+      ${j.approved_quote_pence!=null?`<div class="meta">approved quote: ${money(j.approved_quote_pence)}</div>`:''}
+      ${msgs}
+      <div class="actions">${cta} <button class="btn ghost" onclick="release(this,'${esc(j.id)}')">Not me — hand back</button></div></div>`;}).join('')
+    :'<div class="empty">Nothing addressed to you. The agent can assign jobs directly or ask you for a quote first.</div>';
 
   const mine=jobs.filter(j=>j.status==='in_progress'&&j.assigned_to===ME).slice().reverse();
   const gated=jobs.filter(j=>j.status==='pending_verification'&&j.requested_by===ME);
@@ -99,7 +121,7 @@ function render(){
   document.getElementById('done-jobs').innerHTML=done.length?done.map(j=>{
     const appr=(stage.approvals||[]).find(a=>a.job_id===j.id);
     const age=appr?` · waiting ${when(appr.requested_at)}`:'';
-    const label={awaiting_approval:`landlord sign-off pending${age} — auto-chased at 3 days`,paid:`settled ${j.paid_at?when(j.paid_at):'recently'} · reference ${esc(j.id)} (demo: settlement is simulated until a payment provider lands)`,rejected:`declined${appr?.reason_given?' — “'+esc(appr.reason_given)+'”':''} · the agent has a task to sort next steps`}[j.status];
+    const label={awaiting_approval:`landlord sign-off pending${age} — the office chases if it sits`,paid:`settled ${j.paid_at?when(j.paid_at):'recently'} · reference ${esc(j.id)} (demo: settlement is simulated until a payment provider lands)`,rejected:`declined${appr?.reason_given?' — “'+esc(appr.reason_given)+'”':''} · the agent has a task to sort next steps`}[j.status];
     return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · ${money(j.invoice_pence??0)}</h3>
       <span class="badge ${esc(j.status)}">${j.status==='paid'?'settled':j.status}</span></div>
       <div class="meta">${prop(j.property_id)}</div>
@@ -108,6 +130,13 @@ function render(){
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
+async function jobGo(btn,id,action){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:ME});
+  toast(action==='start'?'Started — the office and tenant have been told.':'Done.'); load(); }catch(e){} }); }
+async function sendQuote(btn,id){ const v=parseFloat(document.getElementById('q-'+id).value||'0');
+  if(v<=0){toast('Enter your price first.','bad');return;}
+  const note=document.getElementById('qn-'+id).value.trim();
+  await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'submit_quote',quote_pence:Math.round(v*100),note,tradesperson:ME});
+    toast('Quote sent — the agency approves before work starts.'); load(); }catch(e){} }); }
 async function accept(btn,id){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'accept',tradesperson:ME});
   toast('Booked — details now on your in-progress list.'); load(); }catch(e){} }); }
 async function complete(btn,id){ const v=parseFloat(document.getElementById('inv-'+id).value||'0');

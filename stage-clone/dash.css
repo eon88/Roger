@@ -136,6 +136,19 @@ table.log td:first-child{color:var(--muted);white-space:nowrap}
   .btn:active{transform:none}
 }
 
+/* conversation thread on cases */
+details.msgs{margin:8px 0 12px}
+details.msgs summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--accent-deep);margin-bottom:8px}
+.msg{border-left:3px solid var(--line);padding:6px 0 6px 12px;margin:6px 0;font-size:14px}
+.msg.r-agent{border-left-color:var(--accent)}
+.msg.r-tenant{border-left-color:var(--blue)}
+.msg.r-trades{border-left-color:var(--warn)}
+.msg.r-system{border-left-color:var(--line-soft)}
+.msg .who{font-weight:400}
+select{padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);font-family:var(--font-ui);font-size:14px;background:var(--paper);color:var(--ink);max-width:260px}
+select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.amber{color:var(--warn);font-weight:600}
+
 @media (max-width:640px){
   .header{padding:14px 0 12px}
   .brand h1{font-size:22px}

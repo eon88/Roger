@@ -90,6 +90,10 @@ function render(){
         <button class="btn danger" onclick="decide(this,'${esc(a.id)}','reject')">Decline</button>
       </div></div>`;}).join('')
     :`<div class="empty" id="appr-empty">Nothing needs your signature. Small works under standing authority are handled by your agent.</div>`;
+  const decided=apps.filter(a=>a.status!=='pending').slice().reverse();
+  if(decided.length) document.getElementById('my-approvals').insertAdjacentHTML('beforeend',
+    `<h2>Recently decided by you</h2>`+decided.slice(0,8).map(a=>`<div class="card"><div class="cardtop"><h3>${money(a.amount_pence)} · ${esc(a.job_id)}</h3><span class="badge ${esc(a.status)}">${a.status}</span></div>
+      <div class="meta">${pTitle(a.property_id)} · decided ${when(a.decided_at)}${a.reason_given?' — your words: “'+esc(a.reason_given)+'”':''}</div></div>`).join(''));
 
   // Statement
   const myJobs=jobs.filter(j=>pids.includes(j.property_id));
@@ -112,7 +116,8 @@ function render(){
   document.getElementById('my-cases').innerHTML=cases.length?cases.map(c=>`
     <div class="card ${flips['c'+c.id]?'flash-once':''}"><div class="cardtop"><h3>#${c.id}</h3><span class="badge ${esc(c.status)}">${esc(CASE_LABEL[c.status]||c.status)}</span></div>
     <div class="meta">${pTitle(c.property_id)} · ${when(c.status_at||c.submitted_at)}</div>
-    <div class="details">${esc(c.message)}</div>${thread(c)}</div>`).join('')
+    <div class="details">${esc(c.message)}</div>${thread(c)}${cMsgs(c)}
+    ${c.status==='closed'?'':`<div class="actions"><input placeholder="ask the office something about this…" id="lrp-${c.id}" autocomplete="off" onkeydown="if(event.key==='Enter')landlordReply(${c.id},this)"><button class="btn" onclick="landlordReply(${c.id},this)">Send</button></div>`}</div>`).join('')
     :`<div class="empty">No open work in your buildings. When a tenant reports something it appears here — and any bill above your limit waits for your decision at the top of this page.</div>`;
 
   document.getElementById('my-props').innerHTML=(props.length?props.map(p=>`
@@ -123,6 +128,14 @@ function render(){
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
+function cMsgs(c){ const th=c.thread||[]; if(!th.length) return '';
+  return `<details class="msgs"><summary>Conversation · ${th.length}</summary>`+
+    th.map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> · ${when(t.at)}</span><div>${esc(t.text)}</div></div>`).join('')+`</details>`;}
+async function landlordReply(id,btn){ const el=document.getElementById('lrp-'+id); const v=el.value.trim();
+  if(!v){toast('Type your question first.','bad');return;}
+  await (btn?Promise.resolve(btn.dataset.busy='1'):0);
+  try{ await post('/api/case-action',{id,action:'reply',to:['agent'],text:v}); el.value=''; toast('Sent to the office.'); await load(); }
+  catch(e){} finally{ if(btn)delete btn.dataset.busy; } }
 function thread(c){const jobs=(stage.jobs||[]).filter(j=>j.case_id===c.id);
   if(!jobs.length)return '';
   return jobs.map(j=>{let bits=[`${esc(j.id)}: ${esc(CASE_LABEL[j.status]||j.status)}`];

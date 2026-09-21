@@ -62,7 +62,20 @@
         "engine": "jev",
         "cost_usd": 3e-05
       },
-      "recalibrated_at": "2026-09-20T20:49:28.770218Z"
+      "recalibrated_at": "2026-09-20T20:49:28.770218Z",
+      "thread": [
+        {
+          "author": "Stefan \u2014 the agency desk",
+          "role": "agent",
+          "text": "Someone from the office will call before noon to arrange access.",
+          "to": [
+            "tenant",
+            "landlord",
+            "trades"
+          ],
+          "at": "2026-09-21T06:14:08.396779Z"
+        }
+      ]
     },
     {
       "id": 492,
@@ -303,7 +316,18 @@
       "submitted_at": "2026-09-20T22:17:28.576413Z",
       "status_at": "2026-09-20T22:20:28.597529Z",
       "closed_reason": "Test report used to verify the polish pass \u2014 no fault found at property.",
-      "actioned_at": "2026-09-20T22:20:55.743514Z"
+      "actioned_at": "2026-09-20T22:20:55.743514Z",
+      "thread": [
+        {
+          "author": "Stefan \u2014 the agency desk",
+          "role": "agent",
+          "text": "The agency has sent your invoice to the landlord for sign-off.",
+          "to": [
+            "trades"
+          ],
+          "at": "2026-09-21T06:24:54.825167Z"
+        }
+      ]
     },
     {
       "id": 504,
@@ -368,7 +392,27 @@
         "engine": "jev",
         "cost_usd": 3e-05
       },
-      "submitted_at": "2026-09-20T22:51:54.158153Z"
+      "submitted_at": "2026-09-20T22:51:54.158153Z",
+      "thread": [
+        {
+          "author": "Daniel Mensah",
+          "role": "tenant",
+          "text": "Can they fix it before the weekend? Baby needs baths.",
+          "to": [
+            "agent"
+          ],
+          "at": "2026-09-21T06:18:43.287489Z"
+        },
+        {
+          "author": "Stefan \u2014 the agency desk",
+          "role": "agent",
+          "text": "Quote requested from R. Doyle Gas & Heat \u2014 the work starts once the agency approves a price.",
+          "to": [
+            "trades"
+          ],
+          "at": "2026-09-21T06:24:34.582994Z"
+        }
+      ]
     },
     {
       "id": 507,
@@ -427,9 +471,31 @@
           "at": "2026-09-21T06:10:17.016650Z"
         }
       ]
+    },
+    {
+      "id": 509,
+      "type": "enquiry",
+      "property_id": "parkside",
+      "role": "renter",
+      "name": "Greh",
+      "email": "Stefan88zamfir@gmail.com",
+      "message": "House",
+      "status": "new",
+      "triage": {
+        "category": "other",
+        "trade": "general",
+        "urgency": 0,
+        "urgency_raw": 0.03,
+        "safety": 0.47,
+        "confidence": 90,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "consent": true,
+      "submitted_at": "2026-09-21T09:47:50.280321Z"
     }
   ],
-  "next_case_id": 509,
+  "next_case_id": 510,
   "registrations": [
     {
       "id": "reg-1",
@@ -683,7 +749,7 @@
         "cost_usd": 3e-05
       },
       "required_trade": "plumbing",
-      "status": "paid",
+      "status": "awaiting_approval",
       "assigned_to": "R. Doyle Gas & Heat",
       "invoice_pence": 20000,
       "created_at": "2026-09-20T22:17:28.576435Z",
@@ -706,8 +772,8 @@
         "cost_usd": 3e-05
       },
       "required_trade": "electric",
-      "status": "open",
-      "assigned_to": null,
+      "status": "quote_requested",
+      "assigned_to": "R. Doyle Gas & Heat",
       "invoice_pence": null,
       "created_at": "2026-09-20T22:51:54.158178Z"
     }
@@ -779,6 +845,22 @@
       "requested_at": "2026-09-20T22:51:14.032045Z",
       "reason_given": null,
       "decided_at": "2026-09-20T22:51:35.090662Z"
+    },
+    {
+      "id": "appr-6",
+      "job_id": "job-10",
+      "property_id": "parkside",
+      "landlord": "T. Blackwood",
+      "amount_pence": 20000,
+      "reason": "Test of the polish pass: kitchen tap drips steadily.",
+      "evidence": {
+        "tradesperson": "R. Doyle Gas & Heat",
+        "job_created": "2026-09-20T22:17:28.576435Z",
+        "work_completed": "2026-09-20T22:20:12.687026Z"
+      },
+      "status": "pending",
+      "requested_at": "2026-09-21T06:24:54.825153Z",
+      "sent_by_agent": true
     }
   ],
   "audit_log": [
@@ -998,6 +1080,102 @@
       "action": "case_closed",
       "target": 508,
       "note": "parent security probe \u2014 synthetic, no fault at property"
+    },
+    {
+      "at": "2026-09-21T06:14:08.396794Z",
+      "actor": "Stefan \u2014 the agency desk",
+      "action": "case_reply",
+      "target": 490,
+      "note": "-> tenant,landlord,trades"
+    },
+    {
+      "at": "2026-09-21T06:18:43.287512Z",
+      "actor": "Daniel Mensah",
+      "action": "case_reply",
+      "target": 506,
+      "note": "-> agent"
+    },
+    {
+      "at": "2026-09-21T06:24:34.583012Z",
+      "actor": "agent",
+      "action": "quote_requested",
+      "target": "job-11",
+      "note": "R. Doyle Gas & Heat"
+    },
+    {
+      "at": "2026-09-21T06:24:54.825177Z",
+      "actor": "agent",
+      "action": "invoice_sent_to_landlord",
+      "target": "job-10",
+      "note": "\u00a3200.00"
+    },
+    {
+      "at": "2026-09-21T09:47:50.280338Z",
+      "actor": "public-site",
+      "action": "renter_submission",
+      "target": "case-509"
+    },
+    {
+      "at": "2026-09-21T10:23:21.101091Z",
+      "actor": "AI developer (full access)",
+      "action": "appointment_created",
+      "target": "appt-1",
+      "note": "Viewing @ 2026-09-25T10:00:00Z"
+    },
+    {
+      "at": "2026-09-21T10:23:32.059329Z",
+      "actor": "Daniel Mensah",
+      "action": "appointment_confirm",
+      "target": "appt-1"
+    },
+    {
+      "at": "2026-09-21T10:23:32.079797Z",
+      "actor": "AI developer (full access)",
+      "action": "appointment_complete",
+      "target": "appt-1"
+    },
+    {
+      "at": "2026-09-21T10:25:51.411669Z",
+      "actor": "AI developer (full access)",
+      "action": "appointment_created",
+      "target": "appt-2",
+      "note": "Key handover @ 2026-09-28T09:00:00Z"
+    }
+  ],
+  "appointments": [
+    {
+      "id": "appt-1",
+      "property_id": "parkside",
+      "case_id": null,
+      "title": "Viewing",
+      "description": "",
+      "start_time": "2026-09-25T10:00:00Z",
+      "end_time": "2026-09-25T10:30:00Z",
+      "location": "At the property",
+      "status": "completed",
+      "invitee_role": "tenant",
+      "created_by": "AI developer (full access)",
+      "created_at": "2026-09-21T10:23:21.101075Z",
+      "updated_at": "2026-09-21T10:23:32.079785Z",
+      "notes": "",
+      "outcome": "Keys handed"
+    },
+    {
+      "id": "appt-2",
+      "property_id": "alder",
+      "case_id": null,
+      "title": "Key handover",
+      "description": "",
+      "start_time": "2026-09-28T09:00:00Z",
+      "end_time": null,
+      "location": "At the property",
+      "status": "proposed",
+      "invitee_role": "tenant",
+      "created_by": "AI developer (full access)",
+      "created_at": "2026-09-21T10:25:51.411658Z",
+      "updated_at": "2026-09-21T10:25:51.411664Z",
+      "notes": "",
+      "outcome": null
     }
   ]
 }

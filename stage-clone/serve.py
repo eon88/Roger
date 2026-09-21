@@ -98,7 +98,8 @@ class H(SimpleHTTPRequestHandler):
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
                 "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"},
-                "/api/case-action": {"agent", "tenant", "landlord", "trades"}}
+                "/api/case-action": {"agent", "tenant", "landlord", "trades"},
+                "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"}}
 
     def require(self, roles=None):
         """Returns user or None (response already sent)."""
@@ -173,6 +174,11 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"trades": self.approved_trades(load_stage())})
+        if path == "/api/appointments":
+            u = self.require({"agent", "tenant", "landlord"})
+            if not u:
+                return
+            return self._json({"appointments": self.scoped_appointments(u)})
         if path == "/api/whoami":
             u = self.session_user()
             return self._json({"authenticated": False} if not u else
@@ -215,7 +221,7 @@ class H(SimpleHTTPRequestHandler):
             myjobs = [{k: v for k, v in j.items() if k != "email"}
                       for j in d.get("jobs", []) if j.get("case_id") in cids]
             for c in mycases:
-                c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or []) or t.get("role") == "tenant"]
+                c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or []) or t.get("author") == me]
             d = {"properties": myprops, "cases": mycases, "jobs": myjobs,
                  "authority": d.get("authority"), "role": "tenant"}
         elif u["role"] == "landlord":
@@ -223,7 +229,7 @@ class H(SimpleHTTPRequestHandler):
             pids = {p["id"] for p in myprops}
             mycases = [c for c in d.get("cases", []) if c.get("property_id") in pids]
             for c in mycases:
-                c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or [])]
+                c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or []) or t.get("author") == me]
             d = {"properties": myprops,
                  "cases": mycases,
                  "jobs": [j for j in d.get("jobs", []) if j.get("property_id") in pids],
@@ -238,8 +244,9 @@ class H(SimpleHTTPRequestHandler):
             mycase_ids = {j.get("case_id") for j in myjobs}
             threads = {}
             for c in d.get("cases", []):
-                if c["id"] in mycase_ids and (c.get("thread") or me in (c.get("participants") or [])):
-                    threads[c["id"]] = [t for t in c.get("thread", []) if "trades" in (t.get("to") or [])]
+                if c["id"] in mycase_ids or me in (c.get("participants") or []):
+                    threads[c["id"]] = [t for t in c.get("thread", [])
+                                        if "trades" in (t.get("to") or []) or t.get("author") == me]
             d = {"properties": [{k: v for k, v in p.items() if k != "tenant"} for p in props],
                  "jobs": [{k: v for k, v in j.items() if k in keep} for j in myjobs],
                  "threads": threads,
@@ -268,6 +275,8 @@ class H(SimpleHTTPRequestHandler):
             "/register/landlord": lambda d: self.handle_registration("landlord", d),
             "/register/trades": lambda d: self.handle_registration("trades", d),
             "/api/enquiry": self.handle_enquiry,
+            "/api/appointment": self.handle_appointment,
+            "/api/appointment-action": self.handle_appointment_action,
             "/api/tenant/issue": self.handle_tenant_issue,
             "/api/job-action": self.handle_job_action,
             "/api/landlord-action": self.handle_landlord_action,
@@ -541,9 +550,12 @@ class H(SimpleHTTPRequestHandler):
             job.pop("requested_by", None)
             job.pop("gate_reason", None)
             self.audit(stage, {"actor": "agent", "action": "booking_declined", "target": job["id"]})
-        elif action == "release" and job["status"] == "in_progress":
+        elif action == "release" and job["status"] in ("in_progress", "assigned", "quote_requested") and actor == (job.get("assigned_to") or job.get("requested_by")):
             job["status"] = "open"
             job["assigned_to"] = None
+            job.pop("requested_by", None)
+            self.post_msg(stage, job["case_id"], f"{actor} handed this job back to the board.", to=("tenant",))
+            self.audit(stage, {"actor": actor, "action": "job_returned", "target": job["id"]})
         # ---- agent choreography: direct the dance instead of waiting for it ----
         elif action == "assign" and self.user["role"] == "agent" and job["status"] in ("open", "quote_requested", "quoted", "pending_verification"):
             who = str(data.get("tradesperson", ""))[:100]
@@ -760,6 +772,94 @@ class H(SimpleHTTPRequestHandler):
         save_stage(stage)
         self._json({"success": True})
 
+
+    # ---------- appointments ----------
+    def scoped_appointments(self, u):
+        stage = load_stage()
+        appts = [a for a in stage.get("appointments", [])]
+        if u["role"] == "agent":
+            return appts
+        me = u["display_name"]
+        if u["role"] == "tenant":
+            mine = {p["id"] for p in stage.get("properties", []) if p.get("tenant") == me}
+            return [a for a in appts if a["property_id"] in mine]
+        mine = {p["id"] for p in stage.get("properties", []) if p.get("landlord") == me}
+        return [a for a in appts if a["property_id"] in mine]
+
+    def handle_appointment(self, data):
+        """Agent schedules a viewing/inspection/key handover. Roles: agent only."""
+        stage = load_stage()
+        prop = self.find_prop(stage, data.get("property_id"))
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        start = str(data.get("start_time", ""))[:40]
+        end = str(data.get("end_time", ""))[:40]
+        if not start:
+            return self._json({"error": "start_time is required"}, 400)
+        if end and end < start:
+            return self._json({"error": "end_time must be after start_time"}, 400)
+        appts = stage.setdefault("appointments", [])
+        nums = [int(a["id"].split("-")[1]) for a in appts if re.fullmatch(r"appt-\d+", a["id"])]
+        appt = {
+            "id": f"appt-{(max(nums) + 1) if nums else 1}",
+            "property_id": prop["id"],
+            "case_id": data.get("case_id") or None,
+            "title": str(data.get("title", "Viewing"))[:120] or "Viewing",
+            "description": str(data.get("description", ""))[:1000],
+            "start_time": start,
+            "end_time": end or None,
+            "location": str(data.get("location", "At the property"))[:200],
+            "status": "proposed",
+            "invitee_role": str(data.get("invitee_role", "tenant"))[:20]
+                         if data.get("invitee_role") in ("tenant", "landlord", "trades") else "tenant",
+            "created_by": (self.user or {}).get("display_name", "Agent"),
+            "created_at": now(),
+            "updated_at": now(),
+            "notes": "",
+            "outcome": None,
+        }
+        appts.append(appt)
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
+                           "action": "appointment_created", "target": appt["id"],
+                           "note": f"{appt['title']} @ {appt['start_time']}"})
+        save_stage(stage)
+        return self._json({"success": True, "appointment": appt})
+
+    def handle_appointment_action(self, data):
+        """Confirm/decline/complete/miss/cancel an appointment. Roles: agent (any),
+        tenant/landlord on their own property."""
+        stage = load_stage()
+        appt = next((a for a in stage.get("appointments", []) if a["id"] == data.get("id")), None)
+        if not appt:
+            return self._json({"error": "appointment not found"}, 404)
+        action = data.get("action")
+        allowed = ("confirm", "decline", "complete", "miss", "cancel")
+        if action not in allowed:
+            return self._json({"error": f"action must be one of {', '.join(allowed)}"}, 400)
+        u = self.user or {}
+        if u["role"] == "agent":
+            pass  # agent may take any action
+        else:
+            prop = self.find_prop(stage, appt["property_id"]) or {}
+            if u["role"] == "tenant" and prop.get("tenant") != u["display_name"]:
+                return self._json({"error": "not your property"}, 403)
+            if u["role"] == "landlord" and prop.get("landlord") != u["display_name"]:
+                return self._json({"error": "not your property"}, 403)
+            # parties may not cancel an agency-set appointment; agent must
+            if action == "cancel":
+                return self._json({"error": "only the agency can cancel"}, 403)
+        status_map = {"confirm": "confirmed", "decline": "declined",
+                      "complete": "completed", "miss": "missed", "cancel": "cancelled"}
+        appt["status"] = status_map[action]
+        appt["updated_at"] = now()
+        if data.get("note"):
+            appt["notes"] = str(data["note"])[:500]
+        if data.get("outcome"):
+            appt["outcome"] = str(data["outcome"])[:500]
+        self.audit(stage, {"actor": u.get("display_name", "?"),
+                           "action": f"appointment_{action}", "target": appt["id"]})
+        save_stage(stage)
+        return self._json({"success": True, "appointment": appt})
 
     # ---------- static ----------
     def serve_file(self, name, ctype="text/html; charset=utf-8"):

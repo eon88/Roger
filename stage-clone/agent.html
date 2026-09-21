@@ -36,7 +36,7 @@ const money = p => '£' + ((p ?? 0)/100).toFixed(2);
 const ago = iso => { if(!iso) return ''; const m=(Date.now()-new Date(iso))/60000;
   if(m<1)return 'just now'; if(m<60)return Math.round(m)+' min ago'; if(m<1440)return Math.round(m/60)+' h ago'; return Math.round(m/1440)+' days ago'; };
 const when = iso => iso ? `<span class="when" title="${esc(new Date(iso).toLocaleString('en-GB'))}">${ago(iso)}</span>` : '';
-let stage=null, lastGood='';
+let stage=null, lastGood='', pool=[];
 
 async function api(p){const r=await fetch(p);if(!r.ok)throw new Error(p+': '+r.status);return r.json();}
 async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
@@ -75,7 +75,8 @@ function markFlips(){ const cur={};
 const fl=k=>FL.flip[k]?'flash-once':'';
 
 async function load(manual){
-  try{ stage=await api('/api/stage'); lastGood=new Date().toLocaleTimeString('en-GB');
+  try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
+    lastGood=new Date().toLocaleTimeString('en-GB');
     document.getElementById('api-error').style.display='none';
     document.getElementById('stamp').textContent='live · updated '+lastGood+' · every 15s';
     document.getElementById('stamp').title='Portal data last refreshed at '+lastGood;
@@ -125,40 +126,80 @@ function renderCases(){
       <div class="cardtop"><h3>#${c.id} · ${esc(c.type||'case')}</h3><span class="badge ${esc(c.status)}">${esc(c.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${when(c.submitted_at)}</div>
       <div class="details">${esc(c.message)}</div>
-      ${triageLine(c.triage)}${threadFor(c)}
+      ${triageLine(c.triage)}${threadFor(c)}${msgThread(c)}
       ${c.closed_reason?`<div class="fineprint">Closed: ${esc(c.closed_reason)}</div>`:''}
-      ${c.status!=='closed'?`<div class="actions closebox"><input placeholder="closing reason (kept on record)" id="cl-${c.id}" autocomplete="off" style="max-width:280px" onkeydown="if(event.key==='Enter')closeCase(this,${c.id})"><button class="btn" onclick="closeCase(this,${c.id})">Close case</button></div>`:''}
+      ${c.status!=='closed'?`<div class="actions closebox">
+        <input placeholder="say something — tenant sees it" id="rp-${c.id}" autocomplete="off" onkeydown="if(event.key==='Enter')replyCase(this,${c.id})">
+        <label class="who"><input type="checkbox" id="rpl-${c.id}" checked> landlord</label>
+        <label class="who"><input type="checkbox" id="rpt-${c.id}" checked> trades</label>
+        <button class="btn primary" onclick="replyCase(this,${c.id})">Send</button>
+        <button class="btn" onclick="closeCase(this,${c.id})">Close case</button></div>
+      <div class="actions" style="margin-top:6px"><input placeholder="closing reason (kept on record)" id="cl-${c.id}" autocomplete="off" style="max-width:280px"></div>`:
+      `<div class="actions"><button class="btn" onclick="reopenCase(this,${c.id})">Reopen case</button></div>`}
     </div>`).join(''):'<div class="empty">Case book is empty — tenant reports land here the moment they arrive, emergencies first.</div>');
 }
 async function closeCase(btn,id){ const r=document.getElementById('cl-'+id).value.trim();
   if(!r){toast('A closing reason is required — it stays on the record.','bad');return;}
   await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'close',reason:r}); toast('Case #'+id+' closed — logged with your reason.'); load(); }catch(e){} }); }
 
+function msgThread(c){ const th=c.thread||[];
+  if(!th.length) return '';
+  return `<details class="msgs" open><summary>Conversation · ${th.length} message${th.length===1?'':'s'}</summary>`+
+    th.map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> → ${(t.to||[]).join(', ')} · ${ago(t.at)}</span><div>${esc(t.text)}</div></div>`).join('')+`</details>`;}
+async function replyCase(btn,id){ const el=document.getElementById('rp-'+id); const v=el.value.trim();
+  if(!v){toast('Type the message first — a blank note helps nobody.','bad');return;}
+  const to=['tenant']; if(document.getElementById('rpl-'+id).checked)to.push('landlord'); if(document.getElementById('rpt-'+id).checked)to.push('trades');
+  await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'reply',to,text:v});
+    el.value=''; toast('Sent — it lands in their portal.'); load(); }catch(e){} }); }
+async function reopenCase(btn,id){ await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'reopen'});
+  toast('Reopened — back on the active list.'); load(); }catch(e){} }); }
+function poolPicker(idSuffix,jobId){ const opts=pool.map(t=>`<option value="${esc(t.company)}">${esc(t.company)} — ${esc(t.trades.join('/'))}${t.gas_safe?' · Gas Safe':''}</option>`).join('');
+  return `<select id="pool-${idSuffix}"><option value="">choose trade…</option>${opts}</select>`;}
+
 function renderJobs(){
   const jobs=(stage.jobs||[]).slice().reverse();
   const g=s=>jobs.filter(j=>j.status===s);
   const card=j=>`
-    <div class="card ${j.status==='pending_verification'?'flagged':''} ${fl('j'+j.id)}">
+    <div class="card ${['pending_verification','quoted'].includes(j.status)?'flagged':''} ${fl('j'+j.id)}">
       <div class="cardtop"><h3>${esc(j.id)} · case #${j.case_id}</h3><span class="badge ${esc(j.status)}">${esc(j.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(j.property_id)}${j.required_trade?` · needs <b>${esc(j.required_trade)}</b>`:''} · ${when(j.created_at)}</div>
       <div class="details">${esc(j.message)}</div>
-      ${j.assigned_to?`<div class="meta">by ${esc(j.assigned_to)}</div>`:''}
+      ${j.assigned_to?`<div class="meta">${j.status==='quote_requested'?'quote requested from':j.status==='assigned'?'assigned to':'by'} <b>${esc(j.assigned_to)}</b></div>`:''}
+      ${j.status==='quoted'&&j.quotes?`<table class="evidence">${j.quotes.map(q=>`<tr><td>${esc(q.tradesperson)} · ${when(q.at)}</td><td><b>${money(q.pence)}</b> ${q.note?esc(q.note):''}</td><td>${q.status==='pending'?`<button class="btn primary" onclick="quoteAct(this,'${esc(j.id)}','approve_quote')">Approve</button> <button class="btn danger" onclick="quoteAct(this,'${esc(j.id)}','decline_quote')">Decline</button>`:esc(q.status)}</td></tr>`).join('')}</table>`:''}
       ${j.gate_reason?`<div class="fineprint hot">Blocked: ${esc(j.gate_reason)} — booked by ${esc(j.requested_by)}</div>
         <div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','verify_approve')">Allow anyway</button>
         <button class="btn danger" onclick="jobAct(this,'${esc(j.id)}','verify_decline')">Send back</button></div>`:''}
-      ${j.invoice_pence!=null?`<div class="meta">invoice ${money(j.invoice_pence)}</div>`:''}
+      ${['open'].includes(j.status)?`<div class="actions"><span>${poolPicker(j.id,j.id)}</span>
+        <button class="btn" onclick="pickAct(this,'${esc(j.id)}','assign')">Assign directly</button>
+        <button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask for quote first</button></div>`:''}
+      ${j.status==='assigned'&&j.assigned_to?`<div class="actions"><button class="btn primary" data-who="${esc(j.assigned_to)}" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask them to quote first</button></div>`:''}
+      ${j.invoice_pence!=null?`<div class="meta">invoice ${money(j.invoice_pence)}${j.approved_quote_pence!=null&&j.invoice_pence>j.approved_quote_pence?` · <span class="amber">above approved quote of ${money(j.approved_quote_pence)}</span>`:''}</div>`:''}
+      ${j.status==='paid'&&j.invoice_pence!=null?`<div class="actions"><button class="btn ghost" onclick="jobAct(this,'${esc(j.id)}','send_to_landlord')">Send this invoice to the landlord anyway</button></div>`:''}
     </div>`;
   const sec=(list,title,note,none)=>`<h2>${title}</h2>${note?`<p class="fineprint">${note}</p>`:''}${list.length?list.map(card).join(''):`<div class="empty">${none}</div>`}`;
   document.getElementById('view-jobs').innerHTML=`<div class="move">jobs — who took what</div>`+
-    sec(g('pending_verification'),'Needs verification','credential mismatch — your call before anyone visits','Nothing held back. A booking appears here only when the trade\u0027s credentials need your eye.')+
-    sec(g('open'),'Unassigned','take these or route them yourself','No open jobs. Tenant reports become jobs here the moment the agent dispatches them.')+
-    sec(g('in_progress'),'In progress','','Nothing on the go. Jobs arrive here once a tradesperson takes them.')+
+    sec(g('quoted'),'Quotes waiting on you','approve a price before anyone visits, or decline and ask again','No quotes in. When a trade replies with a price, it lands here for your yes or no.')+
+    sec(g('pending_verification'),'Needs verification','credential mismatch — your call before anyone visits','Nothing held back. A booking appears here only when the trade\'s credentials need your eye.')+
+    sec(g('open'),'Unassigned','assign a trusted trade, ask for a quote first, or leave it on the board','No open jobs. Tenant reports become jobs here the moment you dispatch them.')+
+    sec(g('assigned'),'Assigned, waiting to start','','Nothing sitting with a trade. Assign one from the open list.')+
+    sec(g('quote_requested'),'Waiting on a quote','','No quote is outstanding. Ask a trade for a price from an open job.')+
+    sec(g('in_progress'),'In progress','','Nothing on the go. Jobs arrive here once work is green-lit.')+
     sec(g('awaiting_approval'),'Waiting on landlord','','No bills over the standing limit are waiting on a landlord.')+
     sec(g('paid'),'Settled','','Nothing settled yet. Paid invoices move here.')+
-    sec(g('rejected'),'Declined by landlord','','No landlord has declined a quote.');
+    sec(g('rejected'),'Declined by landlord','','No landlord has declined an invoice.');
 }
-async function jobAct(btn,id,action){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:'agent'});
-  toast(action==='verify_approve'?'Booking released to the tradesperson.':'Booking sent back — it returns to the open board.'); load(); }catch(e){} }); }
+async function pickAct(btn,id,action){ const sel=document.getElementById('pool-'+id);
+  const who=(sel?sel.value:'')||btn.dataset.who||'';
+  if(!who){toast('Choose a tradesperson from the list first.','bad');return;}
+  await jobAct(btn,id,action,who); }
+async function jobAct(btn,id,action,tradesperson){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:tradesperson||'agent'});
+  const say={verify_approve:'Booking released to the tradesperson.',verify_decline:'Booking sent back — it returns to the open board.',
+    assign:'Assigned — they see it on their board now.',request_quote:'Quote requested — it waits on their price.',
+    approve_quote:'Quote approved — work is green-lit.',decline_quote:'Quote declined; they\'ve been asked to re-quote or stand down.',
+    send_to_landlord:'Invoice sent to the landlord for sign-off.'}[action]||'Done.';
+  toast(say); load(); }catch(e){} }); }
+function quoteAct(btn,id,action){ const reason=action==='decline_quote'?prompt('Reason for the trade (kept on record):')||'price not right':undefined;
+  busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote approved — work is green-lit.':'Quote declined and sent back.'); load(); }catch(e){} }); }
 
 function renderRegs(){
   const all=stage.registrations||[]; const pend=all.filter(r=>r.status==='pending');
