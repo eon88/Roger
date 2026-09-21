@@ -188,5 +188,9 @@ async function decide(btn,id,action){
 function changeLimit(){toast('Limit changes are set up with your agent — ring the office on 0121 496 0123 and they will adjust it for you. The current limit already applies to every invoice on this page.');}
 boot(); setInterval(load,20000);
 </script>
+<button class="to-top" aria-label="Back to top" title="Back to top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+<script>const tt=document.querySelector('.to-top');
+addEventListener('scroll',()=>tt.classList.toggle('visible',window.scrollY>240),{passive:true});
+tt.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));</script>
 </body>
 </html>
