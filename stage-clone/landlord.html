@@ -35,6 +35,16 @@
     <div class="move">your properties</div>
     <div class="grid2" id="my-props"></div>
   </section>
+
+  <section class="section">
+    <div class="move">appointments</div>
+    <div id="my-appts"><div class="skel c"></div></div>
+  </section>
+
+  <section class="section">
+    <div class="move">paperwork on file</div>
+    <div id="my-docs"><div class="skel c"></div></div>
+  </section>
   </main>
 </div>
 <div id="toast-host" aria-live="polite"></div>
@@ -51,13 +61,19 @@ async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-
   const j=await r.json().catch(()=>({})); if(!r.ok){toast(j.error||'failed','bad');throw new Error(j.error);} return j;}
 function toast(m,k){const el=document.createElement('div');el.className='toast '+(k||'');el.textContent=m;
   document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
-let stage, prevStatus={};
+let stage, prevStatus={}, appts=[], docs=[];
 async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); render(); }
   catch(e){ toast('Could not refresh. We will try again with the next update.','bad'); } }
+async function loadExtras(){
+  try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
+  try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
+}
+function fmtDate(iso){ if(!iso) return '—'; const s=new Date(iso); return s.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
 
 function pTitle(id){const p=(stage.properties||[]).find(x=>x.id===id);return p?`${esc(p.title)} · ${esc(p.area)}`:'a property you own';}
 
@@ -125,6 +141,22 @@ function render(){
     <div class="money">£${(p.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div>
     <div class="meta">${p.tenant?'let to '+esc(p.tenant):'vacant — being let'}</div></div>`).join('')
     :`<div class="empty">No properties on this account yet. Your agent sets up each one — ask them next time you speak.</div>`);
+
+  // Appointments on my properties
+  const myPids=props.map(p=>p.id);
+  const myAppts=appts.filter(a=>myPids.includes(a.property_id)).slice().sort((a,b)=>a.start_time.localeCompare(b.start_time));
+  document.getElementById('my-appts').innerHTML=myAppts.length?myAppts.map(ap=>`<div class="card"><div class="appt">
+      <div><div class="date">${fmtDate(ap.start_time)}</div><div class="because">${esc(ap.title)} · ${pTitle(ap.property_id)}${ap.location?' · '+esc(ap.location):''}</div></div>
+      <span class="badge ${esc(ap.status)}">${esc(ap.status)}</span></div></div>`).join('')
+    :`<div class="empty">Nothing scheduled for your properties. Viewings, inspections and key handovers your agent books will appear here.</div>`;
+
+  // Documents on my properties (pending shown to landlord only when released isn't a thing; show all on-file)
+  const myDocs=docs.filter(d=>myPids.includes(d.property_id)&&d.status!=='rejected');
+  document.getElementById('my-docs').innerHTML=myDocs.length?myDocs.map(d=>`<div class="card"><div class="docrow">
+      <a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a>
+      <span class="badge ${esc(d.status)}">${esc(d.status)}</span>
+      <div class="docmeta">${capType(d.document_type)} · ${pTitle(d.property_id)}${d.verified_at?' · verified':' · awaiting the office'}</div></div></div>`).join('')
+    :`<div class="empty">Nothing on file yet. Tenancy agreements and deposit receipts for your properties appear here once the office uploads them.</div>`;
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }

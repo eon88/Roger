@@ -149,6 +149,25 @@ select{padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);
 select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .amber{color:var(--warn);font-weight:600}
 
+/* appointment + document primitives */
+.badge.proposed{background:var(--blue-soft);color:var(--blue)}
+.badge.confirmed,.badge.verified{background:var(--accent-soft);color:var(--accent-deep)}
+.badge.declined,.badge.missed,.badge.rejected{background:var(--danger-soft);color:var(--danger)}
+.badge.cancelled{background:var(--warn-soft);color:var(--warn)}
+.badge.completed{background:var(--accent-soft);color:var(--accent-deep)}
+.docrow{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)}
+.docrow:first-child{border-top:none}
+.docrow .docname{font-weight:600;color:var(--ink)}
+.docmeta{font-size:12px;color:var(--muted);margin-top:1px}
+.appt{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:14px 0;border-top:1px solid var(--line-soft)}
+.appt:first-child{border-top:none}
+.appt .date{font-family:var(--font-display);font-size:20px;font-weight:600;color:var(--accent-deep);line-height:1.1}
+.appt .because{font-size:13px;color:var(--muted)}
+.filechip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid var(--line-strong);border-radius:999px;font-size:13px;color:var(--accent);background:var(--card)}
+.filechip:hover{border-color:var(--accent)}
+.divider{flex:1}
+.agent-quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:16px}
+
 @media (max-width:640px){
   .header{padding:14px 0 12px}
   .brand h1{font-size:22px}

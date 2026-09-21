@@ -55,6 +55,32 @@ function triageLine(t){ if(!t) return '';
   return `<div class="triage-line"><b>${u}</b> · ${esc(t.category)}${t.trade&&t.trade!=='other'?' · '+esc(t.trade):''} · ${risk} · ${eng}</div>`;}
 function propLine(pid){const p=(stage.properties||[]).find(x=>x.id===pid);
   return p?`${esc(p.title)} · ${esc(p.area)}`:(pid?esc(pid):'<span class="hot">no property linked</span>');}
+function fmtDate(iso){ if(!iso) return '—'; const s=new Date(iso); return s.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
+async function apptCancel(btn,id){ await busy(btn,async()=>{ try{ await post('/api/appointment-action',{id,action:'cancel'}); toast('Appointment cancelled — the tenant will be told when they next look.'); load(); }catch(e){} }); }
+async function docVerify(btn,id,action){ await busy(btn,async()=>{ try{ await post('/api/document-action',{id,action}); toast(action==='verify'?'Document verified — the tenant can now see their copy.':'Document rejected.'); load(); }catch(e){} }); }
+async function docReject(btn,id){ const r=prompt('Why reject this document? (kept on record)')||''; if(!r.trim()){toast('A reason is required to reject.','bad');return;} await busy(btn,async()=>{ try{ await post('/api/document-action',{id,action:'reject',note:r}); toast('Document rejected with your reason on record.'); load(); }catch(e){} }); }
+
+function openBook(btn,cid){ const c=(stage.cases||[]).find(x=>x.id===cid); const pid=c?.property_id;
+  const d=prompt('Appointment title','Viewing');
+  if(d===null)return;
+  const start=prompt('Start time (YYYY-MM-DDTHH:MM) — or blank for tomorrow 10:00');
+  const iso=start&&start.trim()?start.trim().replace(' ','T')+'Z':new Date(Date.now()+86400000).toISOString().slice(0,16)+':00Z';
+  if(pid){ bookAppt(pid,d||'Viewing',iso); } else toast('This case has no property linked — add one first.','bad'); }
+async function bookAppt(pid,title,start){ try{ await post('/api/appointment',{property_id:pid,title,start_time:start,invitee_role:'tenant'}); toast('Viewing booked — the tenant can accept or decline it.'); load(); }catch(e){} }
+function openInvite(btn,cid){ const c=(stage.cases||[]).find(x=>x.id===cid); const pid=c?.property_id;
+  const email=prompt('Invitee email (so they can join the portal)')||''; if(!email.trim()){toast('An email is needed for the invite.','bad');return;}
+  const role=prompt('Role for this invite (tenant / landlord / trades)','tenant')||'tenant';
+  if(!pid){toast('This case has no property linked.','bad');return;}
+  busy(btn,async()=>{ try{ const r=await post('/api/invitation',{property_id:pid,role:['tenant','landlord','trades'].includes(role)?role:'tenant',email}); toast('Invite sent — link: '+r.invite_url); load(); }catch(e){} }); }
+function openUpload(btn,cid){ const c=(stage.cases||[]).find(x=>x.id===cid); const pid=c?.property_id;
+  const dtype=prompt('Type (tenancy_agreement / deposit_receipt / inspection_report / id_proof / other)','tenancy_agreement');
+  if(dtype===null)return;
+  const fname=(prompt('File name','agreement.pdf')||'document').trim();
+  const text=prompt('Paste file content (we store it as-is for this demo; real uploads come from the device)','%%PDF-1.4 demo agreement');
+  if(!text)return;
+  const content_b64=btoa(unescape(encodeURIComponent(text)));
+  busy(btn,async()=>{ try{ await post('/api/document',{case_id:cid,property_id:pid||undefined,document_type:dtype||'other',file_name:fname,content_type:'application/pdf',content_b64}); toast('Document uploaded — verify it to release it to the tenant.'); load(); }catch(e){} }); }
 function threadFor(c){ const jobs=(stage.jobs||[]).filter(j=>j.case_id===c.id);
   if(!jobs.length) return '';
   return jobs.map(j=>{ let bits=[`job ${esc(j.id)} · ${esc(j.status.replace('_',' '))}`];
@@ -76,6 +102,8 @@ const fl=k=>FL.flip[k]?'flash-once':'';
 
 async function load(manual){
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
+    try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
+    try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     lastGood=new Date().toLocaleTimeString('en-GB');
     document.getElementById('api-error').style.display='none';
     document.getElementById('stamp').textContent='live · updated '+lastGood+' · every 15s';
@@ -103,17 +131,29 @@ function renderOverview(){
   const tile=(n,label,view,hot)=>`<a class="stat ${hot?'hot':''}" href="#" onclick="show('${view}');return false"><div class="value">${n}</div><div class="label">${label}</div></a>`;
   const quiet=(urg+gated+unassigned+waiting.length+regs)===0;
   document.getElementById('view-overview').innerHTML=`
-    <div class="move">what needs you today</div>
-    ${quiet?'<div class="triage-line">All clear today. New reports land here as tenants send them.</div>':''}
-    <div class="stats">
-      ${tile(urg,'emergencies open','cases',urg>0)}
-      ${tile(gated,'bookings needing your verification','jobs',gated>0)}
-      ${tile(unassigned,'open jobs nobody took','jobs',unassigned>0)}
-      ${tile(waiting.length,'invoices waiting on landlord'+(waiting.length?' · '+waiting.map(a=>money(a.amount_pence)).join(', '):''),'jobs',waiting.length>0)}
-      ${tile(money(settledToday.reduce((s,j)=>s+(j.invoice_pence||0),0)),'settled today','jobs')}
-      ${tile(regs,'registrations to review','registrations',regs>0)}
-    </div>
-    <p class="fineprint">Standing authority: invoices up to £${lim.toFixed(0)} settle automatically — the £150 rule lives here so you never have to explain it twice. Above it, the landlord decides.</p>`;
+      <div class="move">what needs you today</div>
+      ${quiet?'<div class="triage-line">All clear today. New reports land here as tenants send them.</div>':''}
+      <div class="stats">
+        ${tile(urg,'emergencies open','cases',urg>0)}
+        ${tile(gated,'bookings needing your verification','jobs',gated>0)}
+        ${tile(unassigned,'open jobs nobody took','jobs',unassigned>0)}
+        ${tile(waiting.length,'invoices waiting on landlord'+(waiting.length?' · '+waiting.map(a=>money(a.amount_pence)).join(', '):''),'jobs',waiting.length>0)}
+        ${tile(money(settledToday.reduce((s,j)=>s+(j.invoice_pence||0),0)),'settled today','jobs')}
+        ${tile(regs,'registrations to review','registrations',regs>0)}
+      </div>
+      <p class="fineprint">Standing authority: invoices up to £${lim.toFixed(0)} settle automatically — the £150 rule lives here so you never have to explain it twice. Above it, the landlord decides.</p>
+      ${renderPrimitivesBrief()}`;
+  function renderPrimitivesBrief(){
+    let html='';
+    try{ const ap=window._appts||[]; const pend=ap.filter(a=>a.status==='proposed');
+      html+=`<div class="card"><div class="cardtop"><h3>Appointments</h3><span class="badge ${pend.length?'pending':'completed'}">${pend.length?'awaiting reply':'none pending'}</span></div>`+
+        (ap.length?ap.slice(0,5).map(a=>`<div class="appt"><div><div class="date">${fmtDate(a.start_time)}</div><div class="because">${esc(a.title)} · ${propLine(a.property_id)} · <span class="badge ${esc(a.status)}">${esc(a.status)}</span></div></div>${a.status==='proposed'?`<div class="actions"><button class="btn ghost" onclick="apptCancel(this,'${esc(a.id)}')">Cancel</button></div>`:''}</div>`).join(''):`<div class="meta">No appointments yet. Book a viewing, inspection or key handover from a case to see it here.</div>`)+`</div>`;
+    }catch(e){ html+=''; }
+    try{ const docs=window._docs||[]; html+=`<div class="card"><div class="cardtop"><h3>Documents</h3><span class="badge ${docs.some(d=>d.status==='pending')?'pending':'completed'}">${docs.filter(d=>d.status==='pending').length} to verify</span></div>`+
+      (docs.length?docs.slice(0,6).map(d=>`<div class="docrow"><a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a><span class="badge ${esc(d.status)}">${esc(d.status)}</span><span class="docmeta">${capType(d.document_type)} · ${(stage.properties||[]).find(p=>p.id===d.property_id)?.title||d.property_id}</span>`+(d.status==='pending'?`<div class="actions"><button class="btn ghost" onclick="docVerify(this,'${esc(d.id)}','verify')">Verify</button><button class="btn danger" onclick="docReject(this,'${esc(d.id)}')">Reject</button></div>`:'')+`</div>`).join(''):`<div class="meta">Nothing filed. Upload a tenancy agreement or deposit receipt from a case to see it here.</div>`)+`</div>`;
+    }catch(e){}
+    return html;
+  }
 }
 
 function renderCases(){
@@ -134,7 +174,13 @@ function renderCases(){
         <label class="who"><input type="checkbox" id="rpt-${c.id}" checked> trades</label>
         <button class="btn primary" onclick="replyCase(this,${c.id})">Send</button>
         <button class="btn" onclick="closeCase(this,${c.id})">Close case</button></div>
-      <div class="actions" style="margin-top:6px"><input placeholder="closing reason (kept on record)" id="cl-${c.id}" autocomplete="off" style="max-width:280px"></div>`:
+      <div class="actions" style="margin-top:6px;flex-wrap:wrap">
+        <input placeholder="closing reason (kept on record)" id="cl-${c.id}" autocomplete="off" style="max-width:240px">
+        <span class="divider"></span>
+        <button class="btn ghost" onclick="openBook(this,${c.id})">Book a viewing</button>
+        <button class="btn ghost" onclick="openInvite(this,${c.id})">Send invite</button>
+        <button class="btn ghost" onclick="openUpload(this,${c.id})">Upload document</button>
+      </div>`:
       `<div class="actions"><button class="btn" onclick="reopenCase(this,${c.id})">Reopen case</button></div>`}
     </div>`).join(''):'<div class="empty">Case book is empty — tenant reports land here the moment they arrive, emergencies first.</div>');
 }

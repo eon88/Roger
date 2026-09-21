@@ -46,6 +46,12 @@
   </section>
 
   <section class="section">
+    <div class="move">coming up at your home</div>
+    <h2>Appointments</h2>
+    <div id="my-appts"><div class="skel c"></div></div>
+  </section>
+
+  <section class="section">
     <div class="move">your paperwork</div>
     <div class="grid2" id="docs"></div>
   </section>
@@ -85,8 +91,13 @@ async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); render(); }
   catch(e){ toast('Could not refresh your cases. We will try again with the next update.','bad'); } }
+let appts=[], docs=[];
+async function loadExtras(){
+  try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
+  try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
+}
 
 function render(){
   const y=window.scrollY;
@@ -110,9 +121,26 @@ function render(){
       <div class="details">${esc(c.message)}</div>
       ${plainTriage(c)}${who}${thread}${reply}</div>`;}).join('')
     :`<div class="empty">Nothing reported yet. If something needs attention — a drip, a dead socket, a door that sticks — describe it in the box above and you will get a case number straight away.</div>`;
-  document.getElementById('docs').innerHTML=prop?`
-    <div class="card"><h3>Tenancy</h3><div class="meta">Starts · ${esc(prop.tenancy_start||'—')}</div><div class="actions"><button class="btn ghost" onclick="toast('The tenancy agreement is being digitised — the office posted you a paper copy and can send another on request.')">Tenancy agreement</button><button class="btn ghost" onclick="toast('Deposits for this letting are held by a government-approved scheme. The office can email your certificate today; it will be delivered here once document delivery lands.')">Deposit receipt</button></div></div>
-    <div class="card"><h3>Rent</h3><div class="money">£${(prop.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div><div class="meta">Paid to the account named in your tenancy agreement. Your payment history appears here in a future release.</div></div>`:'';
+  const myDocs=docs.filter(d=>d.status!=='rejected');
+  document.getElementById('docs').innerHTML=prop?[
+    `<div class="card"><h3>Rent</h3><div class="money">£${(prop.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div><div class="meta">Paid to the account named in your tenancy agreement. Your payment history appears here in a future release.</div></div>`,
+    `<div class="card"><h3>Documents</h3>${myDocs.length?myDocs.map(d=>`<div class="docrow"><a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a><div class="docmeta">${capType(d.document_type)}${d.verified_at?` · ${esc(d.status)}`:''}</div></div>`).join(''):`<div class="meta">Nothing filed yet — your agreement and deposit receipt will appear here once the office uploads them.</div>`}</div>`
+  ].join(''):'';
+
+  // Appointments — upcoming first
+  const active=appts.length?appts.slice().sort((a,b)=>a.start_time.localeCompare(b.start_time)):[];
+  const pending=active.filter(a=>a.status==='proposed');
+  const later=active.filter(a=>a.status!=='proposed');
+  document.getElementById('my-appts').innerHTML=active.length?
+    (pending.length?`<div class="card">${pending.map(ap=>`<div class="appt">
+        <div><div class="date">${fmtDate(ap.start_time)}</div><div class="because">${esc(ap.title)}${ap.location?' · '+esc(ap.location):''}${ap.notes?' · '+esc(ap.notes):''}</div></div>
+        <div class="actions"><button class="btn primary" onclick="apptAct(this,'${esc(ap.id)}','confirm')">I can make it</button><button class="btn danger" onclick="apptAct(this,'${esc(ap.id)}','decline')">No good for me</button></div>
+      </div>`).join('')}</div>`:'')+
+    `<div class="card">${later.map(ap=>`<div class="appt">
+        <div><div class="date">${fmtDate(ap.start_time)}</div><div class="because">${esc(ap.title)}${ap.location?' · '+esc(ap.location):''}</div></div>
+        <span class="badge ${esc(ap.status)}">${esc(ap.status)}</span>
+      </div>`).join('')}</div>`
+    :`<div class="empty">Nothing scheduled. When the office books something — a viewing, an inspection, the key handover — it lands here for your yes or no.</div>`;
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
@@ -122,6 +150,11 @@ function plainTriage(c){
   if(t.urgency===1) return `<div class="triage-line warm">We've marked this as needing attention soon — usually sorted within a few days.</div>`;
   return `<div class="triage-line">No rush — we'll reply when it's convenient, usually within a week.</div>`;
 }
+function fmtDate(iso){ if(!iso) return '—'; const s=new Date(iso); return s.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
+async function apptAct(btn,id,action){ if(btn&&btn.dataset.busy)return; if(btn)btn.dataset.busy='1';
+  try{ await post('/api/appointment-action',{id,action}); toast(action==='confirm'?'That is noted — the office will confirm.':'Thanks for letting them know — the office will rearrange.'); await load(); }
+  catch(e){ toast('Could not update — try again.','bad'); } finally{ if(btn)delete btn.dataset.busy; } }
 /* form friction: blur hints + Enter submits from the email field */
 const msg=document.getElementById('issue-msg'), email=document.getElementById('issue-email');
 msg.addEventListener('focus',()=>{ msg.dataset.touched='1'; });

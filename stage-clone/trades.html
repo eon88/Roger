@@ -36,6 +36,11 @@
     <div class="move">your invoices and money</div>
     <div id="done-jobs"></div>
   </section>
+
+  <section class="section">
+    <div class="move">paperwork on your jobs</div>
+    <div id="my-docs"><div class="skel c"></div></div>
+  </section>
   </main>
 </div>
 <div id="toast-host" aria-live="polite"></div>
@@ -54,13 +59,15 @@ function toast(m,k){const el=document.createElement('div');el.className='toast '
 function busy(btn,fn){ if(btn&&btn.dataset.busy) return Promise.resolve();
   if(btn) btn.dataset.busy='1';
   return Promise.resolve(fn()).finally(()=>{ if(btn) delete btn.dataset.busy; }); }
-let stage, prevStatus={};
+let stage, prevStatus={}, docs=[];
 async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; document.getElementById('who').textContent=ME; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); render(); }
   catch(e){ toast('Could not refresh the board. We will try again shortly.','bad'); } }
+async function loadExtras(){ try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; } }
+function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
 function prop(id){const p=(stage.properties||[]).find(x=>x.id===id);return p?`<b>${esc(p.title)}</b> · ${esc(p.area)}`:'address pending from the agent';}
 function termsNote(){const lim=(stage.authority?.standing_limit_pence||15000)/100;
   return `<div class="terms">Payment terms: invoices up to £${lim.toFixed(0)} settle the same day under the agency's standing authority. Above it, the landlord signs off first — the office chases if it sits.</div>`;}
@@ -127,6 +134,11 @@ function render(){
       <div class="meta">${prop(j.property_id)}</div>
       <div class="fineprint">${label}</div></div>`;}).join('')
     :`<div class="empty">No invoices filed yet. When a job is done, enter the amount on your in-progress card above — small ones settle the same day.</div>`;
+  document.getElementById('my-docs').innerHTML=docs.length?docs.map(d=>`<div class="card"><div class="docrow">
+      <a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a>
+      <span class="badge ${esc(d.status)}">${esc(d.status)}</span>
+      <div class="docmeta">${capType(d.document_type)} · ${prop(d.property_id)}</div></div></div>`).join('')
+    :`<div class="empty">Nothing on file for your jobs yet. Inspection reports or photos the office attaches to a job appear here once you're assigned.</div>`;
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
