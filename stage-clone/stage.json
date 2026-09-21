@@ -1140,6 +1140,32 @@
       "action": "appointment_created",
       "target": "appt-2",
       "note": "Key handover @ 2026-09-28T09:00:00Z"
+    },
+    {
+      "at": "2026-09-21T11:44:10.493261Z",
+      "actor": "AI developer (full access)",
+      "action": "invitation_created",
+      "target": "pyOaUDj9",
+      "note": "tenant for parkside"
+    },
+    {
+      "at": "2026-09-21T11:44:10.561574Z",
+      "actor": "AI developer (full access)",
+      "action": "invitation_used",
+      "target": "pyOaUDj9"
+    },
+    {
+      "at": "2026-09-21T11:44:10.581027Z",
+      "actor": "AI developer (full access)",
+      "action": "invitation_created",
+      "target": "Q6wUZ0K0",
+      "note": "landlord for garden"
+    },
+    {
+      "at": "2026-09-21T11:44:10.614701Z",
+      "actor": "AI developer (full access)",
+      "action": "invitation_revoked",
+      "target": "Q6wUZ0K0"
     }
   ],
   "appointments": [
@@ -1177,5 +1203,6 @@
       "notes": "",
       "outcome": null
     }
-  ]
+  ],
+  "invitations": []
 }

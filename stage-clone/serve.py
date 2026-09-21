@@ -99,7 +99,8 @@ class H(SimpleHTTPRequestHandler):
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
                 "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
-                "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"}}
+                "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
+                "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"}}
 
     def require(self, roles=None):
         """Returns user or None (response already sent)."""
@@ -183,6 +184,9 @@ class H(SimpleHTTPRequestHandler):
             u = self.session_user()
             return self._json({"authenticated": False} if not u else
                               {"username": u["username"], "role": u["role"], "display_name": u["display_name"]})
+        m = re.fullmatch(r"/api/invitation/validate/([A-Za-z0-9_\-]+)", path)
+        if m:
+            return self._json(self.validate_invitation_token(m.group(1)))
         if not self.is_public(path):
             if not self.require(self.ROLE_PAGES.get(path)):
                 return
@@ -277,6 +281,8 @@ class H(SimpleHTTPRequestHandler):
             "/api/enquiry": self.handle_enquiry,
             "/api/appointment": self.handle_appointment,
             "/api/appointment-action": self.handle_appointment_action,
+            "/api/invitation": self.handle_invitation,
+            "/api/invitation-action": self.handle_invitation_action,
             "/api/tenant/issue": self.handle_tenant_issue,
             "/api/job-action": self.handle_job_action,
             "/api/landlord-action": self.handle_landlord_action,
@@ -772,6 +778,83 @@ class H(SimpleHTTPRequestHandler):
         save_stage(stage)
         self._json({"success": True})
 
+
+    # ---------- invitations ----------
+    def handle_invitation(self, data):
+        """Agent issues a secure token a prospect/tenant uses to join the portal.
+        Roles: agent only."""
+        stage = load_stage()
+        prop = self.find_prop(stage, data.get("property_id"))
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        role = str(data.get("role", "tenant"))[:20]
+        if role not in ("tenant", "landlord", "trades"):
+            return self._json({"error": "role must be tenant|landlord|trades"}, 400)
+        token = secrets.token_urlsafe(24)
+        expires = datetime.now(timezone.utc) + timedelta(days=7)
+        inv = {
+            "token": token,
+            "property_id": prop["id"],
+            "role": role,
+            "email": str(data.get("email", ""))[:254],
+            "name": str(data.get("name", ""))[:100],
+            "status": "pending",
+            "created_by": (self.user or {}).get("display_name", "Agent"),
+            "created_at": now(),
+            "expires_at": expires.isoformat().replace("+00:00", "Z"),
+            "used_at": None,
+            "revoked_at": None,
+        }
+        stage.setdefault("invitations", []).append(inv)
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
+                           "action": "invitation_created", "target": token[:8],
+                           "note": f"{role} for {prop['id']}"})
+        save_stage(stage)
+        return self._json({"success": True, "token": token,
+                           "invite_url": f"/invite?token={token}",
+                           "expires_at": inv["expires_at"]})
+
+    def handle_invitation_action(self, data):
+        """use (mark accepted after account creation) or revoke. Roles: agent only."""
+        stage = load_stage()
+        token = str(data.get("token", ""))[:64]
+        inv = next((i for i in stage.get("invitations", []) if i["token"] == token), None)
+        if not inv:
+            return self._json({"error": "invitation not found"}, 404)
+        action = data.get("action")
+        if action == "use":
+            if inv["status"] != "pending":
+                return self._json({"error": f"invitation already {inv['status']}"}, 409)
+            inv["status"] = "used"
+            inv["used_at"] = now()
+            self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
+                               "action": "invitation_used", "target": token[:8]})
+        elif action == "revoke":
+            inv["status"] = "revoked"
+            inv["revoked_at"] = now()
+            self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
+                               "action": "invitation_revoked", "target": token[:8]})
+        else:
+            return self._json({"error": "action must be use|revoke"}, 400)
+        save_stage(stage)
+        return self._json({"success": True, "status": inv["status"]})
+
+    def validate_invitation_token(self, token):
+        """Public check used by the invitee's browser before account creation.
+        No session required — the invitee may not have an account yet."""
+        stage = load_stage()
+        inv = next((i for i in stage.get("invitations", []) if i["token"] == token), None)
+        if not inv:
+            return {"valid": False, "reason": "not_found"}
+        if inv["status"] != "pending":
+            return {"valid": False, "reason": f"already_{inv['status']}"}
+        exp = inv.get("expires_at")
+        if exp and datetime.fromisoformat(exp.replace("Z", "+00:00").replace("+00:00+00:00", "+00:00")) < datetime.now(timezone.utc):
+            return {"valid": False, "reason": "expired"}
+        prop = self.find_prop(stage, inv["property_id"]) or {}
+        return {"valid": True, "token": token, "property_id": inv["property_id"],
+                "property_title": prop.get("title"), "role": inv["role"],
+                "email": inv.get("email", ""), "name": inv.get("name", "")}
 
     # ---------- appointments ----------
     def scoped_appointments(self, u):
