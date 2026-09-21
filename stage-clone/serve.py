@@ -96,9 +96,9 @@ class H(SimpleHTTPRequestHandler):
         return next((u for u in users["users"] if u["username"] == sess["username"]), None)
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
-    ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent"},
+    ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
                 "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"},
-                "/api/case-action": {"agent"}}
+                "/api/case-action": {"agent", "tenant", "landlord", "trades"}}
 
     def require(self, roles=None):
         """Returns user or None (response already sent)."""
@@ -168,6 +168,11 @@ class H(SimpleHTTPRequestHandler):
             self.send_header("Location", "/")
             self.end_headers()
             return
+        if path == "/api/trades-pool":
+            u = self.require({"agent"})
+            if not u:
+                return
+            return self._json({"trades": self.approved_trades(load_stage())})
         if path == "/api/whoami":
             u = self.session_user()
             return self._json({"authenticated": False} if not u else
@@ -209,32 +214,48 @@ class H(SimpleHTTPRequestHandler):
             cids = {c["id"] for c in mycases}
             myjobs = [{k: v for k, v in j.items() if k != "email"}
                       for j in d.get("jobs", []) if j.get("case_id") in cids]
+            for c in mycases:
+                c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or []) or t.get("role") == "tenant"]
             d = {"properties": myprops, "cases": mycases, "jobs": myjobs,
                  "authority": d.get("authority"), "role": "tenant"}
         elif u["role"] == "landlord":
             myprops = [p for p in props if p.get("landlord") == me]
             pids = {p["id"] for p in myprops}
+            mycases = [c for c in d.get("cases", []) if c.get("property_id") in pids]
+            for c in mycases:
+                c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or [])]
             d = {"properties": myprops,
-                 "cases": [c for c in d.get("cases", []) if c.get("property_id") in pids],
+                 "cases": mycases,
                  "jobs": [j for j in d.get("jobs", []) if j.get("property_id") in pids],
                  "approvals": [a for a in d.get("approvals", []) if a.get("landlord") == me],
                  "authority": d.get("authority"), "role": "landlord"}
         elif u["role"] == "trades":
             keep = ("id", "case_id", "property_id", "message", "triage", "required_trade",
-                    "status", "assigned_to", "requested_by", "gate_reason",
-                    "invoice_pence", "created_at", "completed_at", "paid_at")
+                    "status", "assigned_to", "requested_by", "gate_reason", "quotes",
+                    "approved_quote_pence", "invoice_pence", "created_at", "completed_at", "paid_at")
+            me = u["display_name"]
+            myjobs = [j for j in d.get("jobs", []) if j.get("status") == "open" or j.get("assigned_to") == me or j.get("requested_by") == me]
+            mycase_ids = {j.get("case_id") for j in myjobs}
+            threads = {}
+            for c in d.get("cases", []):
+                if c["id"] in mycase_ids and (c.get("thread") or me in (c.get("participants") or [])):
+                    threads[c["id"]] = [t for t in c.get("thread", []) if "trades" in (t.get("to") or [])]
             d = {"properties": [{k: v for k, v in p.items() if k != "tenant"} for p in props],
-                 "jobs": [{k: v for k, v in j.items() if k in keep} for j in d.get("jobs", [])],
+                 "jobs": [{k: v for k, v in j.items() if k in keep} for j in myjobs],
+                 "threads": threads,
                  "approvals": [{k: v for k, v in a.items() if k != "reason"}
-                               for a in d.get("approvals", [])],
+                               for a in d.get("approvals", []) if a.get("evidence", {}).get("tradesperson") == me],
                  "authority": d.get("authority"), "role": "trades"}
         self._json(d)
 
     def do_POST(self):
         path = self.path.split("?")[0]
+        self.user = None
         if not self.is_public(path) and path not in self.PUBLIC_POST:
-            if not self.require(self.ROLE_API.get(path)):
+            u = self.require(self.ROLE_API.get(path))
+            if not u:
                 return
+            self.user = u
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode("utf-8") if length else "{}"
         try:
@@ -281,6 +302,29 @@ class H(SimpleHTTPRequestHandler):
 
     def audit(self, stage, entry):
         stage.setdefault("audit_log", []).append({"at": now(), **entry})
+
+    def post_msg(self, stage, case_id, text, to=("tenant", "landlord", "trades")):
+        """Thread message authored by the LOGGED-IN user — never trust client identity."""
+        u = getattr(self, "user", None) or {"display_name": "System", "role": "system", "username": "system"}
+        c = next((c for c in stage.get("cases", []) if c["id"] == case_id), None)
+        if not c:
+            return None
+        c.setdefault("thread", []).append({
+            "author": u["display_name"], "role": u["role"],
+            "text": str(text)[:2000], "to": list(to), "at": now()})
+        return c
+
+    def approved_trades(self, stage):
+        """Companies an agent may put on a case: seeded profiles + approved registrations."""
+        out = []
+        for name, prof in TRADE_PROFILES.items():
+            out.append({"company": name, "trades": prof["trades"], "gas_safe": bool(prof.get("gas_safe"))})
+        for r in stage.get("registrations", []):
+            if r.get("role") == "trades" and r.get("status") == "approved":
+                trades = [t for t in (r.get("trades") or []) if t]
+                out.append({"company": r["name"], "trades": trades or ["general"],
+                            "gas_safe": bool(r.get("gas_safe_number"))})
+        return out
 
     # ---------- public site form (the cloned bundle posts here) ----------
     KIND_MAP = {"Landlord enquiry": "landlord", "Trade application": "trades", "Rental enquiry": "renter"}
@@ -456,7 +500,7 @@ class H(SimpleHTTPRequestHandler):
         job = next((j for j in stage.get("jobs", []) if j["id"] == data.get("id")), None)
         if not job:
             return self._json({"error": "job not found"}, 404)
-        actor = str(data.get("tradesperson", "Unknown"))[:100]
+        actor = (self.user or {}).get("display_name") or str(data.get("tradesperson", "Unknown"))[:100]
 
         if action == "accept":
             chk = self.credential_check(job, actor)
@@ -464,6 +508,7 @@ class H(SimpleHTTPRequestHandler):
                 job["status"] = "in_progress"
                 job["assigned_to"] = actor
                 self.sync_case(stage, job["case_id"], "in_progress")
+                self.post_msg(stage, job["case_id"], f"{actor} took this job and will get in touch to arrange access.", to=("tenant",))
                 self.audit(stage, {"actor": actor, "action": "job_booked", "target": job["id"]})
             else:
                 # human decision required before a cert-gated job can be booked
@@ -487,6 +532,77 @@ class H(SimpleHTTPRequestHandler):
         elif action == "release" and job["status"] == "in_progress":
             job["status"] = "open"
             job["assigned_to"] = None
+        # ---- agent choreography: direct the dance instead of waiting for it ----
+        elif action == "assign" and self.user["role"] == "agent" and job["status"] in ("open", "quote_requested", "quoted", "pending_verification"):
+            who = str(data.get("tradesperson", ""))[:100]
+            known = {t["company"] for t in self.approved_trades(stage)}
+            if who not in known:
+                return self._json({"error": f"{who or 'nobody'} is not an approved tradesperson — approve their registration first"}, 400)
+            job["status"] = "assigned"
+            job["assigned_to"] = who
+            c = self.post_msg(stage, job["case_id"], f"{who} has been put on this job by the agency.", to=("tenant", "trades"))
+            self.audit(stage, {"actor": "agent", "action": "job_assigned", "target": job["id"], "note": who})
+        elif action in ("request_quote",) and self.user["role"] == "agent" and job["status"] in ("open", "assigned"):
+            who = str(data.get("tradesperson", ""))[:100]
+            known = {t["company"] for t in self.approved_trades(stage)}
+            if who not in known:
+                return self._json({"error": f"{who or 'nobody'} is not an approved tradesperson"}, 400)
+            job["status"] = "quote_requested"
+            job["assigned_to"] = who
+            self.post_msg(stage, job["case_id"], f"Quote requested from {who} — the work starts once the agency approves a price.", to=("trades",))
+            self.audit(stage, {"actor": "agent", "action": "quote_requested", "target": job["id"], "note": who})
+        elif action == "submit_quote" and job["status"] == "quote_requested" and actor == job.get("assigned_to"):
+            job["quotes"] = job.get("quotes", [])
+            q = {"tradesperson": actor, "pence": max(0, int(data.get("quote_pence", 0))),
+                 "note": str(data.get("note", ""))[:500], "at": now(), "status": "pending"}
+            job["quotes"].append(q)
+            job["status"] = "quoted"
+            self.sync_case(stage, job["case_id"], "quoted")
+            self.post_msg(stage, job["case_id"], f"{actor} quoted £{q['pence']/100:.2f}"
+                          + (f" — {q['note']}" if q["note"] else "") + ". Waiting on the agency to approve.", to=("tenant",))
+            self.audit(stage, {"actor": actor, "action": "quote_submitted", "target": job["id"], "note": f"£{q['pence']/100:.2f}"})
+        elif action == "approve_quote" and self.user["role"] == "agent" and job["status"] == "quoted":
+            pend = [q for q in job.get("quotes", []) if q["status"] == "pending"]
+            if not pend:
+                return self._json({"error": "no pending quote"}, 400)
+            q = max(pend, key=lambda x: x.get("at", ""))
+            q["status"] = "approved"
+            job["approved_quote_pence"] = q["pence"]
+            job["status"] = "in_progress"
+            self.sync_case(stage, job["case_id"], "in_progress")
+            self.post_msg(stage, job["case_id"], f"Quote of £{q['pence']/100:.2f} approved — {job['assigned_to']} can start.", to=("tenant", "trades"))
+            self.audit(stage, {"actor": "agent", "action": "quote_approved", "target": job["id"], "note": f"£{q['pence']/100:.2f}"})
+        elif action == "decline_quote" and self.user["role"] == "agent" and job["status"] == "quoted":
+            for q in job.get("quotes", []):
+                if q["status"] == "pending":
+                    q["status"] = "declined"
+            job["status"] = "quote_requested"
+            self.sync_case(stage, job["case_id"], "dispatched")
+            self.post_msg(stage, job["case_id"], "Quote declined — " + str(data.get("reason", "price not right"))[:300]
+                          + ". Please re-quote or a different trade will be asked.", to=("trades",))
+            self.audit(stage, {"actor": "agent", "action": "quote_declined", "target": job["id"]})
+        elif action == "send_to_landlord" and self.user["role"] == "agent":
+            if job["status"] not in ("paid", "in_progress") or not job.get("invoice_pence"):
+                return self._json({"error": "nothing to send — job has no invoice yet"}, 400)
+            prop = self.find_prop(stage, job["property_id"]) or {}
+            stage.setdefault("approvals", [])
+            stage["approvals"].append({
+                "id": f"appr-{len(stage['approvals']) + 1}", "job_id": job["id"],
+                "property_id": job["property_id"], "landlord": prop.get("landlord", "Landlord"),
+                "amount_pence": job["invoice_pence"], "reason": job["message"],
+                "evidence": {"tradesperson": job.get("assigned_to"), "job_created": job.get("created_at"),
+                             "work_completed": job.get("completed_at")},
+                "status": "pending", "requested_at": now(),
+                "sent_by_agent": True})
+            job["status"] = "awaiting_approval"
+            self.sync_case(stage, job["case_id"], "awaiting_approval")
+            self.post_msg(stage, job["case_id"], "The agency has sent your invoice to the landlord for sign-off.", to=("trades",))
+            self.audit(stage, {"actor": "agent", "action": "invoice_sent_to_landlord", "target": job["id"],
+                               "note": f"£{job['invoice_pence']/100:.2f}"})
+        elif action == "start" and job["status"] == "assigned" and actor == job.get("assigned_to"):
+            job["status"] = "in_progress"
+            self.sync_case(stage, job["case_id"], "in_progress")
+            self.audit(stage, {"actor": actor, "action": "job_started", "target": job["id"]})
         elif action == "complete" and job["status"] == "in_progress":
             job["invoice_pence"] = max(0, int(data.get("invoice_pence", 0)))
             job["completed_at"] = now()
@@ -512,6 +628,7 @@ class H(SimpleHTTPRequestHandler):
                 stage["approvals"].append(appr)
                 job["status"] = "awaiting_approval"
                 self.sync_case(stage, job["case_id"], "awaiting_approval")
+                self.post_msg(stage, job["case_id"], f"Work done. Invoice £{job['invoice_pence']/100:.2f} is above the standing authority, so the landlord will sign it off.", to=("tenant", "landlord"))
                 self.audit(stage, {"actor": job.get("assigned_to") or "trades", "action": "invoice_submitted",
                                    "target": job["id"], "note": f"£{job['invoice_pence']/100:.2f} above standing authority"})
             else:
@@ -544,6 +661,10 @@ class H(SimpleHTTPRequestHandler):
         appr["decided_at"] = now()
         job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
         if job:
+            self.post_msg(stage, next((j["case_id"] for j in stage["jobs"] if j["id"] == job["id"]), None) or -1,
+                          ("The landlord approved " if appr["status"] == "approved" else "The landlord declined the invoice — ")
+                          + f"£{appr['amount_pence']/100:.2f}" + (f". Reason: {appr['reason_given']}" if appr.get("reason_given") else "."),
+                          to=("tenant", "trades", "landlord"))
             if appr["status"] == "approved":
                 job["status"] = "paid"
                 job["paid_at"] = now()
@@ -574,16 +695,45 @@ class H(SimpleHTTPRequestHandler):
         c = next((c for c in stage.get("cases", []) if c["id"] == data.get("id")), None)
         if not c:
             return self._json({"error": "case not found"}, 404)
-        if data.get("action") == "close":
+        action = data.get("action")
+        u = getattr(self, "user", None) or {}
+        if action in ("reply", "inform"):
+            to = data.get("to") or ["tenant"]
+            if u.get("role") == "tenant" and "tenant" not in (to + [u.get("role")]):
+                return self._json({"error": "not your audience"}, 403)
+            if not str(data.get("text", "")).strip():
+                return self._json({"error": "nothing to say"}, 400)
+            self.post_msg(stage, c["id"], data.get("text"), to=to)
+            self.audit(stage, {"actor": u.get("display_name", "?"), "action": f"case_{action}",
+                               "target": c["id"], "note": "-> " + ",".join(to)})
+        elif action == "add_tradesperson":
+            who = str(data.get("tradesperson", ""))[:100]
+            known = {t["company"] for t in self.approved_trades(stage)}
+            if who not in known:
+                return self._json({"error": f"{who or 'nobody'} is not an approved tradesperson"}, 400)
+            if who in (c.get("participants") or []):
+                return self._json({"error": "already in the discussion"}, 400)
+            c.setdefault("participants", []).append(who)
+            self.post_msg(stage, c["id"], f"{who} has been added to this discussion by the agency.", to=("tenant", "trades"))
+            self.audit(stage, {"actor": u.get("display_name", "?"), "action": "tradesperson_added", "target": c["id"], "note": who})
+        elif action == "close":
             reason = str(data.get("reason", "")).strip()[:300]
             if not reason:
                 return self._json({"error": "a closing reason is required"}, 400)
             c["status"] = "closed"
             c["closed_reason"] = reason
             c["actioned_at"] = now()
+            self.post_msg(stage, c["id"], f"Case closed: {reason}", to=("tenant", "trades", "landlord"))
             self.audit(stage, {"actor": "agent", "action": "case_closed", "target": c["id"], "note": reason})
+        elif action == "reopen":
+            c["status"] = "new"
+            self.post_msg(stage, c["id"], "Case reopened by the agency.", to=("tenant",))
+            self.audit(stage, {"actor": "agent", "action": "case_reopened", "target": c["id"]})
+        else:
+            return self._json({"error": f"unknown action {action}"}, 400)
         save_stage(stage)
         self._json({"success": True})
+
 
     # ---------- static ----------
     def serve_file(self, name, ctype="text/html; charset=utf-8"):

@@ -174,7 +174,7 @@
       "role": "tenant",
       "name": "Daniel Mensah",
       "message": "There is black mould spreading in my son's bedroom and he has asthma.",
-      "status": "new",
+      "status": "in_progress",
       "submitted_at": "2026-09-20T20:14:27.371011Z",
       "triage": {
         "category": "maintenance",
@@ -184,7 +184,38 @@
         "confidence": 100,
         "engine": "jev",
         "cost_usd": 2e-05
-      }
+      },
+      "thread": [
+        {
+          "author": "Stefan \u2014 the agency desk",
+          "role": "agent",
+          "text": "Quote requested from R. Doyle Gas & Heat \u2014 the work starts once the agency approves a price.",
+          "to": [
+            "trades"
+          ],
+          "at": "2026-09-21T05:52:22.305991Z"
+        },
+        {
+          "author": "R. Doyle Gas & Heat",
+          "role": "trades",
+          "text": "R. Doyle Gas & Heat quoted \u00a3185.00 \u2014 humidistat fan, isolator clean, half day, parts included. Waiting on the agency to approve.",
+          "to": [
+            "tenant"
+          ],
+          "at": "2026-09-21T05:52:49.323653Z"
+        },
+        {
+          "author": "Stefan \u2014 the agency desk",
+          "role": "agent",
+          "text": "Quote of \u00a3185.00 approved \u2014 R. Doyle Gas & Heat can start.",
+          "to": [
+            "tenant",
+            "trades"
+          ],
+          "at": "2026-09-21T05:52:53.360540Z"
+        }
+      ],
+      "status_at": "2026-09-21T05:52:53.360526Z"
     },
     {
       "id": 498,
@@ -423,6 +454,18 @@
       "trades": [],
       "insurance_expiry": "",
       "coverage": ""
+    },
+    {
+      "id": "reg-7",
+      "role": "landlord",
+      "name": "Goku",
+      "email": "arthyltd@gmail.com",
+      "details": "Nothing to say",
+      "status": "approved",
+      "consent": true,
+      "submitted_at": "2026-09-21T05:22:52.590876Z",
+      "actioned_at": "2026-09-21T05:28:46.030185Z",
+      "decision_note": ""
     }
   ],
   "jobs": [
@@ -511,10 +554,20 @@
         "engine": "jev",
         "cost_usd": 2e-05
       },
-      "status": "open",
-      "assigned_to": null,
+      "status": "in_progress",
+      "assigned_to": "R. Doyle Gas & Heat",
       "invoice_pence": null,
-      "created_at": "2026-09-20T20:14:27.712248Z"
+      "created_at": "2026-09-20T20:14:27.712248Z",
+      "quotes": [
+        {
+          "tradesperson": "R. Doyle Gas & Heat",
+          "pence": 18500,
+          "note": "humidistat fan, isolator clean, half day, parts included",
+          "at": "2026-09-21T05:52:49.323619Z",
+          "status": "approved"
+        }
+      ],
+      "approved_quote_pence": 18500
     },
     {
       "id": "job-6",
@@ -861,6 +914,40 @@
       "actor": "public-site",
       "action": "renter_submission",
       "target": "case-507"
+    },
+    {
+      "at": "2026-09-21T05:22:52.590895Z",
+      "actor": "public-site",
+      "action": "landlord_submission",
+      "target": "reg-7"
+    },
+    {
+      "at": "2026-09-21T05:28:46.030202Z",
+      "actor": "agent",
+      "action": "registration_approved",
+      "target": "reg-7",
+      "note": ""
+    },
+    {
+      "at": "2026-09-21T05:52:22.306010Z",
+      "actor": "agent",
+      "action": "quote_requested",
+      "target": "job-5",
+      "note": "R. Doyle Gas & Heat"
+    },
+    {
+      "at": "2026-09-21T05:52:49.323659Z",
+      "actor": "R. Doyle Gas & Heat",
+      "action": "quote_submitted",
+      "target": "job-5",
+      "note": "\u00a3185.00"
+    },
+    {
+      "at": "2026-09-21T05:52:53.360544Z",
+      "actor": "agent",
+      "action": "quote_approved",
+      "target": "job-5",
+      "note": "\u00a3185.00"
     }
   ]
 }
