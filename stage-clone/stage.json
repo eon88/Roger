@@ -391,9 +391,45 @@
       },
       "consent": true,
       "submitted_at": "2026-09-20T22:52:22.676539Z"
+    },
+    {
+      "id": 508,
+      "type": "issue",
+      "property_id": "alder",
+      "role": "tenant",
+      "name": "Daniel Mensah",
+      "email": "",
+      "message": "forged-name probe test tap",
+      "status": "closed",
+      "triage": {
+        "category": "other",
+        "trade": "plumbing",
+        "urgency": 1,
+        "urgency_raw": 0.71,
+        "safety": 0.42,
+        "confidence": 48,
+        "engine": "jev",
+        "cost_usd": 3e-05
+      },
+      "submitted_at": "2026-09-21T06:09:56.212195Z",
+      "closed_reason": "parent security probe \u2014 synthetic, no fault at property",
+      "actioned_at": "2026-09-21T06:10:17.016640Z",
+      "thread": [
+        {
+          "author": "Stefan \u2014 the agency desk",
+          "role": "agent",
+          "text": "Case closed: parent security probe \u2014 synthetic, no fault at property",
+          "to": [
+            "tenant",
+            "trades",
+            "landlord"
+          ],
+          "at": "2026-09-21T06:10:17.016650Z"
+        }
+      ]
     }
   ],
-  "next_case_id": 508,
+  "next_case_id": 509,
   "registrations": [
     {
       "id": "reg-1",
@@ -948,6 +984,20 @@
       "action": "quote_approved",
       "target": "job-5",
       "note": "\u00a3185.00"
+    },
+    {
+      "at": "2026-09-21T06:09:56.212216Z",
+      "actor": "system",
+      "action": "case_created",
+      "target": 508,
+      "note": "other/plumbing urgency 1"
+    },
+    {
+      "at": "2026-09-21T06:10:17.016654Z",
+      "actor": "agent",
+      "action": "case_closed",
+      "target": 508,
+      "note": "parent security probe \u2014 synthetic, no fault at property"
     }
   ]
 }

@@ -444,13 +444,15 @@ class H(SimpleHTTPRequestHandler):
         stage = load_stage()
         prop = self.find_prop(stage, data.get("property_id"))
         message = str(data.get("message", ""))[:3000]
+        issuer = self.user or {}
+        name = issuer.get("display_name") if issuer.get("role") == "tenant" else str(data.get("name", "Tenant"))[:100]
         t = self.triage(message)
         case = {
             "id": stage.get("next_case_id", 490),
             "type": "issue",
             "property_id": prop["id"] if prop else None,
             "role": "tenant",
-            "name": str(data.get("name", "Tenant"))[:100],
+            "name": name or "Tenant",
             "email": str(data.get("email", ""))[:254],
             "message": message,
             "status": "reported",
@@ -500,7 +502,17 @@ class H(SimpleHTTPRequestHandler):
         job = next((j for j in stage.get("jobs", []) if j["id"] == data.get("id")), None)
         if not job:
             return self._json({"error": "job not found"}, 404)
-        actor = (self.user or {}).get("display_name") or str(data.get("tradesperson", "Unknown"))[:100]
+        role = (self.user or {}).get("role")
+        AGENT_ONLY = {"assign", "request_quote", "approve_quote", "decline_quote",
+                      "send_to_landlord", "verify_approve", "verify_decline"}
+        TRADES_ONLY = {"accept", "start", "complete", "release", "submit_quote"}
+        if action in AGENT_ONLY and role != "agent":
+            return self._json({"error": "agent-only move"}, 403)
+        if action in TRADES_ONLY and role != "trades":
+            return self._json({"error": "tradesperson-only move"}, 403)
+        actor = (self.user or {}).get("display_name") or "Unknown"
+        if action == "release" and actor != job.get("assigned_to"):
+            return self._json({"error": "not your job to release"}, 403)
 
         if action == "accept":
             chk = self.credential_check(job, actor)
@@ -649,6 +661,8 @@ class H(SimpleHTTPRequestHandler):
         appr = next((a for a in stage.get("approvals", []) if a["id"] == data.get("id")), None)
         if not appr:
             return self._json({"error": "approval not found"}, 404)
+        if (self.user or {}).get("role") != "agent" and appr["landlord"] != (self.user or {}).get("display_name"):
+            return self._json({"error": "not your approval"}, 403)
         if appr["status"] != "pending":
             return self._json({"error": "already decided"}, 409)
         action = data.get("action")
@@ -697,6 +711,18 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "case not found"}, 404)
         action = data.get("action")
         u = getattr(self, "user", None) or {}
+        if action in ("close", "reopen", "add_tradesperson") and u.get("role") != "agent":
+            return self._json({"error": "agent-only move"}, 403)
+        if action in ("reply", "inform") and u.get("role") == "tenant" and c.get("name") != u.get("display_name"):
+            return self._json({"error": "not your case"}, 403)
+        if action in ("reply", "inform") and u.get("role") == "landlord" and not any(
+                p["id"] == c.get("property_id") and p.get("landlord") == u.get("display_name")
+                for p in stage.get("properties", [])):
+            return self._json({"error": "not your property"}, 403)
+        if action in ("reply", "inform") and u.get("role") == "trades" and u.get("display_name") not in (
+                (c.get("participants") or []) + [j.get("assigned_to") for j in stage.get("jobs", [])
+                                                 if j.get("case_id") == c["id"]]):
+            return self._json({"error": "not your case"}, 403)
         if action in ("reply", "inform"):
             to = data.get("to") or ["tenant"]
             if u.get("role") == "tenant" and "tenant" not in (to + [u.get("role")]):
