@@ -100,7 +100,8 @@ class H(SimpleHTTPRequestHandler):
                 "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
-                "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"}}
+                "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
+                "/api/document": {"agent"}, "/api/document-action": {"agent"}}
 
     def require(self, roles=None):
         """Returns user or None (response already sent)."""
@@ -187,6 +188,34 @@ class H(SimpleHTTPRequestHandler):
         m = re.fullmatch(r"/api/invitation/validate/([A-Za-z0-9_\-]+)", path)
         if m:
             return self._json(self.validate_invitation_token(m.group(1)))
+        m = re.fullmatch(r"/api/documents", path)
+        if m:
+            u = self.require({"agent", "tenant", "landlord", "trades"})
+            if not u:
+                return
+            return self._json({"documents": self.scoped_documents(u)})
+        m = re.fullmatch(r"/api/document/([A-Za-z0-9_\-]+)$", path)
+        if m:
+            u = self.require({"agent", "tenant", "landlord", "trades"})
+            if not u:
+                return
+            doc = self.get_document(m.group(1))
+            if not doc:
+                return self._json({"error": "document not found"}, 404)
+            if not self.can_view_document(u, doc):
+                return self._json({"error": "not your portal"}, 403)
+            return self._json({"document": self.safe_document(doc)})
+        m = re.fullmatch(r"/api/document/([A-Za-z0-9_\-]+)/file", path)
+        if m:
+            u = self.require({"agent", "tenant", "landlord", "trades"})
+            if not u:
+                return
+            doc = self.get_document(m.group(1))
+            if not doc:
+                return self._json({"error": "document not found"}, 404)
+            if not self.can_view_document(u, doc):
+                return self._json({"error": "not your portal"}, 403)
+            return self.serve_document_file(doc)
         if not self.is_public(path):
             if not self.require(self.ROLE_PAGES.get(path)):
                 return
@@ -283,6 +312,8 @@ class H(SimpleHTTPRequestHandler):
             "/api/appointment-action": self.handle_appointment_action,
             "/api/invitation": self.handle_invitation,
             "/api/invitation-action": self.handle_invitation_action,
+            "/api/document": self.handle_document,
+            "/api/document-action": self.handle_document_action,
             "/api/tenant/issue": self.handle_tenant_issue,
             "/api/job-action": self.handle_job_action,
             "/api/landlord-action": self.handle_landlord_action,
@@ -855,6 +886,123 @@ class H(SimpleHTTPRequestHandler):
         return {"valid": True, "token": token, "property_id": inv["property_id"],
                 "property_title": prop.get("title"), "role": inv["role"],
                 "email": inv.get("email", ""), "name": inv.get("name", "")}
+
+    # ---------- documents ----------
+    def get_document(self, doc_id):
+        return next((d for d in load_stage().get("documents", []) if d["id"] == doc_id), None)
+
+    def can_view_document(self, u, doc):
+        if u["role"] == "agent":
+            return True
+        stage = load_stage()
+        me = u["display_name"]
+        c = next((c for c in stage.get("cases", []) if c["id"] == doc.get("case_id")), None)
+        prop = self.find_prop(stage, doc.get("property_id") or (c or {}).get("property_id")) or {}
+        if u["role"] == "tenant":
+            return prop.get("tenant") == me or (c or {}).get("name") == me
+        if u["role"] == "landlord" and prop.get("landlord") == me:
+            return True
+        if u["role"] == "trades":
+            case_ids = {j.get("case_id") for j in stage.get("jobs", []) if j.get("assigned_to") == me}
+            if c and (c["id"] in case_ids or me in (c.get("participants") or [])):
+                return True
+        return False
+
+    def scoped_documents(self, u):
+        stage = load_stage()
+        docs = stage.get("documents", [])
+        if u["role"] == "agent":
+            return [self.safe_document(d) for d in docs]
+        return [self.safe_document(d) for d in docs if self.can_view_document(u, d)]
+
+    def safe_document(self, d):
+        out = {k: v for k, v in d.items() if k != "data_b64"}
+        out["has_file"] = bool(d.get("data_b64"))
+        return out
+
+    def handle_document(self, data):
+        """Agent uploads a tenancy agreement / deposit receipt / inspection report.
+        Content received as base64 in JSON (stdlib server has no multipart parser)."""
+        stage = load_stage()
+        case_id = data.get("case_id")
+        c = next((c for c in stage.get("cases", []) if c["id"] == case_id), None)
+        property_id = data.get("property_id")
+        if not property_id and c:
+            property_id = c.get("property_id")
+        prop = self.find_prop(stage, property_id)
+        if not prop:
+            return self._json({"error": "property not found (pass property_id or a valid case_id)"}, 404)
+        dtype = str(data.get("document_type", "other"))[:40]
+        allowed = ("tenancy_agreement", "deposit_receipt", "inspection_report", "id_proof", "other")
+        if dtype not in allowed:
+            return self._json({"error": f"document_type must be one of {', '.join(allowed)}"}, 400)
+        b64 = str(data.get("content_b64", ""))
+        import base64
+        try:
+            raw = base64.b64decode(b64, validate=True)
+        except Exception:
+            return self._json({"error": "content_b64 must be valid base64"}, 400)
+        if len(raw) > 5 * 1024 * 1024:
+            return self._json({"error": "file too large (max 5 MB)"}, 400)
+        fname = os.path.basename(str(data.get("file_name", "document"))[:120]) or "document"
+        fname = re.sub(r"[^A-Za-z0-9._ -]", "_", fname)
+        doc_id = f"doc-{len(stage.get('documents', [])) + 1}"
+        flist = stage.setdefault("documents", [])
+        doc = {
+            "id": doc_id,
+            "case_id": case_id if c else None,
+            "property_id": prop["id"],
+            "document_type": dtype,
+            "title": str(data.get("title", ""))[:120],
+            "description": str(data.get("description", ""))[:500],
+            "file_name": fname,
+            "content_type": str(data.get("content_type", "application/octet-stream"))[:80],
+            "file_size": len(raw),
+            "uploaded_by": (self.user or {}).get("display_name", "Agent"),
+            "uploaded_at": now(),
+            "verified_by": None,
+            "verified_at": None,
+            "status": "pending",
+            "notes": "",
+            "data_b64": b64,
+        }
+        flist.append(doc)
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
+                           "action": "document_uploaded", "target": doc_id,
+                           "note": f"{dtype} / {fname} / {len(raw)}B for {prop['id']}"})
+        save_stage(stage)
+        return self._json({"success": True, "document": self.safe_document(doc)})
+
+    def handle_document_action(self, data):
+        """verify or reject an uploaded document with an optional note. Roles: agent only."""
+        stage = load_stage()
+        doc = next((d for d in stage.get("documents", []) if d["id"] == data.get("id")), None)
+        if not doc:
+            return self._json({"error": "document not found"}, 404)
+        action = data.get("action")
+        if action not in ("verify", "reject"):
+            return self._json({"error": "action must be verify|reject"}, 400)
+        if action == "reject" and not str(data.get("note", "")).strip():
+            return self._json({"error": "a note is required when rejecting"}, 400)
+        doc["status"] = "verified" if action == "verify" else "rejected"
+        doc["verified_by"] = (self.user or {}).get("display_name", "Agent")
+        doc["verified_at"] = now()
+        if data.get("note"):
+            doc["notes"] = str(data["note"])[:500]
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
+                           "action": f"document_{action}", "target": doc["id"], "note": doc.get("notes")})
+        save_stage(stage)
+        return self._json({"success": True, "document": self.safe_document(doc)})
+
+    def serve_document_file(self, doc):
+        import base64
+        body = base64.b64decode(doc.get("data_b64", "")) if doc.get("data_b64") else b""
+        self.send_response(200)
+        self.send_header("Content-Type", doc.get("content_type", "application/octet-stream"))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'inline; filename="{doc.get("file_name", "document")}"')
+        self.end_headers()
+        self.wfile.write(body)
 
     # ---------- appointments ----------
     def scoped_appointments(self, u):

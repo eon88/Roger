@@ -1166,6 +1166,20 @@
       "actor": "AI developer (full access)",
       "action": "invitation_revoked",
       "target": "Q6wUZ0K0"
+    },
+    {
+      "at": "2026-09-21T11:52:28.100190Z",
+      "actor": "AI developer (full access)",
+      "action": "document_uploaded",
+      "target": "doc-1",
+      "note": "tenancy_agreement / agreement.pdf / 31B for parkside"
+    },
+    {
+      "at": "2026-09-21T11:52:28.212357Z",
+      "actor": "AI developer (full access)",
+      "action": "document_verify",
+      "target": "doc-1",
+      "note": ""
     }
   ],
   "appointments": [
@@ -1204,5 +1218,6 @@
       "outcome": null
     }
   ],
-  "invitations": []
+  "invitations": [],
+  "documents": []
 }
