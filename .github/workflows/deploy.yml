@@ -25,12 +25,17 @@ jobs:
         run: |
           install -m 700 -d ~/.ssh
           CLEAN_KEY="$(printf '%s' "${{ secrets.ROGER_SSH_PRIVATE_KEY_B64 }}" | tr -d '\\r\\n\\t ')"
-          echo "Encoded length: ${#CLEAN_KEY}"
-          printf '%s' "$CLEAN_KEY" | base64 --decode > ~/.ssh/roger_deploy
+          if [[ "$CLEAN_KEY" == LS0tLS1CRUdJTi* ]]; then
+            printf '%s' "$CLEAN_KEY" | base64 --decode > ~/.ssh/roger_deploy
+          else
+            {
+              echo '-----BEGIN OPENSSH PRIVATE KEY-----'
+              printf '%s' "$CLEAN_KEY" | fold -w 70
+              echo
+              echo '-----END OPENSSH PRIVATE KEY-----'
+            } > ~/.ssh/roger_deploy
+          fi
           chmod 600 ~/.ssh/roger_deploy
-          echo "Decoded bytes: $(wc -c < ~/.ssh/roger_deploy)"
-          echo "Header: $(head -n 1 ~/.ssh/roger_deploy)"
-          echo "Footer: $(tail -n 1 ~/.ssh/roger_deploy)"
           ssh-keygen -y -f ~/.ssh/roger_deploy >/dev/null
 
       - name: Deploy Roger
