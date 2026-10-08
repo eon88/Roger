@@ -1000,7 +1000,7 @@ We will tackle these in order unless a real operational need changes the priorit
 - [x] Test suite — GitHub Actions workflow plus endpoint, storage and backup tests
 - [x] Backups — validated private archive, SHA-256 manifest and restore runbook
 
-**Priority 8 progress:** file-backed writes are now atomic, snapshot files are restricted to owner access, and CI runs the regression suite. The backup utility archives validated stage/user snapshots outside the live data directory. PostgreSQL and object storage remain open because no production database or object-store endpoint has been provisioned for cutover on this branch. The JSON runtime remains the default until that migration can be verified against a real target.
+**Priority 8 progress:** file-backed writes are atomic, snapshots and uploaded files use owner-only permissions, and CI runs the regression suite. The backup utility archives validated stage/user snapshots and the configured document directory outside the live data directory. New uploads are stored as private content-addressed files; a legacy extractor moves existing bodies out of JSON. PostgreSQL has an opt-in runtime backend and migration bridge, but the application still defaults to JSON until a real database target is provisioned and verified.
 
 ---
 
