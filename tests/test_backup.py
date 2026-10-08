@@ -18,12 +18,16 @@ class BackupTests(unittest.TestCase):
             source.mkdir()
             (source / "stage.json").write_text('{"properties": []}', encoding="utf-8")
             (source / "users.json").write_text('{"users": []}', encoding="utf-8")
-            archive_path, checksum_path = create_backup(source, destination)
+            files = root / "document-files"
+            (files / "ab").mkdir(parents=True)
+            (files / "ab" / "certificate").write_bytes(b"private file body")
+            archive_path, checksum_path = create_backup(source, destination, files_dir=files)
             self.assertTrue(archive_path.is_file())
             self.assertEqual(archive_path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(checksum_path.stat().st_mode & 0o777, 0o600)
             with tarfile.open(archive_path, "r:gz") as archive:
-                self.assertEqual(set(archive.getnames()), {"stage.json", "users.json"})
+                self.assertEqual(set(archive.getnames()), {"stage.json", "users.json", "files", "files/ab", "files/ab/certificate"})
+                self.assertEqual(archive.extractfile("files/ab/certificate").read(), b"private file body")
             self.assertEqual(len(checksum_path.read_text(encoding="utf-8").split()[0]), 64)
 
     def test_backup_rejects_destination_inside_live_data(self):
