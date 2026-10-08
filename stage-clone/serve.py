@@ -108,7 +108,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -187,6 +187,10 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"trades": self.approved_trades(load_stage())})
+        if path == "/api/landlord-statements":
+            if not self.require({"agent"}):
+                return
+            return self._json({"statements": load_stage().get("landlord_statements", [])})
         if path == "/api/rent-ledger":
             if not self.require({"agent"}):
                 return
@@ -345,6 +349,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/email-reply": self.handle_email_reply,
             "/api/email-sync": self.handle_email_sync,
             "/api/rent-ledger-action": self.handle_rent_ledger_action,
+            "/api/landlord-statement-action": self.handle_landlord_statement_action,
         }
         if path in handlers:
             return handlers[path](data)
@@ -652,6 +657,10 @@ class H(SimpleHTTPRequestHandler):
             agreement["evidence_note"] = str(data.get("evidence_note", agreement.get("evidence_note", ""))).strip()[:1000]
         if target == "active" and not agreement.get("signed_at"):
             return self._json({"error": "record the signed agreement before activating management"}, 409)
+        if target == "active":
+            for other in stage.get("management_agreements", []):
+                if other.get("id") != aid and other.get("status") == "active" and set(other.get("property_ids", [])) & set(agreement.get("property_ids", [])):
+                    return self._json({"error": "a property already has active management authority"}, 409)
         if target == "ended":
             try:
                 ended_at = datetime.strptime(str(data.get("ended_at", "")), "%Y-%m-%d").date().isoformat()
@@ -1297,6 +1306,79 @@ class H(SimpleHTTPRequestHandler):
         return {**entry, "amount_due_pence": due, "amount_received_pence": received,
                 "balance_pence": balance, "status": status}
 
+    def handle_landlord_statement_action(self, data):
+        """Create an immutable landlord period snapshot from recorded rent and paid jobs."""
+        stage = load_stage()
+        landlord_id = str(data.get("landlord_party_id", ""))[:100]
+        landlord = next((p for p in stage.get("parties", []) if p.get("id") == landlord_id
+                         and "landlord" in p.get("roles", [])), None)
+        if not landlord:
+            return self._json({"error": "landlord Party not found"}, 404)
+        try:
+            start = datetime.strptime(str(data.get("period_start", "")), "%Y-%m-%d").date()
+            end = datetime.strptime(str(data.get("period_end", "")), "%Y-%m-%d").date()
+        except ValueError:
+            return self._json({"error": "period start and end dates are required"}, 400)
+        if end < start:
+            return self._json({"error": "period end cannot precede period start"}, 400)
+        start_iso, end_iso = start.isoformat(), end.isoformat()
+        statements = stage.setdefault("landlord_statements", [])
+        duplicate = next((s for s in statements if s.get("landlord_party_id") == landlord_id
+                          and s.get("period_start") == start_iso and s.get("period_end") == end_iso), None)
+        if duplicate:
+            return self._json({"error": "a statement already exists for this landlord and period",
+                               "statement": duplicate}, 409)
+        property_ids = sorted({pid for a in stage.get("management_agreements", [])
+                                if a.get("landlord_party_id") == landlord_id
+                                and a.get("status") in ("active", "ended")
+                                and (not a.get("ended_at") or a.get("ended_at") >= start_iso)
+                                for pid in a.get("property_ids", [])})
+        if not property_ids:
+            return self._json({"error": "no managed properties found for this landlord"}, 409)
+        rent_lines = []
+        for entry in stage.get("rent_ledger_entries", []):
+            if entry.get("property_id") not in property_ids:
+                continue
+            for payment in entry.get("payments", []):
+                paid_date = str(payment.get("received_date", ""))
+                if start_iso <= paid_date <= end_iso:
+                    rent_lines.append({
+                        "rent_entry_id": entry.get("id"), "tenancy_id": entry.get("tenancy_id"),
+                        "property_id": entry.get("property_id"), "received_date": paid_date,
+                        "rent_received_pence": int(payment.get("amount_pence", 0)),
+                        "agency_fee_pence": int(payment.get("agency_fee_pence", 0)),
+                    })
+        maintenance_lines = []
+        for job in stage.get("jobs", []):
+            paid_date = str(job.get("paid_at", ""))[:10]
+            if job.get("property_id") in property_ids and job.get("status") == "paid" and start_iso <= paid_date <= end_iso:
+                maintenance_lines.append({
+                    "job_id": job.get("id"), "property_id": job.get("property_id"),
+                    "paid_date": paid_date, "amount_pence": int(job.get("invoice_pence") or 0),
+                })
+        gross = sum(x["rent_received_pence"] for x in rent_lines)
+        fees = sum(x["agency_fee_pence"] for x in rent_lines)
+        maintenance = sum(x["amount_pence"] for x in maintenance_lines)
+        num = int(stage.get("next_landlord_statement_id", 1))
+        at = now()
+        statement = {
+            "id": "statement-" + str(num), "landlord_party_id": landlord_id,
+            "period_start": start_iso, "period_end": end_iso,
+            "property_ids": property_ids, "rent_lines": rent_lines,
+            "maintenance_lines": maintenance_lines,
+            "rent_received_pence": gross, "agency_fee_pence": fees,
+            "maintenance_pence": maintenance,
+            "net_payout_pence": gross - fees - maintenance,
+            "created_at": at, "created_by": (self.user or {}).get("username", "agent"),
+        }
+        stage["next_landlord_statement_id"] = num + 1
+        statements.append(statement)
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "Agent"),
+                           "action": "landlord_statement_created", "target": statement["id"],
+                           "note": start_iso + " to " + end_iso})
+        save_stage(stage)
+        return self._json({"success": True, "statement": statement})
+
     def handle_rent_ledger_action(self, data):
         """Create rent schedules and record manual payments or adjustments."""
         stage = load_stage()
@@ -1377,11 +1459,23 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "receipt must be positive and no greater than the outstanding balance"}, 400)
             if received_date > datetime.now(timezone.utc).date():
                 return self._json({"error": "receipt date cannot be in the future"}, 400)
-            entry.setdefault("payments", []).append({
+            payment = {
                 "amount_pence": amount, "received_date": received_date.isoformat(),
                 "note": str(data.get("note", "")).strip()[:500], "recorded_at": now(),
                 "recorded_by": (self.user or {}).get("username", "agent"),
-            })
+                "agency_fee_pence": 0, "management_fee_bps": 0,
+                "management_agreement_id": None,
+            }
+            agreement = next((a for a in reversed(stage.get("management_agreements", []))
+                              if a.get("status") == "active" and a.get("agreement_type") == "full_management"
+                              and entry.get("property_id") in a.get("property_ids", [])), None)
+            if agreement:
+                fee_bps = int(agreement.get("management_fee_bps", 0))
+                payment["agency_fee_pence"] = (amount * fee_bps + 5000) // 10000
+                payment["management_fee_bps"] = fee_bps
+                payment["management_agreement_id"] = agreement.get("id")
+                payment["landlord_party_id"] = agreement.get("landlord_party_id")
+            entry.setdefault("payments", []).append(payment)
         elif action == "adjustment":
             try:
                 amount = int(data.get("amount_pence", 0))
