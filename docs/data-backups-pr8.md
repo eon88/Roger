@@ -1,6 +1,6 @@
 # Data backup runbook
 
-Roger stores its current data in `stage.json` and `users.json` under `DATA_DIR`. Uploaded document bytes are embedded in the stage snapshot, so the archive includes them.
+Roger stores metadata in `stage.json` and `users.json` under `DATA_DIR`. New document bodies are stored as content-addressed files under `ROGER_FILES_DIR` (default: `DATA_DIR/files`). The archive includes that directory as well as both JSON files.
 
 Create a private validated snapshot:
 
@@ -9,7 +9,7 @@ DATA_DIR=/path/to/roger-data ROGER_BACKUP_DIR=/path/to/private-backups \
   python scripts/backup_roger_data.py --retention-days 14
 ```
 
-The script validates both JSON files before writing, creates a compressed archive plus SHA-256 checksum, uses mode `0600`, and removes archives older than the retention window. Keep the backup destination outside the live data directory and on storage with access controls and its own backup policy.
+The script validates both JSON files before writing, includes the configured document directory, creates a compressed archive plus SHA-256 checksum, uses mode `0600`, and removes archives older than the retention window. Keep the backup destination outside the live data directory and on storage with access controls and its own backup policy.
 
 To inspect an archive:
 
