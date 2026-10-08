@@ -13,6 +13,7 @@
       <a href="#" class="tab on" data-view="overview">Overview</a>
       <a href="#" class="tab" data-view="cases">Cases</a>
       <a href="#" class="tab" data-view="jobs">Jobs</a>
+      <a href="#" class="tab" data-view="communications">Communications</a>
       <a href="#" class="tab" data-view="registrations">Registrations</a>
       <a href="#" class="tab" data-view="prospects">Prospects</a>
       <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
@@ -26,6 +27,7 @@
     <section id="view-overview"></section>
     <section id="view-cases" style="display:none"></section>
     <section id="view-jobs" style="display:none"></section>
+    <section id="view-communications" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
     <section id="view-people" style="display:none"></section>
@@ -116,10 +118,9 @@ async function load(manual){
   renderAll();
 }
 function renderAll(){
-  const y=window.scrollY, searchFocused=document.activeElement?.id==='desk-search';
-  const searchPos=searchFocused?document.activeElement.selectionStart:null;
-  markFlips(); renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
-  if(searchFocused){const input=document.getElementById('desk-search');input?.focus();if(searchPos!==null)input?.setSelectionRange(searchPos,searchPos);}
+  const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
+  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+  if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
@@ -140,6 +141,7 @@ function renderDeskSearch(q){
   add(stage.properties,'properties',x=>'property-'+x.id,x=>x.title||x.id,x=>x.area||'');
   add(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id+' · '+(x.type||'case'),x=>[prop(x.property_id)?.title,x.name,x.email,x.status,x.message].filter(Boolean).join(' · '));
   add(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id+' · case #'+x.case_id,x=>[prop(x.property_id)?.title,x.status,x.assigned_to,x.message].filter(Boolean).join(' · '));
+  add(stage.cases,'communications',x=>'comm-case-'+x.id,x=>'Conversation · case #'+x.id,x=>[prop(x.property_id)?.title,x.name,x.email,x.message,(x.thread||[]).map(m=>m.text).join(' ')].filter(Boolean).join(' · '));
   add(stage.registrations,'registrations',x=>'reg-'+x.id,x=>(x.role||'registration')+' · '+(x.name||x.id),x=>[x.email,x.status,x.details].filter(Boolean).join(' · '));
   add(stage.parties,'people',x=>x.id,x=>x.display_name||x.id,x=>[x.kind,(x.roles||[]).join(', '),x.email,x.phone,x.status].filter(Boolean).join(' · '));
   add(stage.tenancies,'people',x=>x.id,x=>'Tenancy '+x.id,x=>[prop(x.property_id)?.title,(x.tenant_party_ids||[]).map(id=>(stage.parties||[]).find(p=>p.id===id)?.display_name||id).join(', '),x.status].filter(Boolean).join(' · '));
@@ -209,6 +211,44 @@ function renderOverview(){
   }
 }
 
+function caseMessages(c){
+ const items=[{author:c.name||'Contact',role:'contact',to:['agent'],text:c.message||'',at:c.submitted_at||'',initial:true}];
+ (c.thread||[]).forEach(m=>items.push(m));
+ return items.filter(m=>m.text).sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
+}
+function renderCommunications(){
+ const cases=(stage.cases||[]).slice();
+ const propOptions=(stage.properties||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
+ const openCount=cases.filter(c=>!['closed','resolved','declined'].includes(c.status)).length;
+ const messageCount=cases.reduce((n,c)=>n+caseMessages(c).length,0);
+ document.getElementById('view-communications').innerHTML='<div class="move">communications inbox</div>'+
+ '<p class="fineprint">Case conversations are grouped with their contact snapshot and property. Use the case book to view the full operational record. External email is not connected.</p>'+
+ '<div class="stats"><div class="stat"><div class="value">'+openCount+'</div><div class="label">open conversations</div></div><div class="stat"><div class="value">'+messageCount+'</div><div class="label">recorded messages</div></div></div>'+
+ '<div class="card"><div class="grid2"><label class="field"><span>Search conversations</span><input id="comm-search" value="'+esc(window.commQuery||'')+'" placeholder="Person, email, message or case reference" oninput="window.commQuery=this.value;renderCommunicationItems()"></label>'+
+ '<label class="field"><span>Property</span><select id="comm-property" onchange="window.commProperty=this.value;renderCommunicationItems()"><option value="">All properties</option>'+propOptions+'</select></label></div></div>'+
+ '<div id="communication-list"></div>';
+ const sel=document.getElementById('comm-property');if(sel)sel.value=window.commProperty||'';
+ renderCommunicationItems();
+}
+function renderCommunicationItems(){
+ const host=document.getElementById('communication-list');if(!host)return;
+ const query=String(window.commQuery||'').trim().toLowerCase(),property=window.commProperty||'';
+ const cases=(stage.cases||[]).filter(c=>!property||c.property_id===property).map(c=>({c,items:caseMessages(c)}))
+  .filter(x=>!query||([x.c.name,x.c.email,x.c.message,x.c.id,(stage.properties||[]).find(p=>p.id===x.c.property_id)?.title,...x.items.map(m=>m.text)].join(' ').toLowerCase().includes(query)))
+  .sort((a,b)=>String(b.items[b.items.length-1]?.at||b.c.submitted_at||'').localeCompare(String(a.items[a.items.length-1]?.at||a.c.submitted_at||'')));
+ host.innerHTML=cases.length?cases.map(({c,items})=>{
+  const p=(stage.properties||[]).find(x=>x.id===c.property_id)||{};
+  const content=items.map(m=>'<div class="msg r-'+esc(m.role||'contact')+'"><b>'+esc(m.author||'System')+'</b><span class="who">'+esc((m.to||[]).join(', '))+' · '+esc(fmtDate(m.at))+'</span><div>'+esc(m.text)+'</div></div>').join('');
+  return '<div class="card" id="comm-case-'+esc(c.id)+'"><div class="cardtop"><h3>'+esc(c.name||'Contact')+' · case #'+esc(c.id)+'</h3><span class="badge '+esc(c.status)+'">'+esc(c.status)+'</span></div><div class="meta">'+esc(c.email||'No email on record')+' · '+esc(p.title||'No property linked')+(p.area?' · '+esc(p.area):'')+' · '+(items.length)+' message'+(items.length===1?'':'s')+'</div><div class="msgs">'+content+'</div>'+
+  '<div class="actions"><button class="btn" onclick="goDeskResult(\'cases\',\'case-'+esc(c.id)+'\')">Open case</button>'+(c.status!=='closed'?'<input id="comm-reply-'+esc(c.id)+'" placeholder="Reply to contact" autocomplete="off" onkeydown="if(event.key===\'Enter\')sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')"><label class="who"><input type="checkbox" id="comm-landlord-'+esc(c.id)+'" checked> landlord</label><label class="who"><input type="checkbox" id="comm-trades-'+esc(c.id)+'" checked> trades</label><button class="btn primary" onclick="sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Send</button>':'')+'</div></div>';
+ }).join(''):'<div class="empty">No conversations match these filters.</div>';
+}
+async function sendCommunicationReply(btn,id){
+ const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
+ if(!textValue){toast('Type a reply first.','bad');return;}
+ const to=['tenant'];if(document.getElementById('comm-landlord-'+id)?.checked)to.push('landlord');if(document.getElementById('comm-trades-'+id)?.checked)to.push('trades');
+ await busy(btn,async()=>{try{await post('/api/case-action',{id,action:'reply',to,text:textValue});window.commQuery='';toast('Reply sent and added to the case timeline.');load();}catch(e){}});
+}
 function renderCases(){
   const order={new:1,reported:1,dispatched:2,in_progress:2,awaiting_approval:3,resolved:4,declined:4,closed:5,open:1};
   const rank=c=>((c.triage?.urgency>=2)?0:10)+(order[c.status]||1);
