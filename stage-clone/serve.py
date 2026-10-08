@@ -5,6 +5,10 @@ v2 (post-audit): status-sync between cases/jobs/approvals, credential gating
 on trades jobs, structured registrations, evidence on approvals, validation.
 """
 from http.server import SimpleHTTPRequestHandler, HTTPServer
+import email.parser
+import email.policy
+import email.utils
+import email.errors
 from email.message import EmailMessage
 from email.utils import formataddr
 import smtplib
