@@ -15,6 +15,7 @@
       <a href="#" class="tab" data-view="jobs">Jobs</a>
       <a href="#" class="tab" data-view="communications">Communications</a>
       <a href="#" class="tab" data-view="money">Money</a>
+      <a href="#" class="tab" data-view="compliance">Compliance</a>
       <a href="#" class="tab" data-view="registrations">Registrations</a>
       <a href="#" class="tab" data-view="prospects">Prospects</a>
       <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
@@ -30,6 +31,7 @@
     <section id="view-jobs" style="display:none"></section>
     <section id="view-communications" style="display:none"></section>
     <section id="view-money" style="display:none"></section>
+    <section id="view-compliance" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
     <section id="view-people" style="display:none"></section>
@@ -44,7 +46,7 @@ const money = p => '£' + ((p ?? 0)/100).toFixed(2);
 const ago = iso => { if(!iso) return ''; const m=(Date.now()-new Date(iso))/60000;
   if(m<1)return 'just now'; if(m<60)return Math.round(m)+' min ago'; if(m<1440)return Math.round(m/60)+' h ago'; return Math.round(m/1440)+' days ago'; };
 const when = iso => iso ? `<span class="when" title="${esc(new Date(iso).toLocaleString('en-GB'))}">${ago(iso)}</span>` : '';
-let stage=null, lastGood='', pool=[], ledgerEntries=[];
+let stage=null, lastGood='', pool=[], ledgerEntries=[], complianceRecords=[];
 
 async function api(p){const r=await fetch(p);if(!r.ok)throw new Error(p+': '+r.status);return r.json();}
 async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
@@ -114,6 +116,7 @@ async function load(manual){
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
     try{ window.landlordStatements=(await api('/api/landlord-statements')).statements||[] }catch(e){ window.landlordStatements=[] }
+    try{ complianceRecords=(await api('/api/compliance')).records||[]; window.complianceRecords=complianceRecords }catch(e){ complianceRecords=[]; window.complianceRecords=[] }
     lastGood=new Date().toLocaleTimeString('en-GB');
     document.getElementById('api-error').style.display='none';
     document.getElementById('stamp').textContent='live · updated '+lastGood+' · every 15s';
@@ -123,7 +126,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderCompliance(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -147,6 +150,7 @@ function renderDeskSearch(q){
   add(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id+' · case #'+x.case_id,x=>[prop(x.property_id)?.title,x.status,x.assigned_to,x.message].filter(Boolean).join(' · '));
   add(stage.cases,'communications',x=>'comm-case-'+x.id,x=>'Conversation · case #'+x.id,x=>[prop(x.property_id)?.title,x.name,x.email,x.message,(x.thread||[]).map(m=>m.text).join(' ')].filter(Boolean).join(' · '));
   add(stage.registrations,'registrations',x=>'reg-'+x.id,x=>(x.role||'registration')+' · '+(x.name||x.id),x=>[x.email,x.status,x.details].filter(Boolean).join(' · '));
+  add(complianceRecords,'compliance',x=>x.id,x=>x.requirement_type.replace(/_/g,' ')+' · '+x.id,x=>[(stage.properties||[]).find(p=>p.id===x.property_id)?.title,x.status,x.expiry_date,x.notes].filter(Boolean).join(' · '));
   add(stage.parties,'people',x=>x.id,x=>x.display_name||x.id,x=>[x.kind,(x.roles||[]).join(', '),x.email,x.phone,x.status].filter(Boolean).join(' · '));
   add(stage.tenancies,'people',x=>x.id,x=>'Tenancy '+x.id,x=>[prop(x.property_id)?.title,(x.tenant_party_ids||[]).map(id=>(stage.parties||[]).find(p=>p.id===id)?.display_name||id).join(', '),x.status].filter(Boolean).join(' · '));
   add(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>[prop(x.property_id)?.title,x.status,x.start_time,x.description].filter(Boolean).join(' · '));
@@ -161,6 +165,7 @@ function renderAttentionBoard(){
   (stage.jobs||[]).filter(j=>['open','quoted','pending_verification'].includes(j.status)).forEach(j=>add(needs,'Job '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,j.status));
   (stage.registrations||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,(x.role||'registration')+' application · '+(x.name||x.id),x.email||'Needs review','registrations','reg-'+x.id,'pending'));
   (window._docs||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,'Verify document · '+(x.title||x.file_name||x.id),propertyName(x.property_id),'overview','doc-'+x.id,'pending'));
+  (window.complianceRecords||[]).filter(x=>!['superseded','current'].includes(x.status)||x.reminder_due).forEach(x=>add(needs,x.status==='missing'?'Missing compliance · '+x.requirement_type.replace(/_/g,' '):x.status==='expired'?'Expired compliance · '+x.requirement_type.replace(/_/g,' '):'Compliance reminder · '+x.requirement_type.replace(/_/g,' '),propertyName(x.property_id)+(x.expiry_date?' · expires '+x.expiry_date:''),'compliance',x.id,x.status==='expired'?'overdue':'compliance'));
   (stage.approvals||[]).filter(x=>x.status==='pending').forEach(x=>add(waiting,'Landlord approval · '+(x.id||'request'),propertyName(x.property_id)+' · '+money(x.amount_pence),'jobs',x.job_id?'job-'+x.job_id:'','landlord'));
   (stage.jobs||[]).filter(j=>['quote_requested','assigned','in_progress'].includes(j.status)).forEach(j=>add(waiting,j.status==='quote_requested'?'Quote requested · '+j.id:'Work with trades · '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,'trades'));
   (window._appts||[]).filter(a=>a.status==='proposed').forEach(a=>add(waiting,'Appointment awaiting reply · '+(a.title||a.id),propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'invitee'));
@@ -557,6 +562,21 @@ async function adjustRentEntry(btn){
  const amount=Number(value),reason=(prompt('Reason for adjustment')||'').trim();
  if(!Number.isFinite(amount)||amount===0||!reason){toast('Enter a non-zero amount and a reason.','bad');return;}
  await busy(btn,async()=>{try{await post('/api/rent-ledger-action',{action:'adjustment',entry_id:btn.dataset.entryId,amount_pence:Math.round(amount*100),reason});toast('Rent adjustment recorded.');load();}catch(e){}});
+}
+function renderCompliance(){
+ const props=stage.properties||[],docs=window._docs||[];
+ const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
+ const docOptions=docs.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.file_name||d.id)+'</option>').join('');
+ const labels={gas_safety:'Gas safety',eicr:'EICR',epc:'EPC',smoke_co_alarms:'Smoke / CO alarms',deposit_protection:'Deposit protection',right_to_rent:'Right to Rent',tenancy_agreement:'Tenancy agreement',inventory:'Inventory',landlord_authority:'Landlord authority',trades_credentials:'Trades credentials',other:'Other'};
+ const typeOptions=Object.entries(labels).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
+ const rows=(window.complianceRecords||[]).slice().reverse().map(r=>{const p=props.find(x=>x.id===r.property_id)||{};const d=docs.find(x=>x.id===r.document_id)||{};return '<div class="card" id="'+esc(r.id)+'"><div class="cardtop"><h3>'+esc(p.title||r.property_id)+' · '+esc(labels[r.requirement_type]||r.requirement_type)+'</h3><span class="badge '+esc(r.status)+'">'+esc(r.status.replace(/_/g,' '))+'</span></div><div class="meta">'+(r.issue_date?'Issued '+esc(r.issue_date):'No evidence date')+(r.expiry_date?' · expires '+esc(r.expiry_date):' · no expiry date')+(r.reminder_date?' · reminder '+esc(r.reminder_date):'')+(r.reminder_due?' · reminder due':'')+'</div>'+(d.id?'<div class="meta">Document: '+esc(d.title||d.file_name||d.id)+'</div>':'')+(r.notes?'<div class="details">'+esc(r.notes)+'</div>':'')+'</div>';}).join('');
+ document.getElementById('view-compliance').innerHTML='<div class="move">property compliance</div><p class="fineprint">Record evidence and dates supplied by the agent. Expiry and reminder states use those recorded dates; Roger does not decide which legal requirements apply.</p>'+
+ '<div class="card"><h2>Record requirement or missing evidence</h2><div class="grid2"><label class="field"><span>Property</span><select id="compliance-property">'+propOptions+'</select></label><label class="field"><span>Requirement</span><select id="compliance-type">'+typeOptions+'</select></label><label class="field"><span>Record state</span><select id="compliance-action"><option value="record">Evidence recorded</option><option value="missing">Evidence missing</option></select></label><label class="field"><span>Linked document (optional)</span><select id="compliance-document"><option value="">No linked document</option>'+docOptions+'</select></label><label class="field"><span>Issue date</span><input id="compliance-issue" type="date"></label><label class="field"><span>Expiry date (optional)</span><input id="compliance-expiry" type="date"></label><label class="field"><span>Reminder date (optional)</span><input id="compliance-reminder" type="date"></label></div><label class="field"><span>Notes</span><textarea id="compliance-notes" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="saveComplianceRecord(this)">Save compliance record</button></div>'+
+ '<div class="move">record history</div>'+(rows||'<div class="empty">No compliance records yet.</div>');
+}
+async function saveComplianceRecord(btn){
+ const action=document.getElementById('compliance-action').value;
+ await busy(btn,async()=>{try{await post('/api/compliance-action',{action,property_id:document.getElementById('compliance-property').value,requirement_type:document.getElementById('compliance-type').value,document_id:document.getElementById('compliance-document').value,issue_date:document.getElementById('compliance-issue').value,expiry_date:document.getElementById('compliance-expiry').value,reminder_date:document.getElementById('compliance-reminder').value,notes:document.getElementById('compliance-notes').value});toast('Compliance record saved to the property history.');load();}catch(e){}});
 }
 function renderHistory(){
   const log=(stage.audit_log||[]).slice().reverse();
