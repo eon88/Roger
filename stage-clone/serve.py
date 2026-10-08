@@ -99,7 +99,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -324,6 +324,8 @@ class H(SimpleHTTPRequestHandler):
             "/api/registration-action": self.handle_registration_action,
             "/api/prospect-action": self.handle_prospect_action,
             "/api/property-action": self.handle_property_action,
+            "/api/party-action": self.handle_party_action,
+            "/api/tenancy-action": self.handle_tenancy_action,
             "/api/case-action": self.handle_case_action,
         }
         if path in handlers:
@@ -492,6 +494,159 @@ class H(SimpleHTTPRequestHandler):
                 "sample": False,
             })
         return self._json({"demo": not bool(properties), "properties": properties})
+
+    def handle_party_action(self, data):
+        """Agent creates a distinct Party record; no email-based merging or access grant."""
+        stage = load_stage()
+        if data.get("action", "create") != "create":
+            return self._json({"error": "only party creation is supported"}, 400)
+        kind = str(data.get("kind", "person"))
+        if kind not in ("person", "organisation"):
+            return self._json({"error": "kind must be person|organisation"}, 400)
+        name = str(data.get("display_name", "")).strip()[:160]
+        if not name:
+            return self._json({"error": "display_name is required"}, 400)
+        roles = data.get("roles", [])
+        allowed = {"agent", "landlord", "tenant", "trades"}
+        if not isinstance(roles, list) or not roles or any(r not in allowed for r in roles):
+            return self._json({"error": "roles must contain one or more supported roles"}, 400)
+        pid_num = int(stage.get("next_party_id", 1))
+        party = {
+            "id": "party-" + str(pid_num),
+            "kind": kind,
+            "display_name": name,
+            "legal_name": str(data.get("legal_name", "")).strip()[:160] or None,
+            "email": str(data.get("email", "")).strip()[:254] or None,
+            "phone": str(data.get("phone", "")).strip()[:40] or None,
+            "address": str(data.get("address", "")).strip()[:300] or None,
+            "roles": sorted(set(roles)),
+            "status": "active",
+            "notes": str(data.get("notes", "")).strip()[:1000],
+            "account_id": None,
+            "created_at": now(),
+            "created_by": (self.user or {}).get("username", "agent"),
+        }
+        stage["next_party_id"] = pid_num + 1
+        stage.setdefault("parties", []).append(party)
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                           "action": "party_created", "target": party["id"],
+                           "note": kind + ": " + name})
+        save_stage(stage)
+        return self._json({"success": True, "party": party})
+
+    def handle_tenancy_action(self, data):
+        """Agent creates a tenancy or advances its audited lifecycle state."""
+        transitions = {
+            "application": ("referencing", "cancelled"),
+            "referencing": ("approved", "cancelled"),
+            "approved": ("offer", "cancelled"),
+            "offer": ("agreement", "cancelled"),
+            "agreement": ("deposit", "cancelled"),
+            "deposit": ("move_in_scheduled", "cancelled"),
+            "move_in_scheduled": ("active", "cancelled"),
+            "active": ("renewal", "notice_given"),
+            "renewal": ("active", "notice_given"),
+            "notice_given": ("active", "checkout"),
+            "checkout": ("deposit_resolution", "former_tenant"),
+            "deposit_resolution": ("former_tenant",),
+            "former_tenant": (),
+            "cancelled": (),
+        }
+        stage = load_stage()
+        action = str(data.get("action", "create"))
+        if action == "create":
+            prop = self.find_prop(stage, str(data.get("property_id", "")))
+            if not prop:
+                return self._json({"error": "property not found"}, 404)
+            tenant_ids = data.get("tenant_party_ids", [])
+            landlord_ids = data.get("landlord_party_ids", [])
+            parties = {p.get("id"): p for p in stage.get("parties", []) if p.get("status") == "active"}
+            if (not isinstance(tenant_ids, list) or not tenant_ids or not isinstance(landlord_ids, list)
+                    or not landlord_ids):
+                return self._json({"error": "at least one tenant and landlord Party are required"}, 400)
+            tenant_ids = list(dict.fromkeys(str(x) for x in tenant_ids))
+            landlord_ids = list(dict.fromkeys(str(x) for x in landlord_ids))
+            if any(pid not in parties or "tenant" not in parties[pid].get("roles", []) for pid in tenant_ids):
+                return self._json({"error": "each tenant must be an active tenant Party"}, 400)
+            if any(pid not in parties or "landlord" not in parties[pid].get("roles", []) for pid in landlord_ids):
+                return self._json({"error": "each landlord must be an active landlord Party"}, 400)
+            try:
+                rent = int(data.get("rent_amount_pence"))
+                deposit = int(data.get("deposit_amount_pence", 0))
+                start_date = datetime.strptime(str(data.get("start_date", "")), "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                return self._json({"error": "valid start_date and integer pence amounts are required"}, 400)
+            frequency = str(data.get("rent_frequency", "monthly"))
+            if rent < 0 or deposit < 0 or frequency not in ("weekly", "fortnightly", "monthly", "quarterly", "annually"):
+                return self._json({"error": "invalid rent, deposit or rent frequency"}, 400)
+            tenancy_num = int(stage.get("next_tenancy_id", 1))
+            tid = "tenancy-" + str(tenancy_num)
+            at = now()
+            tenancy = {
+                "id": tid, "property_id": prop["id"],
+                "tenant_party_ids": tenant_ids, "landlord_party_ids": landlord_ids,
+                "start_date": start_date.isoformat(), "end_date": None,
+                "rent_amount_pence": rent, "rent_frequency": frequency,
+                "deposit_amount_pence": deposit, "deposit_scheme": None,
+                "deposit_reference": None, "agreement_status": "draft",
+                "status": "application", "move_in_date": None, "notice_date": None,
+                "checkout_date": None, "document_ids": [], "created_at": at, "updated_at": at,
+                "history": [{"from": None, "to": "application", "at": at,
+                             "by": (self.user or {}).get("username", "agent")}],
+            }
+            stage["next_tenancy_id"] = tenancy_num + 1
+            stage.setdefault("tenancies", []).append(tenancy)
+            self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                               "action": "tenancy_created", "target": tid,
+                               "note": "Property " + str(prop["id"])})
+            save_stage(stage)
+            return self._json({"success": True, "tenancy": tenancy})
+        if action != "transition":
+            return self._json({"error": "action must be create|transition"}, 400)
+        tid = str(data.get("id", ""))[:100]
+        tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == tid), None)
+        if not tenancy:
+            return self._json({"error": "tenancy not found"}, 404)
+        target = str(data.get("status", ""))
+        current = tenancy.get("status")
+        if target not in transitions:
+            return self._json({"error": "invalid tenancy status"}, 400)
+        if target == current:
+            return self._json({"success": True, "unchanged": True, "status": current})
+        if target not in transitions.get(current, ()):
+            return self._json({"error": "invalid tenancy transition"}, 409)
+        effective_date = str(data.get("effective_date", ""))
+        if target in ("notice_given", "checkout", "former_tenant"):
+            try:
+                parsed_date = datetime.strptime(effective_date, "%Y-%m-%d").date()
+            except ValueError:
+                return self._json({"error": "an effective_date in YYYY-MM-DD format is required"}, 400)
+            field = "notice_date" if target == "notice_given" else "checkout_date"
+            tenancy[field] = parsed_date.isoformat()
+        if target == "active":
+            if tenancy.get("agreement_status") != "signed":
+                return self._json({"error": "mark the agreement signed before activating the tenancy"}, 409)
+            if tenancy.get("start_date") > datetime.now(timezone.utc).date().isoformat():
+                return self._json({"error": "the tenancy start date has not arrived"}, 409)
+            for other in stage.get("tenancies", []):
+                if other.get("id") == tid or other.get("property_id") != tenancy.get("property_id"):
+                    continue
+                if other.get("status") in ("active", "renewal", "notice_given"):
+                    return self._json({"error": "another tenancy is still active for this property"}, 409)
+        if target == "former_tenant":
+            tenancy["end_date"] = effective_date
+        at = now()
+        tenancy["status"] = target
+        tenancy["updated_at"] = at
+        tenancy.setdefault("history", []).append({
+            "from": current, "to": target, "at": at, "effective_date": effective_date or None,
+            "by": (self.user or {}).get("username", "agent")
+        })
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                           "action": "tenancy_status_changed", "target": tid,
+                           "note": current + " -> " + target})
+        save_stage(stage)
+        return self._json({"success": True, "status": target, "updated_at": at})
 
     def handle_property_action(self, data):
         """Agent-controlled property lifecycle transition and public listing draft update."""
