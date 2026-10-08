@@ -190,3 +190,7 @@ select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
   .grid2{grid-template-columns:1fr}
   .watermark{font-size:10px;bottom:8px;right:8px}
 }
+
+.badge.urgent,.badge.overdue,.badge.check{background:var(--danger-soft);color:var(--danger)}
+.badge.landlord,.badge.trades,.badge.invitee{background:var(--blue-soft);color:var(--blue)}
+.field>span{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:5px}
