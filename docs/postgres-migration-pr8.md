@@ -17,4 +17,4 @@ Before using a target database:
 7. Verify the snapshots, entity counts, login and portal workflows on a staging copy.
 8. Only then set `ROGER_STORAGE_BACKEND=postgres` and `DATABASE_URL` on the application.
 
-When PostgreSQL mode is enabled, Roger fails clearly if the snapshots are missing; it does not silently fall back to local JSON. Keep the source backup until restore has been verified. Uploaded file bodies are still embedded in document JSON, so object storage remains a separate migration.
+When PostgreSQL mode is enabled, Roger fails clearly if the snapshots are missing; it does not silently fall back to local JSON. Keep the source backup until restore has been verified. Some legacy document bodies remain embedded until the extraction utility is applied. New uploads use `ROGER_FILES_DIR`; this directory must be durable and shared across instances. A managed object store remains a separate deployment option.
