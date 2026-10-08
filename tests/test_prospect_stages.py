@@ -150,6 +150,43 @@ class ProspectStageTests(unittest.TestCase):
         self.assertEqual(self.responses[-1][1], 409)
         self.saved.assert_not_called()
 
+    def test_tenancy_full_occupancy_cycle_moves_property_safely(self):
+        prop = {"id": "home-1", "lifecycle_status": "let_agreed"}
+        tenancy = {
+            "id": "tenancy-1", "property_id": "home-1", "status": "move_in_scheduled",
+            "agreement_status": "draft", "start_date": "2026-10-01",
+            "history": [], "checkout_date": None,
+        }
+        self.stage["properties"] = [prop]
+        self.stage["tenancies"] = [tenancy]
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "agreement", "id": "tenancy-1",
+            "agreement_status": "signed", "signed_at": "2026-09-25",
+        })
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "transition", "id": "tenancy-1", "status": "active",
+        })
+        self.assertEqual(prop["lifecycle_status"], "occupied")
+        self.assertEqual(tenancy["move_in_date"], "2026-10-01")
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "transition", "id": "tenancy-1", "status": "notice_given",
+            "effective_date": "2026-12-01",
+        })
+        self.assertEqual(prop["lifecycle_status"], "notice_given")
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "transition", "id": "tenancy-1", "status": "checkout",
+            "effective_date": "2027-01-01",
+        })
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "transition", "id": "tenancy-1", "status": "deposit_resolution",
+        })
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "transition", "id": "tenancy-1", "status": "former_tenant",
+        })
+        self.assertEqual(tenancy["end_date"], "2027-01-01")
+        self.assertEqual(prop["lifecycle_status"], "void")
+        self.assertEqual(self.responses[-1][1], 200)
+
     def test_active_tenancy_moves_property_out_of_public_inventory(self):
         prop = {
             "id": "home-1", "title": "12 Example Road", "area": "Exampleton",
