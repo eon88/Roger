@@ -522,8 +522,11 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "invalid property lifecycle transition"}, 409)
         description = data.get("description")
         listing = prop.setdefault("public_listing", {})
-        if description is not None:
-            listing["description"] = str(description)[:3000].strip()
+        old_description = listing.get("description", "")
+        new_description = str(description)[:3000].strip() if description is not None else old_description
+        description_changed = new_description != old_description
+        if description is not None and description_changed:
+            listing["description"] = new_description
         if target == "advertised":
             try:
                 rent = int(prop.get("rent", 0))
@@ -535,19 +538,21 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "add a public description and confirm listing details before advertising"}, 400)
             listing.update({"title": prop["title"], "area": prop["area"],
                             "beds": beds, "rent": rent})
-        if target == current and description is None:
+        if target == current and not description_changed:
             return self._json({"success": True, "unchanged": True, "status": current})
         at = now()
-        previous = current
-        prop["lifecycle_status"] = target
-        prop["lifecycle_status_at"] = at
-        prop.setdefault("lifecycle_history", []).append({
-            "from": previous, "to": target, "at": at,
-            "by": (self.user or {}).get("username", "agent")
-        })
+        if target != current:
+            prop["lifecycle_status"] = target
+            prop["lifecycle_status_at"] = at
+            prop.setdefault("lifecycle_history", []).append({
+                "from": current, "to": target, "at": at,
+                "by": (self.user or {}).get("username", "agent")
+            })
+            action, note = "property_lifecycle_changed", current + " -> " + target
+        else:
+            action, note = "property_listing_updated", "Public description updated"
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
-                           "action": "property_lifecycle_changed", "target": pid,
-                           "note": previous + " -> " + target})
+                           "action": action, "target": pid, "note": note})
         save_stage(stage)
         return self._json({"success": True, "status": target, "updated_at": at})
 
