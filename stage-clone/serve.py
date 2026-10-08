@@ -637,6 +637,8 @@ class H(SimpleHTTPRequestHandler):
                 ended_at = datetime.strptime(str(data.get("ended_at", "")), "%Y-%m-%d").date().isoformat()
             except ValueError:
                 return self._json({"error": "end date in YYYY-MM-DD format is required"}, 400)
+            if agreement.get("signed_at") and ended_at < agreement["signed_at"]:
+                return self._json({"error": "end date cannot precede the signed date"}, 400)
             agreement["ended_at"] = ended_at
         at = now()
         agreement["status"] = target
