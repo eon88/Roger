@@ -352,11 +352,32 @@ function renderRegs(){
 async function regAct(btn,id,action){ await busy(btn,async()=>{ try{ const n=document.getElementById('rn-'+id); const note=n?n.value.trim():'';
   await post('/api/registration-action',{id,action,note}); toast(action==='approve'?'Approved — they can be booked now':'Rejected, with your note on record'); load(); }catch(e){} }); }
 
+const PROPERTY_TRANSITIONS={
+ prospect:['onboarding','offboarded'],onboarding:['ready_to_market','offboarded'],
+ ready_to_market:['onboarding','advertised','offboarded'],advertised:['application','void','offboarded'],
+ application:['advertised','let_agreed','void'],let_agreed:['occupied','void'],occupied:['notice_given','offboarded'],
+ notice_given:['occupied','checkout'],checkout:['void'],void:['remarketing','offboarded'],
+ remarketing:['advertised','onboarding','offboarded'],offboarded:[]
+};
 function renderProps(){
-  document.getElementById('view-properties').innerHTML=`<div class="move">your properties</div><div class="grid2">`+
-    (stage.properties||[]).map(p=>`<div id="property-${esc(p.id)}" class="card"><h3>${esc(p.title)}</h3>
-      <div class="meta">${esc(p.area)} · ${p.beds} bed</div><div class="money">£${(p.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div>
-      <div class="meta">${p.tenant?'let to '+esc(p.tenant):'vacant — being let'} · landlord ${esc(p.landlord)}</div></div>`).join('')+'</div>';
+ const rows=stage.properties||[];
+ document.getElementById('view-properties').innerHTML='<div class="move">your properties</div>'+
+ '<p class="fineprint">Move each property through its lifecycle. Only properties marked Advertised with a public description appear on the lettings site.</p><div class="grid2">'+
+ (rows.length?rows.map(p=>{
+   const current=p.lifecycle_status||'onboarding';
+   const choices=[current,...(PROPERTY_TRANSITIONS[current]||[])];
+   return '<div id="property-'+esc(p.id)+'" class="card"><h3>'+esc(p.title)+'</h3>'+
+     '<div class="meta">'+esc(p.area)+' · '+p.beds+' bed</div><div class="money">£'+((p.rent||0)/100).toFixed(0)+'<span style="font-size:13px;color:var(--muted)"> /mo</span></div>'+
+     '<div class="meta">'+(p.tenant?'let to '+esc(p.tenant):'vacant — being let')+' · landlord '+esc(p.landlord)+'</div>'+
+     '<label class="field"><span>Property stage</span><select class="property-stage" data-property-id="'+esc(p.id)+'">'+choices.map(s=>'<option value="'+esc(s)+'"'+(s===current?' selected':'')+'>'+esc(s.replace(/_/g,' '))+'</option>').join('')+'</select></label>'+
+     '<label class="field"><span>Public description (required to advertise)</span><textarea class="public-description" rows="3" maxlength="3000">'+esc(p.public_listing?.description||'')+'</textarea></label>'+
+     '<button class="btn primary" data-property-id="'+esc(p.id)+'" onclick="savePropertyLifecycle(this)">Save property stage</button></div>';
+ }).join(''):'<div class="empty">No properties recorded.</div>')+'</div>';
+}
+async function savePropertyLifecycle(btn){
+ const card=btn.closest('.card'),select=card?.querySelector('.property-stage'),description=card?.querySelector('.public-description');
+ if(!select||!description)return;
+ await busy(btn,async()=>{try{await post('/api/property-action',{property_id:btn.dataset.propertyId,status:select.value,description:description.value});toast('Property stage saved. Public listings follow the Advertised stage.');load();}catch(e){}});
 }
 function renderHistory(){
   const log=(stage.audit_log||[]).slice().reverse();
