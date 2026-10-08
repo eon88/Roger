@@ -35,7 +35,7 @@ def create_backup(source_dir, destination_dir, retention_days=14):
             temp_path.unlink()
     digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
     checksum_path = archive_path.with_suffix(archive_path.suffix + ".sha256")
-    checksum_path.write_text(digest + "  " + archive_path.name + "\\n", encoding="utf-8")
+    checksum_path.write_text(digest + "  " + archive_path.name + "\n", encoding="utf-8")
     os.chmod(checksum_path, 0o600)
     cutoff = datetime.now(timezone.utc).timestamp() - max(1, retention_days) * 86400
     for old in destination.glob("roger-data-*.tar.gz*"):
