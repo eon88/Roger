@@ -112,12 +112,54 @@ async function load(manual){
   renderAll();
 }
 function renderAll(){
-  const y=window.scrollY;
+  const y=window.scrollY, searchFocused=document.activeElement?.id==='desk-search';
+  const searchPos=searchFocused?document.activeElement.selectionStart:null;
   markFlips(); renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProps(); renderHistory();
+  if(searchFocused){const input=document.getElementById('desk-search');input?.focus();if(searchPos!==null)input?.setSelectionRange(searchPos,searchPos);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
 
+let deskSearch='';
+function activeRecord(x){return !['closed','resolved','declined','rejected','paid','approved','completed','cancelled','missed'].includes(String(x.status||'').toLowerCase());}
+function deskLink(label,detail,view,id,tag){
+  return '<a class="appt" href="#" data-view="'+esc(view)+'" data-target="'+esc(id||'')+'" onclick="goDeskResultFrom(this);return false" style="display:flex;color:inherit;text-decoration:none"><div><div><b>'+esc(label)+'</b> '+(tag?'<span class="badge '+esc(tag)+'">'+esc(tag.replace(/_/g,' '))+'</span>':'')+'</div><div class="meta">'+esc(detail)+'</div></div></a>';
+}
+function goDeskResultFrom(el){goDeskResult(el.dataset.view,el.dataset.target);}
+function goDeskResult(view,id){show(view);if(id)setTimeout(()=>document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'center'}),60);}
+function deskSearchText(x){return Object.values(x||{}).filter(v=>typeof v==='string'||typeof v==='number').join(' ').toLowerCase();}
+function renderDeskSearch(q){
+  deskSearch=String(q||'');const host=document.getElementById('desk-search-results');if(!host)return;
+  if(deskSearch.trim().length<2){host.innerHTML='<div class="meta">Search names and contacts, properties, cases, jobs, registrations, appointments and documents.</div>';return;}
+  const needle=deskSearch.trim().toLowerCase(),found=[];const prop=id=>(stage.properties||[]).find(p=>p.id===id);
+  const add=(rows,view,idFn,labelFn,detailFn)=>{for(const x of rows||[]){const detail=detailFn?detailFn(x):'';if((deskSearchText(x)+' '+detail).toLowerCase().includes(needle))found.push({label:labelFn(x),detail,view,id:idFn? idFn(x):''});}};
+  add(stage.properties,'properties',x=>'property-'+x.id,x=>x.title||x.id,x=>x.area||'');
+  add(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id+' · '+(x.type||'case'),x=>[prop(x.property_id)?.title,x.name,x.email,x.status,x.message].filter(Boolean).join(' · '));
+  add(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id+' · case #'+x.case_id,x=>[prop(x.property_id)?.title,x.status,x.assigned_to,x.message].filter(Boolean).join(' · '));
+  add(stage.registrations,'registrations',x=>'reg-'+x.id,x=>(x.role||'registration')+' · '+(x.name||x.id),x=>[x.email,x.status,x.details].filter(Boolean).join(' · '));
+  add(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>[prop(x.property_id)?.title,x.status,x.start_time,x.description].filter(Boolean).join(' · '));
+  add(window._docs,'overview',x=>'doc-'+x.id,x=>x.title||x.file_name||'Document',x=>[prop(x.property_id)?.title,x.document_type,x.status].filter(Boolean).join(' · '));
+  host.innerHTML=found.length?found.slice(0,12).map(x=>deskLink(x.label,x.detail,x.view,x.id,'')).join(''):'<div class="empty">No matching records.</div>';
+}
+function renderAttentionBoard(){
+  const now=Date.now(),week=now+7*86400000,props=stage.properties||[],needs=[],waiting=[],upcoming=[],overdue=[];
+  const propertyName=id=>{const p=props.find(x=>x.id===id);return p?p.title+' · '+(p.area||''):id||'No property linked';};
+  const add=(list,label,detail,view,id,tag)=>list.push({label,detail,view,id,tag});
+  (stage.cases||[]).filter(c=>activeRecord(c)&&(c.status==='new'||c.status==='reported'||Number(c.triage?.urgency)>=2)).sort((a,b)=>(Number(b.triage?.urgency)||0)-(Number(a.triage?.urgency)||0)||String(b.submitted_at||'').localeCompare(String(a.submitted_at||''))).forEach(c=>add(needs,'Case #'+c.id+' · '+(c.type||'case'),propertyName(c.property_id)+' · '+(c.name||'Unidentified person'),'cases','case-'+c.id,Number(c.triage?.urgency)>=2?'urgent':c.status));
+  (stage.jobs||[]).filter(j=>['open','quoted','pending_verification'].includes(j.status)).forEach(j=>add(needs,'Job '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,j.status));
+  (stage.registrations||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,(x.role||'registration')+' application · '+(x.name||x.id),x.email||'Needs review','registrations','reg-'+x.id,'pending'));
+  (window._docs||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,'Verify document · '+(x.title||x.file_name||x.id),propertyName(x.property_id),'overview','doc-'+x.id,'pending'));
+  (stage.approvals||[]).filter(x=>x.status==='pending').forEach(x=>add(waiting,'Landlord approval · '+(x.id||'request'),propertyName(x.property_id)+' · '+money(x.amount_pence),'jobs',x.job_id?'job-'+x.job_id:'','landlord'));
+  (stage.jobs||[]).filter(j=>['quote_requested','assigned','in_progress'].includes(j.status)).forEach(j=>add(waiting,j.status==='quote_requested'?'Quote requested · '+j.id:'Work with trades · '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,'trades'));
+  (window._appts||[]).filter(a=>a.status==='proposed').forEach(a=>add(waiting,'Appointment awaiting reply · '+(a.title||a.id),propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'invitee'));
+  (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)>=now&&Date.parse(a.start_time)<=week).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time)).forEach(a=>add(upcoming,a.title||'Appointment',propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'confirmed'));
+  const deadline=x=>x.due_at||x.next_action_at||x.follow_up_at||'';
+  const over=(rows,view,prefix,labelFn,detailFn)=>{(rows||[]).forEach(x=>{const d=deadline(x);if(activeRecord(x)&&d&&Number.isFinite(Date.parse(d))&&Date.parse(d)<now)add(overdue,labelFn(x),detailFn(x)+' · due '+fmtDate(d),view,prefix(x),'overdue');});};
+  over(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id,x=>propertyName(x.property_id));over(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id,x=>propertyName(x.property_id));over(stage.registrations,'registrations',x=>'reg-'+x.id,x=>'Application · '+(x.name||x.id),x=>x.email||'');over(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>propertyName(x.property_id));
+  (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)<now).forEach(a=>add(overdue,'Appointment outcome needs recording · '+(a.title||a.id),propertyName(a.property_id)+' · was '+fmtDate(a.start_time),'overview','appointment-'+a.id,'check'));
+  const panel=(title,items,empty)=>'<div class="card"><div class="cardtop"><h3>'+title+'</h3><span class="badge '+(items.length?'pending':'completed')+'">'+items.length+'</span></div>'+(items.length?items.slice(0,6).map(x=>deskLink(x.label,x.detail,x.view,x.id,x.tag)).join('')+(items.length>6?'<div class="meta">Showing 6 of '+items.length+' matching items.</div>':''):'<div class="meta">'+empty+'</div>')+'</div>';
+  return '<div class="move">daily command centre</div><div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
+}
 function renderOverview(){
   const cases=(stage.cases||[]).filter(c=>!['closed','resolved','declined'].includes(c.status));
   const urg=cases.filter(c=>c.triage&&c.triage.urgency>=2).length;
@@ -131,7 +173,9 @@ function renderOverview(){
   const tile=(n,label,view,hot)=>`<a class="stat ${hot?'hot':''}" href="#" onclick="show('${view}');return false"><div class="value">${n}</div><div class="label">${label}</div></a>`;
   const quiet=(urg+gated+unassigned+waiting.length+regs)===0;
   document.getElementById('view-overview').innerHTML=`
-      <div class="move">what needs you today</div>
+      ${renderAttentionBoard()}
+      <div class="card"><label class="field"><span>Search Roger</span><input id="desk-search" type="text" value="${esc(deskSearch)}" placeholder="Name, property, case, job or email" aria-label="Search Roger records"></label><div id="desk-search-results" aria-live="polite">${deskSearch?'<div class="meta">Updating search…</div>':'<div class="meta">Search names and contacts, properties, cases, jobs, registrations, appointments and documents.</div>'}</div></div>
+      <div class="move">overview</div>
       ${quiet?'<div class="triage-line">All clear today. New reports land here as tenants send them.</div>':''}
       <div class="stats">
         ${tile(urg,'emergencies open','cases',urg>0)}
@@ -143,14 +187,17 @@ function renderOverview(){
       </div>
       <p class="fineprint">Standing authority: invoices up to £${lim.toFixed(0)} settle automatically — the £150 rule lives here so you never have to explain it twice. Above it, the landlord decides.</p>
       ${renderPrimitivesBrief()}`;
+   renderDeskSearch(deskSearch);
+   const searchInput=document.getElementById('desk-search');
+   searchInput?.addEventListener('input',e=>renderDeskSearch(e.target.value));
   function renderPrimitivesBrief(){
     let html='';
     try{ const ap=window._appts||[]; const pend=ap.filter(a=>a.status==='proposed');
       html+=`<div class="card"><div class="cardtop"><h3>Appointments</h3><span class="badge ${pend.length?'pending':'completed'}">${pend.length?'awaiting reply':'none pending'}</span></div>`+
-        (ap.length?ap.slice(0,5).map(a=>`<div class="appt"><div><div class="date">${fmtDate(a.start_time)}</div><div class="because">${esc(a.title)} · ${propLine(a.property_id)} · <span class="badge ${esc(a.status)}">${esc(a.status)}</span></div></div>${a.status==='proposed'?`<div class="actions"><button class="btn ghost" onclick="apptCancel(this,'${esc(a.id)}')">Cancel</button></div>`:''}</div>`).join(''):`<div class="meta">No appointments yet. Book a viewing, inspection or key handover from a case to see it here.</div>`)+`</div>`;
+        (ap.length?ap.slice(0,5).map(a=>`<div class="appt" id="appointment-${esc(a.id)}"><div><div class="date">${fmtDate(a.start_time)}</div><div class="because">${esc(a.title)} · ${propLine(a.property_id)} · <span class="badge ${esc(a.status)}">${esc(a.status)}</span></div></div>${a.status==='proposed'?`<div class="actions"><button class="btn ghost" onclick="apptCancel(this,'${esc(a.id)}')">Cancel</button></div>`:''}</div>`).join(''):`<div class="meta">No appointments yet. Book a viewing, inspection or key handover from a case to see it here.</div>`)+`</div>`;
     }catch(e){ html+=''; }
     try{ const docs=window._docs||[]; html+=`<div class="card"><div class="cardtop"><h3>Documents</h3><span class="badge ${docs.some(d=>d.status==='pending')?'pending':'completed'}">${docs.filter(d=>d.status==='pending').length} to verify</span></div>`+
-      (docs.length?docs.slice(0,6).map(d=>`<div class="docrow"><a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a><span class="badge ${esc(d.status)}">${esc(d.status)}</span><span class="docmeta">${capType(d.document_type)} · ${(stage.properties||[]).find(p=>p.id===d.property_id)?.title||d.property_id}</span>`+(d.status==='pending'?`<div class="actions"><button class="btn ghost" onclick="docVerify(this,'${esc(d.id)}','verify')">Verify</button><button class="btn danger" onclick="docReject(this,'${esc(d.id)}')">Reject</button></div>`:'')+`</div>`).join(''):`<div class="meta">Nothing filed. Upload a tenancy agreement or deposit receipt from a case to see it here.</div>`)+`</div>`;
+      (docs.length?docs.slice(0,6).map(d=>`<div class="docrow" id="doc-${esc(d.id)}"><a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a><span class="badge ${esc(d.status)}">${esc(d.status)}</span><span class="docmeta">${capType(d.document_type)} · ${(stage.properties||[]).find(p=>p.id===d.property_id)?.title||d.property_id}</span>`+(d.status==='pending'?`<div class="actions"><button class="btn ghost" onclick="docVerify(this,'${esc(d.id)}','verify')">Verify</button><button class="btn danger" onclick="docReject(this,'${esc(d.id)}')">Reject</button></div>`:'')+`</div>`).join(''):`<div class="meta">Nothing filed. Upload a tenancy agreement or deposit receipt from a case to see it here.</div>`)+`</div>`;
     }catch(e){}
     return html;
   }
@@ -162,7 +209,7 @@ function renderCases(){
   const cases=(stage.cases||[]).slice().sort((a,b)=>rank(a)-rank(b)||b.id-a.id);
   document.getElementById('view-cases').innerHTML=`<div class="move">every case — emergencies first</div>`+
     (cases.length?cases.map(c=>`
-    <div class="card ${c.triage&&c.triage.urgency>=2?'flagged':''} ${fl('c'+c.id)}">
+    <div id="case-${c.id}" class="card ${c.triage&&c.triage.urgency>=2?'flagged':''} ${fl('c'+c.id)}">
       <div class="cardtop"><h3>#${c.id} · ${esc(c.type||'case')}</h3><span class="badge ${esc(c.status)}">${esc(c.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${when(c.submitted_at)}</div>
       <div class="details">${esc(c.message)}</div>
@@ -206,7 +253,7 @@ function renderJobs(){
   const jobs=(stage.jobs||[]).slice().reverse();
   const g=s=>jobs.filter(j=>j.status===s);
   const card=j=>`
-    <div class="card ${['pending_verification','quoted'].includes(j.status)?'flagged':''} ${fl('j'+j.id)}">
+    <div id="job-${esc(j.id)}" class="card ${['pending_verification','quoted'].includes(j.status)?'flagged':''} ${fl('j'+j.id)}">
       <div class="cardtop"><h3>${esc(j.id)} · case #${j.case_id}</h3><span class="badge ${esc(j.status)}">${esc(j.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(j.property_id)}${j.required_trade?` · needs <b>${esc(j.required_trade)}</b>`:''} · ${when(j.created_at)}</div>
       <div class="details">${esc(j.message)}</div>
@@ -250,7 +297,7 @@ function quoteAct(btn,id,action){ const reason=action==='decline_quote'?prompt('
 function renderRegs(){
   const all=stage.registrations||[]; const pend=all.filter(r=>r.status==='pending');
   const decided=all.filter(r=>r.status!=='pending').slice().reverse();
-  const reg=r=>`<div class="card">
+  const reg=r=>`<div id="reg-${esc(r.id)}" class="card">
     <div class="cardtop"><h3>${esc(r.name)}</h3><span class="badge ${esc(r.status)}">${esc(r.role)}</span></div>
     <div class="meta">${esc(r.email)}${r.phone?' · '+esc(r.phone):''} · ${when(r.submitted_at)}</div>
     <div class="details">${esc(r.details)}</div>
@@ -270,7 +317,7 @@ async function regAct(btn,id,action){ await busy(btn,async()=>{ try{ const n=doc
 
 function renderProps(){
   document.getElementById('view-properties').innerHTML=`<div class="move">your properties</div><div class="grid2">`+
-    (stage.properties||[]).map(p=>`<div class="card"><h3>${esc(p.title)}</h3>
+    (stage.properties||[]).map(p=>`<div id="property-${esc(p.id)}" class="card"><h3>${esc(p.title)}</h3>
       <div class="meta">${esc(p.area)} · ${p.beds} bed</div><div class="money">£${(p.rent/100).toFixed(0)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div>
       <div class="meta">${p.tenant?'let to '+esc(p.tenant):'vacant — being let'} · landlord ${esc(p.landlord)}</div></div>`).join('')+'</div>';
 }
