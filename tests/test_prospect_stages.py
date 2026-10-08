@@ -322,6 +322,7 @@ class ProspectStageTests(unittest.TestCase):
         self.saved.assert_called_once_with(self.stage)
 
     def test_email_reply_fails_closed_when_smtp_is_not_configured(self):
+        self.stage["cases"][0]["email"] = "tenant@example.test"
         with patch.dict("os.environ", {"ROGER_SMTP_HOST": "", "ROGER_FROM_EMAIL": ""}):
             serve.H.handle_email_reply(self.handler, {"id": 490, "text": "Hello"})
         self.assertEqual(self.responses[-1][1], 503)
