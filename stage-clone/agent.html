@@ -315,7 +315,7 @@ function prospectCard(kind,x){
  return '<div class="card"><div class="cardtop"><h3>'+esc(name)+'</h3><span class="badge '+esc(x.status||current)+'">'+esc(current.replace(/_/g,' '))+'</span></div>'+
  '<div class="meta">'+esc(email)+(subline?' · '+subline:'')+(x.submitted_at?' · '+when(x.submitted_at):'')+'</div>'+
  (detail?'<div class="details">'+esc(detail)+'</div>':'')+
- (kind==='trades'&&x.trades?'<div class="meta">Trades: '+esc(x.trades.join(', '))+'</div>':'')+
+ (kind==='trades'?'<div class="meta">Trades: '+esc((x.trades||[]).join(', ')||'not stated')+(x.gas_safe_number?' · Gas Safe '+esc(x.gas_safe_number):'')+(x.insurance_expiry?' · insured to '+esc(x.insurance_expiry):'')+(x.coverage?' · coverage '+esc(x.coverage):'')+(x.credentials_checked_at?' · credentials checked '+esc(x.credentials_checked_at.slice(0,10)):' · credentials not checked')+'</div>':'')+
  '<div class="actions"><label class="field"><span>Pipeline stage</span><select>'+opts.map(s=>'<option value="'+esc(s)+'"'+(s===current?' selected':'')+'>'+esc(s.replace(/_/g,' '))+'</option>').join('')+'</select></label>'+
  '<button class="btn primary" data-kind="'+kind+'" data-id="'+esc(x.id)+'" onclick="saveProspectStage(this)">Save stage</button></div></div>';
 }
