@@ -496,6 +496,10 @@ class H(SimpleHTTPRequestHandler):
                     "onboarding" if record and record.get("status") == "approved" else "lead")
         if not record:
             return self._json({"error": "prospect not found"}, 404)
+        if kind == "trades" and next_stage in ("approved", "available") and record.get("status") != "approved":
+            return self._json({"error": "approve the trades registration before advancing this stage"}, 409)
+        if kind == "landlord" and next_stage in ("signed", "onboarding", "active") and record.get("status") != "approved":
+            return self._json({"error": "approve the landlord registration before advancing this stage"}, 409)
         previous = record.get("prospect_stage") or default
         if previous == next_stage:
             return self._json({"success": True, "unchanged": True, "stage": next_stage})
