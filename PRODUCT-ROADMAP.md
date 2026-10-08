@@ -955,10 +955,13 @@ We will tackle these in order unless a real operational need changes the priorit
 
 ## Priority 4 — Property / tenancy lifecycle
 
+**Property lifecycle implementation:** Agent Desk properties now move through validated states. Public `/api/public` serves only explicitly advertised properties with a complete description and safe marketing fields; private owner/tenant data is excluded. Existing property records without a state default to onboarding, and the site's sample fallback remains when no live listing qualifies. The full tenant lifecycle still depends on implementing Tenancy records and date-bound access relationships.
+
+
 **Priority 3 implementation:** the Agent Desk now has separate tenant, landlord and trades pipelines. Stage changes persist on the source enquiry/registration, append history and write an audit event. Registration approval remains a separate permission gate. Five endpoint regression tests pass.
 
 
-- [ ] Property state machine
+- [x] Property state machine — agent-approved transitions and public listing gate
 - [ ] Tenant lifecycle
 - [ ] Landlord lifecycle
 - [ ] Trades lifecycle
