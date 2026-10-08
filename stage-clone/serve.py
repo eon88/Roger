@@ -1281,7 +1281,7 @@ class H(SimpleHTTPRequestHandler):
         if not case:
             return self._json({"error": "case not found"}, 404)
         recipient = str(case.get("email") or "").strip()
-        if not recipient or not re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", recipient):
+        if not recipient or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", recipient):
             return self._json({"error": "this case has no valid contact email"}, 400)
         body = str(data.get("text", "")).strip()[:2000]
         if not body:
