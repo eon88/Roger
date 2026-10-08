@@ -21,6 +21,7 @@ import json
 import os
 import re
 import secrets
+import tempfile
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
@@ -50,18 +51,37 @@ def load_users():
     with open(USERS_FILE, "r") as f:
         return json.load(f)
 
+def atomic_json_write(path, data):
+    """Replace JSON snapshots atomically so a crash cannot leave a truncated file."""
+    fd, tmp_path = tempfile.mkstemp(prefix=".roger-write-", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, path)
+        try:
+            dir_fd = os.open(os.path.dirname(path), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
 def save_users(data):
-    with open(USERS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-    os.chmod(USERS_FILE, 0o600)
+    atomic_json_write(USERS_FILE, data)
 
 def load_stage():
-    with open(STAGE_FILE, "r") as f:
+    with open(STAGE_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_stage(data):
-    with open(STAGE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    atomic_json_write(STAGE_FILE, data)
 
 # Demo tradesperson credential store. In the real product: verified at
 # registration (Gas Safe lookup), carried on the profile.
