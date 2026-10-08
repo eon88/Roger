@@ -30,7 +30,7 @@ jobs:
           else
             {
               echo '-----BEGIN OPENSSH PRIVATE KEY-----'
-              printf '%s' "$CLEAN_KEY" | fold -w 70
+              printf '%s' "$CLEAN_KEY" | fold -w 64
               echo
               echo '-----END OPENSSH PRIVATE KEY-----'
             } > ~/.ssh/roger_deploy
