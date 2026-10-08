@@ -226,7 +226,7 @@ function renderCommunications(){
  '<div class="stats"><div class="stat"><div class="value">'+openCount+'</div><div class="label">open conversations</div></div><div class="stat"><div class="value">'+messageCount+'</div><div class="label">recorded messages</div></div></div>'+
  '<div class="card"><div class="grid2"><label class="field"><span>Search conversations</span><input id="comm-search" value="'+esc(window.commQuery||'')+'" placeholder="Person, email, message or case reference" oninput="window.commQuery=this.value;renderCommunicationItems()"></label>'+
  '<label class="field"><span>Property</span><select id="comm-property" onchange="window.commProperty=this.value;renderCommunicationItems()"><option value="">All properties</option>'+propOptions+'</select></label></div></div>'+
- '<div id="communication-list"></div>';
+ '<div class="actions"><button class="btn primary" onclick="syncEmailInbox(this)">Sync email inbox</button></div><div id="communication-list"></div>';
  const sel=document.getElementById('comm-property');if(sel)sel.value=window.commProperty||'';
  renderCommunicationItems();
 }
@@ -242,6 +242,9 @@ function renderCommunicationItems(){
   return '<div class="card" id="comm-case-'+esc(c.id)+'"><div class="cardtop"><h3>'+esc(c.name||'Contact')+' · case #'+esc(c.id)+'</h3><span class="badge '+esc(c.status)+'">'+esc(c.status)+'</span></div><div class="meta">'+esc(c.email||'No email on record')+' · '+esc(p.title||'No property linked')+(p.area?' · '+esc(p.area):'')+' · '+(items.length)+' message'+(items.length===1?'':'s')+'</div><div class="msgs">'+content+'</div>'+
   '<div class="actions"><button class="btn" onclick="goDeskResult(\'cases\',\'case-'+esc(c.id)+'\')">Open case</button>'+(c.status!=='closed'?'<input id="comm-reply-'+esc(c.id)+'" placeholder="Reply to contact" autocomplete="off" onkeydown="if(event.key===\'Enter\')sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')"><label class="who"><input type="checkbox" id="comm-landlord-'+esc(c.id)+'" checked> landlord</label><label class="who"><input type="checkbox" id="comm-trades-'+esc(c.id)+'" checked> trades</label><button class="btn primary" onclick="sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Portal reply</button><button class="btn" onclick="emailCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Email reply</button>':'')+'</div></div>';
  }).join(''):'<div class="empty">No conversations match these filters.</div>';
+}
+async function syncEmailInbox(btn){
+ await busy(btn,async()=>{try{const result=await post('/api/email-sync',{});toast('Imported '+result.count+' email'+(result.count===1?'':'s')+'.');load();}catch(e){}});
 }
 async function emailCommunicationReply(btn,id){
  const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
