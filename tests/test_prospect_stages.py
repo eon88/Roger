@@ -232,6 +232,46 @@ class ProspectStageTests(unittest.TestCase):
         self.assertNotIn("prospect_stage", self.stage["registrations"][0])
         self.saved.assert_not_called()
 
+    def test_trade_cannot_be_approved_before_checked_credentials(self):
+        self.stage["registrations"] = [{
+            "id": "trade-2", "role": "trades", "status": "pending",
+            "prospect_stage": "credentials_submitted",
+        }]
+        serve.H.handle_registration_action(self.handler, {"id": "trade-2", "action": "approve"})
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertEqual(self.stage["registrations"][0]["status"], "pending")
+        self.saved.assert_not_called()
+
+    def test_trade_credentials_check_enables_registration_approval_and_availability(self):
+        self.stage["registrations"] = [{
+            "id": "trade-2", "role": "trades", "status": "pending",
+            "name": "Trade Two", "trades": ["plumbing"], "prospect_stage": "credentials_submitted",
+        }]
+        serve.H.handle_prospect_action(self.handler, {
+            "kind": "trades", "id": "trade-2", "stage": "checked",
+        })
+        reg = self.stage["registrations"][0]
+        self.assertTrue(reg.get("credentials_checked_at"))
+        self.assertEqual(reg["credentials_checked_by"], "agent")
+        serve.H.handle_registration_action(self.handler, {"id": "trade-2", "action": "approve"})
+        self.assertEqual(reg["status"], "approved")
+        serve.H.handle_prospect_action(self.handler, {
+            "kind": "trades", "id": "trade-2", "stage": "approved",
+        })
+        serve.H.handle_prospect_action(self.handler, {
+            "kind": "trades", "id": "trade-2", "stage": "available",
+        })
+        self.assertEqual(reg["prospect_stage"], "available")
+        self.assertEqual(self.responses[-1][1], 200)
+
+    def test_suspended_trade_is_removed_from_job_assignment_pool(self):
+        self.stage["registrations"] = [{
+            "id": "trade-2", "role": "trades", "status": "approved",
+            "name": "Trade Two", "trades": ["plumbing"], "prospect_stage": "suspended",
+        }]
+        results = serve.H.approved_trades(self.handler, self.stage)
+        self.assertNotIn("Trade Two", [x["company"] for x in results])
+
     def test_trade_registration_can_enter_credentials_stage(self):
         serve.H.handle_prospect_action(self.handler, {
             "kind": "trades", "id": "reg-1", "stage": "credentials_submitted",
