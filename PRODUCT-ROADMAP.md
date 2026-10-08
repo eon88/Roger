@@ -949,11 +949,14 @@ We will tackle these in order unless a real operational need changes the priorit
 **Priority 2 implementation:** the Agent Desk command centre, waiting-on sections, upcoming appointments, overdue-date checks and unified record search are implemented in `stage-clone/agent.html`. The overdue view uses explicit due fields and past confirmed appointments; it does not infer deadlines from record age. Search preserves focus through the 15-second refresh. HTML parsing and JavaScript syntax checks pass.
 
 
-- [ ] Tenant prospect pipeline
-- [ ] Landlord prospect pipeline
-- [ ] Trades applicant pipeline
+- [x] Tenant prospect pipeline — enquiry, viewing, application, referencing, approval, offer, conversion, closed
+- [x] Landlord prospect pipeline — lead, conversation, valuation, proposal, terms, signed, onboarding, active, closed
+- [x] Trades applicant pipeline — applicant, credentials, checked, approved, available, suspended, rejected
 
 ## Priority 4 — Property / tenancy lifecycle
+
+**Priority 3 implementation:** the Agent Desk now has separate tenant, landlord and trades pipelines. Stage changes persist on the source enquiry/registration, append history and write an audit event. Registration approval remains a separate permission gate. Five endpoint regression tests pass.
+
 
 - [ ] Property state machine
 - [ ] Tenant lifecycle
