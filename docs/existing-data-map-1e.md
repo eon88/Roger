@@ -2,7 +2,7 @@
 
 **Source inspected:** `stage-clone/stage.json`, `stage-clone/serve.py` and `stage-clone/make_users.py` on the current working branch. The sample store contains properties, cases, jobs, registrations, approvals, audit entries, appointments, invitations and documents. It has no canonical Parties, Party roles, Tenancies, rent ledger or compliance-record collection.
 
-This is a mapping specification, not a data migration. No runtime store was changed.
+This is a mapping specification, not a data migration. Subsequent commits on this branch add `parties[]` and `tenancies[]` support for new agent-managed records, but they do not create records from legacy name strings or rewrite the existing store.
 
 ## Record mapping
 
