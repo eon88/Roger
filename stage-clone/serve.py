@@ -13,6 +13,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 import smtplib
 import hashlib
+import calendar
 import imaplib
 import hmac
 import http.cookies
@@ -107,7 +108,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -186,6 +187,11 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"trades": self.approved_trades(load_stage())})
+        if path == "/api/rent-ledger":
+            if not self.require({"agent"}):
+                return
+            stage = load_stage()
+            return self._json({"entries": [self.safe_rent_entry(x) for x in stage.get("rent_ledger_entries", [])]})
         if path == "/api/appointments":
             u = self.require({"agent", "tenant", "landlord"})
             if not u:
@@ -338,6 +344,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/case-action": self.handle_case_action,
             "/api/email-reply": self.handle_email_reply,
             "/api/email-sync": self.handle_email_sync,
+            "/api/rent-ledger-action": self.handle_rent_ledger_action,
         }
         if path in handlers:
             return handlers[path](data)
@@ -1279,6 +1286,122 @@ class H(SimpleHTTPRequestHandler):
         self._json({"success": True, "approval": appr})
 
     # ---------- agent: close with reason ----------
+    def safe_rent_entry(self, entry):
+        """Compute a ledger balance without storing derived status."""
+        due = int(entry.get("amount_due_pence", 0)) + sum(int(a.get("amount_pence", 0)) for a in entry.get("adjustments", []))
+        received = sum(int(p.get("amount_pence", 0)) for p in entry.get("payments", []))
+        balance = due - received
+        status = "paid" if balance == 0 else ("partial" if received else "due")
+        if balance > 0 and entry.get("due_date") and entry["due_date"] < datetime.now(timezone.utc).date().isoformat():
+            status = "overdue"
+        return {**entry, "amount_due_pence": due, "amount_received_pence": received,
+                "balance_pence": balance, "status": status}
+
+    def handle_rent_ledger_action(self, data):
+        """Create rent schedules and record manual payments or adjustments."""
+        stage = load_stage()
+        action = str(data.get("action", ""))
+        entries = stage.setdefault("rent_ledger_entries", [])
+        if action == "generate":
+            tenancy_id = str(data.get("tenancy_id", ""))[:100]
+            tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == tenancy_id), None)
+            if not tenancy:
+                return self._json({"error": "tenancy not found"}, 404)
+            if tenancy.get("status") not in ("move_in_scheduled", "active", "renewal", "notice_given"):
+                return self._json({"error": "rent schedule requires a move-in scheduled or active tenancy"}, 409)
+            if tenancy.get("agreement_status") != "signed":
+                return self._json({"error": "signed tenancy agreement required"}, 409)
+            try:
+                first_due = datetime.strptime(str(data.get("first_due_date", "")), "%Y-%m-%d").date()
+                periods = int(data.get("periods", 1))
+            except (ValueError, TypeError):
+                return self._json({"error": "first due date and period count are required"}, 400)
+            if not 1 <= periods <= 36:
+                return self._json({"error": "periods must be between 1 and 36"}, 400)
+            rent = int(tenancy.get("rent_amount_pence", 0))
+            if rent <= 0:
+                return self._json({"error": "tenancy rent must be greater than zero"}, 409)
+            frequency = tenancy.get("rent_frequency", "monthly")
+            months = {"monthly": 1, "quarterly": 3, "annually": 12}
+            days = {"weekly": 7, "fortnightly": 14}
+            if frequency not in months and frequency not in days:
+                return self._json({"error": "unsupported rent frequency"}, 409)
+            existing_dates = {x.get("due_date") for x in entries if x.get("tenancy_id") == tenancy_id}
+            next_num = int(stage.get("next_rent_ledger_id", 1))
+            created = []
+            for n in range(periods):
+                if frequency in days:
+                    due = first_due + timedelta(days=days[frequency] * n)
+                else:
+                    index = first_due.year * 12 + (first_due.month - 1) + months[frequency] * n
+                    year, month0 = divmod(index, 12)
+                    month = month0 + 1
+                    day = min(first_due.day, calendar.monthrange(year, month)[1])
+                    due = first_due.replace(year=year, month=month, day=day)
+                due_iso = due.isoformat()
+                if due_iso in existing_dates:
+                    continue
+                at = now()
+                entry = {
+                    "id": "rent-" + str(next_num), "tenancy_id": tenancy_id,
+                    "property_id": tenancy.get("property_id"), "due_date": due_iso,
+                    "amount_due_pence": rent, "payments": [], "adjustments": [],
+                    "created_at": at, "updated_at": at,
+                }
+                entries.append(entry)
+                created.append(entry)
+                existing_dates.add(due_iso)
+                next_num += 1
+            stage["next_rent_ledger_id"] = next_num
+            if created:
+                self.audit(stage, {"actor": (self.user or {}).get("display_name", "Agent"),
+                                   "action": "rent_schedule_created", "target": tenancy_id,
+                                   "note": str(len(created)) + " rent periods"})
+                save_stage(stage)
+            return self._json({"success": True, "created": [self.safe_rent_entry(x) for x in created],
+                               "skipped_duplicates": periods - len(created)})
+        entry_id = str(data.get("entry_id", ""))[:100]
+        entry = next((x for x in entries if x.get("id") == entry_id), None)
+        if not entry:
+            return self._json({"error": "rent ledger entry not found"}, 404)
+        if action == "receipt":
+            try:
+                amount = int(data.get("amount_pence", 0))
+                received_date = datetime.strptime(str(data.get("received_date", "")), "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return self._json({"error": "receipt amount and date are required"}, 400)
+            current = self.safe_rent_entry(entry)
+            if amount <= 0 or amount > current["balance_pence"]:
+                return self._json({"error": "receipt must be positive and no greater than the outstanding balance"}, 400)
+            if received_date > datetime.now(timezone.utc).date():
+                return self._json({"error": "receipt date cannot be in the future"}, 400)
+            entry.setdefault("payments", []).append({
+                "amount_pence": amount, "received_date": received_date.isoformat(),
+                "note": str(data.get("note", "")).strip()[:500], "recorded_at": now(),
+                "recorded_by": (self.user or {}).get("username", "agent"),
+            })
+        elif action == "adjustment":
+            try:
+                amount = int(data.get("amount_pence", 0))
+            except (ValueError, TypeError):
+                return self._json({"error": "adjustment must be an integer pence amount"}, 400)
+            reason = str(data.get("reason", "")).strip()[:500]
+            current = self.safe_rent_entry(entry)
+            if amount == 0 or not reason or current["amount_due_pence"] + amount < current["amount_received_pence"]:
+                return self._json({"error": "adjustment needs a reason and cannot reduce the charge below receipts"}, 400)
+            entry.setdefault("adjustments", []).append({
+                "amount_pence": amount, "reason": reason, "at": now(),
+                "by": (self.user or {}).get("username", "agent"),
+            })
+        else:
+            return self._json({"error": "action must be generate|receipt|adjustment"}, 400)
+        entry["updated_at"] = now()
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "Agent"),
+                           "action": "rent_" + action, "target": entry_id,
+                           "note": str(data.get("amount_pence", ""))})
+        save_stage(stage)
+        return self._json({"success": True, "entry": self.safe_rent_entry(entry)})
+
     def handle_email_sync(self, data):
         """Import unseen plain-text email into the best matching case, or create a new email case."""
         host = os.environ.get("ROGER_IMAP_HOST", "").strip()
