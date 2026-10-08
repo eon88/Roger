@@ -375,7 +375,8 @@ class H(SimpleHTTPRequestHandler):
         for name, prof in TRADE_PROFILES.items():
             out.append({"company": name, "trades": prof["trades"], "gas_safe": bool(prof.get("gas_safe"))})
         for r in stage.get("registrations", []):
-            if r.get("role") == "trades" and r.get("status") == "approved":
+            if (r.get("role") == "trades" and r.get("status") == "approved"
+                    and r.get("prospect_stage") not in ("suspended", "rejected")):
                 trades = [t for t in (r.get("trades") or []) if t]
                 out.append({"company": r["name"], "trades": trades or ["general"],
                             "gas_safe": bool(r.get("gas_safe_number"))})
@@ -458,6 +459,8 @@ class H(SimpleHTTPRequestHandler):
         action = data.get("action")
         if action not in ("approve", "reject"):
             return self._json({"error": "action must be approve|reject"}, 400)
+        if action == "approve" and reg.get("role") == "trades" and not reg.get("credentials_checked_at"):
+            return self._json({"error": "record a credentials check in the Trades pipeline before approval"}, 409)
         reg["status"] = "approved" if action == "approve" else "rejected"
         reg["actioned_at"] = now()
         reg["decision_note"] = str(data.get("note", ""))[:300]
@@ -937,11 +940,29 @@ class H(SimpleHTTPRequestHandler):
                     (("signed", "active") if required_agreement_status == "signed" else ("active",))
                     for a in stage.get("management_agreements", [])):
                 return self._json({"error": "an approved landlord Party needs the matching signed management agreement"}, 409)
-        if kind == "trades" and next_stage in ("approved", "available") and record.get("status") != "approved":
-            return self._json({"error": "approve the trades registration before advancing this stage"}, 409)
         if kind == "landlord" and next_stage in ("signed", "onboarding", "active") and record.get("status") != "approved":
             return self._json({"error": "approve the landlord registration before advancing this stage"}, 409)
         previous = record.get("prospect_stage") or default
+        if kind == "trades":
+            transitions = {
+                "applicant": ("credentials_submitted", "rejected"),
+                "credentials_submitted": ("checked", "rejected"),
+                "checked": ("approved", "rejected"),
+                "approved": ("available", "suspended"),
+                "available": ("suspended",),
+                "suspended": ("available", "rejected"),
+                "rejected": (),
+            }
+            if next_stage != previous and next_stage not in transitions.get(previous, ()):
+                return self._json({"error": "invalid trades lifecycle transition"}, 409)
+            if next_stage in ("approved", "available") and record.get("status") != "approved":
+                return self._json({"error": "approve the trades registration before advancing this stage"}, 409)
+            if next_stage == "checked":
+                at_checked = now()
+                record["credentials_checked_at"] = at_checked
+                record["credentials_checked_by"] = (self.user or {}).get("username", "agent")
+        if kind == "landlord" and next_stage in ("signed", "onboarding", "active") and record.get("status") != "approved":
+            return self._json({"error": "approve the landlord registration before advancing this stage"}, 409)
         if previous == next_stage:
             return self._json({"success": True, "unchanged": True, "stage": next_stage})
         at = now()
