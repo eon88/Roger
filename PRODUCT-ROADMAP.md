@@ -969,8 +969,8 @@ We will tackle these in order unless a real operational need changes the priorit
 
 ## Priority 5 — Communications
 
-- [ ] Unified communication timeline
-- [ ] Inbox
+- [x] Unified communication timeline — case messages grouped with contact and property context
+- [x] Inbox — filter by text and property; reply into the existing case thread
 - [ ] Email integration
 
 ## Priority 6 — Money
@@ -1020,4 +1020,6 @@ For each roadmap item:
 
 **Completed on this branch:** Agent Desk daily command centre and search; tenant, landlord and trades prospect pipelines; property lifecycle and public listing gate; tenant/tenancy lifecycle with agreement and dated move-in/notice/checkout transitions.
 
-Next: **Priority 5 — Communications**, beginning with a unified communication timeline across people, properties, tenancies and cases.
+**Priority 5 progress:** Agent Desk now has a communications inbox that groups case messages with their contact snapshot and property, sorts conversations by latest activity, filters by text/property, and sends replies into the case audit trail. This is the internal portal timeline; email remains unconnected.
+
+Next: **Priority 5 — Email integration**, after selecting the provider and required account credentials.
