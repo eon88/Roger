@@ -59,6 +59,14 @@ class ProspectStageTests(unittest.TestCase):
         self.assertEqual(self.responses[-1][1], 404)
         self.saved.assert_not_called()
 
+    def test_trade_cannot_enter_approved_stage_before_registration_approval(self):
+        serve.H.handle_prospect_action(self.handler, {
+            "kind": "trades", "id": "reg-1", "stage": "approved",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertNotIn("prospect_stage", self.stage["registrations"][0])
+        self.saved.assert_not_called()
+
     def test_trade_registration_can_enter_credentials_stage(self):
         serve.H.handle_prospect_action(self.handler, {
             "kind": "trades", "id": "reg-1", "stage": "credentials_submitted",
