@@ -242,5 +242,120 @@ class ProspectStageTests(unittest.TestCase):
         self.saved.assert_called_once_with(self.stage)
 
 
+
+    def test_approved_landlord_registration_links_to_party_without_merging(self):
+        self.stage["registrations"] = [{"id": "land-1", "role": "landlord", "status": "approved"}]
+        serve.H.handle_party_action(self.handler, {
+            "kind": "person", "display_name": "Landlord Example",
+            "roles": ["landlord"], "registration_id": "land-1",
+        })
+        party = self.stage["parties"][0]
+        self.assertEqual(party["source_registration_id"], "land-1")
+        self.assertEqual(self.stage["registrations"][0]["party_id"], party["id"])
+        self.assertIsNone(party["account_id"])
+        self.assertEqual(self.responses[-1][1], 200)
+        self.saved.assert_called_once_with(self.stage)
+
+    def test_party_cannot_link_unapproved_landlord_registration(self):
+        self.stage["registrations"] = [{"id": "land-1", "role": "landlord", "status": "pending"}]
+        serve.H.handle_party_action(self.handler, {
+            "kind": "person", "display_name": "Landlord Example",
+            "roles": ["landlord"], "registration_id": "land-1",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertNotIn("parties", self.stage)
+        self.saved.assert_not_called()
+
+    def test_management_agreement_must_be_signed_before_activation(self):
+        self.stage["parties"] = [{"id": "party-1", "status": "active", "roles": ["landlord"]}]
+        self.stage["properties"] = [{"id": "home-1"}]
+        serve.H.handle_management_agreement_action(self.handler, {
+            "action": "create", "landlord_party_id": "party-1",
+            "property_ids": ["home-1"], "agreement_type": "full_management",
+            "management_fee_bps": 1000,
+        })
+        agreement = self.stage["management_agreements"][0]
+        self.assertEqual(agreement["status"], "draft")
+        self.assertEqual(self.responses[-1][1], 200)
+        serve.H.handle_management_agreement_action(self.handler, {
+            "action": "transition", "id": agreement["id"], "status": "active",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertEqual(agreement["status"], "draft")
+
+    def test_management_agreement_records_signed_and_active_history(self):
+        self.stage["parties"] = [{"id": "party-1", "status": "active", "roles": ["landlord"]}]
+        self.stage["properties"] = [{"id": "home-1"}]
+        serve.H.handle_management_agreement_action(self.handler, {
+            "action": "create", "landlord_party_id": "party-1",
+            "property_ids": ["home-1"], "agreement_type": "let_only",
+            "management_fee_bps": 0,
+        })
+        agreement = self.stage["management_agreements"][0]
+        serve.H.handle_management_agreement_action(self.handler, {
+            "action": "transition", "id": agreement["id"], "status": "sent",
+        })
+        serve.H.handle_management_agreement_action(self.handler, {
+            "action": "transition", "id": agreement["id"], "status": "signed",
+            "signed_at": serve.datetime.now(serve.timezone.utc).date().isoformat(),
+            "evidence_note": "Signed copy verified in file store",
+        })
+        serve.H.handle_management_agreement_action(self.handler, {
+            "action": "transition", "id": agreement["id"], "status": "active",
+        })
+        self.assertEqual(agreement["status"], "active")
+        self.assertIsNotNone(agreement["signed_at"])
+        self.assertEqual(agreement["evidence_note"], "Signed copy verified in file store")
+        self.assertEqual(len(agreement["history"]), 4)
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "management_agreement_status_changed")
+
+    def test_management_agreement_end_date_cannot_precede_signature(self):
+        self.stage["management_agreements"] = [{
+            "id": "management-1", "landlord_party_id": "party-1",
+            "property_ids": ["home-1"], "status": "signed", "signed_at": "2026-10-01",
+        }]
+        serve.H.handle_management_agreement_action(self.handler, {
+            "action": "transition", "id": "management-1", "status": "ended",
+            "ended_at": "2026-09-30",
+        })
+        self.assertEqual(self.responses[-1][1], 400)
+        self.assertEqual(self.stage["management_agreements"][0]["status"], "signed")
+        self.saved.assert_not_called()
+
+    def test_landlord_pipeline_requires_approved_linked_party_and_active_agreement(self):
+        self.stage["registrations"] = [{
+            "id": "land-1", "role": "landlord", "status": "approved",
+            "party_id": "party-1",
+        }]
+        self.stage["parties"] = [{"id": "party-1", "status": "active", "roles": ["landlord"]}]
+        self.stage["management_agreements"] = [{
+            "id": "management-1", "landlord_party_id": "party-1",
+            "property_ids": ["home-1"], "status": "signed",
+        }]
+        serve.H.handle_prospect_action(self.handler, {
+            "kind": "landlord", "id": "land-1", "stage": "onboarding",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.stage["management_agreements"][0]["status"] = "active"
+        serve.H.handle_prospect_action(self.handler, {
+            "kind": "landlord", "id": "land-1", "stage": "onboarding",
+        })
+        self.assertEqual(self.responses[-1][1], 200)
+        self.assertEqual(self.stage["registrations"][0]["prospect_stage"], "onboarding")
+
+    def test_landlord_signed_stage_allows_signed_or_active_agreement(self):
+        self.stage["registrations"] = [{
+            "id": "land-1", "role": "landlord", "status": "approved",
+            "party_id": "party-1",
+        }]
+        self.stage["management_agreements"] = [{
+            "id": "management-1", "landlord_party_id": "party-1",
+            "status": "signed",
+        }]
+        serve.H.handle_prospect_action(self.handler, {
+            "kind": "landlord", "id": "land-1", "stage": "signed",
+        })
+        self.assertEqual(self.responses[-1][1], 200)
+
 if __name__ == "__main__":
     unittest.main()
