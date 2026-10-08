@@ -960,7 +960,7 @@ We will tackle these in order unless a real operational need changes the priorit
 
 **Property lifecycle implementation:** Agent Desk properties now move through validated states. Public `/api/public` serves only explicitly advertised properties with a complete description and safe marketing fields; private owner/tenant data is excluded. Existing property records without a state default to onboarding, and the site's sample fallback remains when no live listing qualifies.
 
-**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant and Tenancy stages use Party ID links, source enquiry, agreement state, explicit dates and property-state synchronization. Landlord registrations link to Party records, and management agreements capture property scope, terms, signed evidence and active/ended states. Trades credentials must be marked checked before approval; suspended trades are excluded from new assignments. Portal account linking, rent ledger/payment handling, portfolio reporting, credential expiry reminders and trades performance history remain open. Twenty-nine endpoint regression tests cover these workflows; Python compilation, HTML parsing and JavaScript syntax checks pass.
+**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant and Tenancy stages use Party ID links, source enquiry, agreement state, explicit dates and property-state synchronization. Landlord registrations link to Party records, and management agreements capture property scope, terms, signed evidence and active/ended states. Trades credentials must be marked checked before approval; suspended trades are excluded from new assignments. Portal account linking, rent ledger/payment handling, portfolio reporting, credential expiry reminders and trades performance history remain open. Thirty-five endpoint regression tests cover these workflows; Python compilation, HTML parsing and JavaScript syntax checks pass.
 
 - [x] Property state machine — agent-approved transitions and public listing gate
 - [x] Tenant lifecycle — prospect through active, notice, checkout and former tenant
@@ -1024,4 +1024,6 @@ For each roadmap item:
 
 **Priority 5 complete:** Agent Desk has a communications inbox, case/property/contact context, portal replies, SMTP outbound email, and manual IMAP inbox sync. Email credentials are deployment configuration and are not stored in Roger data.
 
-Next: **Priority 6 — Money**, beginning with the rent ledger.
+**Priority 6 complete:** Rent schedules and receipt tracking, active-agreement fee snapshots, landlord statement snapshots and the maintenance invoice/payment lifecycle are available in the Agent Desk.
+
+Next: **Priority 7 — Compliance**, beginning with property compliance records and expiry tracking.
