@@ -232,6 +232,55 @@ class ProspectStageTests(unittest.TestCase):
         self.assertNotIn("prospect_stage", self.stage["registrations"][0])
         self.saved.assert_not_called()
 
+    def test_rent_receipt_snapshots_management_fee(self):
+        self.stage["management_agreements"] = [{
+            "id": "management-1", "landlord_party_id": "party-1",
+            "property_ids": ["home-1"], "agreement_type": "full_management",
+            "management_fee_bps": 1000, "status": "active",
+        }]
+        self.stage["rent_ledger_entries"] = [{
+            "id": "rent-1", "property_id": "home-1", "due_date": "2099-01-01",
+            "amount_due_pence": 10000, "payments": [], "adjustments": [],
+        }]
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "receipt", "entry_id": "rent-1", "amount_pence": 5000,
+            "received_date": "2026-10-01",
+        })
+        payment = self.stage["rent_ledger_entries"][0]["payments"][0]
+        self.assertEqual(payment["agency_fee_pence"], 500)
+        self.assertEqual(payment["management_fee_bps"], 1000)
+        self.assertEqual(payment["management_agreement_id"], "management-1")
+
+    def test_landlord_statement_snapshots_rent_fees_and_paid_maintenance(self):
+        self.stage["parties"] = [{
+            "id": "party-1", "display_name": "Landlord", "roles": ["landlord"], "status": "active",
+        }]
+        self.stage["management_agreements"] = [{
+            "id": "management-1", "landlord_party_id": "party-1",
+            "property_ids": ["home-1"], "status": "active",
+        }]
+        self.stage["rent_ledger_entries"] = [{
+            "id": "rent-1", "tenancy_id": "tenancy-1", "property_id": "home-1",
+            "payments": [{"received_date": "2026-10-05", "amount_pence": 100000,
+                          "agency_fee_pence": 10000, "landlord_party_id": "party-1"}],
+        }]
+        self.stage["jobs"] = [{
+            "id": "job-1", "property_id": "home-1", "status": "paid",
+            "invoice_pence": 15000, "paid_at": "2026-10-06T10:00:00Z",
+        }]
+        serve.H.handle_landlord_statement_action(self.handler, {
+            "landlord_party_id": "party-1", "period_start": "2026-10-01",
+            "period_end": "2026-10-31",
+        })
+        statement = self.stage["landlord_statements"][0]
+        self.assertEqual(statement["rent_received_pence"], 100000)
+        self.assertEqual(statement["agency_fee_pence"], 10000)
+        self.assertEqual(statement["maintenance_pence"], 15000)
+        self.assertEqual(statement["net_payout_pence"], 75000)
+        self.assertEqual(len(statement["rent_lines"]), 1)
+        self.assertEqual(len(statement["maintenance_lines"]), 1)
+        self.saved.assert_called_once_with(self.stage)
+
     def test_rent_schedule_is_built_from_signed_tenancy_and_is_idempotent(self):
         self.stage["tenancies"] = [{
             "id": "tenancy-1", "property_id": "home-1", "status": "active",
