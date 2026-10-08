@@ -511,7 +511,7 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "display_name is required"}, 400)
         roles = data.get("roles", [])
         allowed = {"agent", "landlord", "tenant", "trades"}
-        if not isinstance(roles, list) or not roles or any(r not in allowed for r in roles):
+        if not isinstance(roles, list) or not roles or any(not isinstance(r, str) or r not in allowed for r in roles):
             return self._json({"error": "roles must contain one or more supported roles"}, 400)
         pid_num = int(stage.get("next_party_id", 1))
         party = {
@@ -588,7 +588,7 @@ class H(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 return self._json({"error": "valid start_date and integer pence amounts are required"}, 400)
             frequency = str(data.get("rent_frequency", "monthly"))
-            if rent < 0 or deposit < 0 or frequency not in ("weekly", "fortnightly", "monthly", "quarterly", "annually"):
+            if rent <= 0 or deposit < 0 or frequency not in ("weekly", "fortnightly", "monthly", "quarterly", "annually"):
                 return self._json({"error": "invalid rent, deposit or rent frequency"}, 400)
             tenancy_num = int(stage.get("next_tenancy_id", 1))
             tid = "tenancy-" + str(tenancy_num)
@@ -628,6 +628,9 @@ class H(SimpleHTTPRequestHandler):
                 except ValueError:
                     return self._json({"error": "signed_at in YYYY-MM-DD format is required"}, 400)
             previous_agreement_status = tenancy.get("agreement_status", "draft")
+            if previous_agreement_status == "signed" and (
+                    agreement_status != "signed" or tenancy.get("agreement_signed_at") != signed_at):
+                return self._json({"error": "signed agreements are immutable; record a separate variation"}, 409)
             if previous_agreement_status == agreement_status and tenancy.get("agreement_signed_at") == signed_at:
                 return self._json({"success": True, "unchanged": True, "agreement_status": agreement_status})
             at = now()
@@ -664,6 +667,10 @@ class H(SimpleHTTPRequestHandler):
                 parsed_date = datetime.strptime(effective_date, "%Y-%m-%d").date()
             except ValueError:
                 return self._json({"error": "an effective_date in YYYY-MM-DD format is required"}, 400)
+            if target == "notice_given" and parsed_date < datetime.strptime(tenancy["start_date"], "%Y-%m-%d").date():
+                return self._json({"error": "notice date cannot predate the tenancy start"}, 400)
+            if target == "checkout" and tenancy.get("notice_date") and parsed_date < datetime.strptime(tenancy["notice_date"], "%Y-%m-%d").date():
+                return self._json({"error": "checkout date cannot predate the notice date"}, 400)
             field = "notice_date" if target == "notice_given" else "checkout_date"
             tenancy[field] = parsed_date.isoformat()
         if target == "former_tenant" and not tenancy.get("checkout_date"):
