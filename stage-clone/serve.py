@@ -99,7 +99,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -183,6 +183,8 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"appointments": self.scoped_appointments(u)})
+        if path == "/api/public":
+            return self.serve_public_listings()
         if path == "/api/whoami":
             u = self.session_user()
             return self._json({"authenticated": False} if not u else
@@ -321,6 +323,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/landlord-action": self.handle_landlord_action,
             "/api/registration-action": self.handle_registration_action,
             "/api/prospect-action": self.handle_prospect_action,
+            "/api/property-action": self.handle_property_action,
             "/api/case-action": self.handle_case_action,
         }
         if path in handlers:
@@ -464,6 +467,89 @@ class H(SimpleHTTPRequestHandler):
         self.audit(stage, {"actor": "agent", "action": f"registration_{reg['status']}", "target": reg["id"], "note": reg["decision_note"]})
         save_stage(stage)
         self._json({"success": True})
+
+    def serve_public_listings(self):
+        """Return only explicitly advertised properties and only safe marketing fields."""
+        stage = load_stage()
+        properties = []
+        for prop in stage.get("properties", []):
+            listing = prop.get("public_listing") or {}
+            if prop.get("lifecycle_status") != "advertised" or not listing.get("description"):
+                continue
+            try:
+                rent = int(listing.get("rent", prop.get("rent", 0)))
+                beds = int(listing.get("beds", prop.get("beds", 0)))
+            except (TypeError, ValueError):
+                continue
+            title = str(listing.get("title", prop.get("title", "")))[:160]
+            area = str(listing.get("area", prop.get("area", "")))[:160]
+            if not title or not area or rent < 0 or beds < 0:
+                continue
+            properties.append({
+                "id": prop["id"], "title": title, "area": area, "beds": beds,
+                "rent": rent, "description": str(listing["description"])[:3000],
+                "availableFrom": str(listing.get("availableFrom", ""))[:30],
+                "sample": False,
+            })
+        return self._json({"demo": not bool(properties), "properties": properties})
+
+    def handle_property_action(self, data):
+        """Agent-controlled property lifecycle transition and public listing draft update."""
+        transitions = {
+            "prospect": ("onboarding", "offboarded"),
+            "onboarding": ("ready_to_market", "offboarded"),
+            "ready_to_market": ("onboarding", "advertised", "offboarded"),
+            "advertised": ("application", "void", "offboarded"),
+            "application": ("advertised", "let_agreed", "void"),
+            "let_agreed": ("occupied", "void"),
+            "occupied": ("notice_given", "offboarded"),
+            "notice_given": ("occupied", "checkout"),
+            "checkout": ("void",),
+            "void": ("remarketing", "offboarded"),
+            "remarketing": ("advertised", "onboarding", "offboarded"),
+            "offboarded": (),
+        }
+        stage = load_stage()
+        pid = str(data.get("property_id", ""))[:100]
+        prop = self.find_prop(stage, pid)
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        current = prop.get("lifecycle_status") or "onboarding"
+        target = str(data.get("status", ""))[:40]
+        if target not in transitions:
+            return self._json({"error": "invalid property lifecycle status"}, 400)
+        if target != current and target not in transitions.get(current, ()):
+            return self._json({"error": "invalid property lifecycle transition"}, 409)
+        description = data.get("description")
+        listing = prop.setdefault("public_listing", {})
+        if description is not None:
+            listing["description"] = str(description)[:3000].strip()
+        if target == "advertised":
+            try:
+                rent = int(prop.get("rent", 0))
+                beds = int(prop.get("beds", 0))
+            except (TypeError, ValueError):
+                rent, beds = -1, -1
+            if (not str(prop.get("title", "")).strip() or not str(prop.get("area", "")).strip()
+                    or not listing.get("description") or rent < 0 or beds < 0):
+                return self._json({"error": "add a public description and confirm listing details before advertising"}, 400)
+            listing.update({"title": prop["title"], "area": prop["area"],
+                            "beds": beds, "rent": rent})
+        if target == current and description is None:
+            return self._json({"success": True, "unchanged": True, "status": current})
+        at = now()
+        previous = current
+        prop["lifecycle_status"] = target
+        prop["lifecycle_status_at"] = at
+        prop.setdefault("lifecycle_history", []).append({
+            "from": previous, "to": target, "at": at,
+            "by": (self.user or {}).get("username", "agent")
+        })
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                           "action": "property_lifecycle_changed", "target": pid,
+                           "note": previous + " -> " + target})
+        save_stage(stage)
+        return self._json({"success": True, "status": target, "updated_at": at})
 
     def handle_prospect_action(self, data):
         """Advance a tenant enquiry or landlord/trades application through its acquisition pipeline."""
