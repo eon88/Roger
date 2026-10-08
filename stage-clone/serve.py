@@ -99,7 +99,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -320,6 +320,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/job-action": self.handle_job_action,
             "/api/landlord-action": self.handle_landlord_action,
             "/api/registration-action": self.handle_registration_action,
+            "/api/prospect-action": self.handle_prospect_action,
             "/api/case-action": self.handle_case_action,
         }
         if path in handlers:
@@ -463,6 +464,53 @@ class H(SimpleHTTPRequestHandler):
         self.audit(stage, {"actor": "agent", "action": f"registration_{reg['status']}", "target": reg["id"], "note": reg["decision_note"]})
         save_stage(stage)
         self._json({"success": True})
+
+    def handle_prospect_action(self, data):
+        """Advance a tenant enquiry or landlord/trades application through its acquisition pipeline."""
+        stage = load_stage()
+        kind = str(data.get("kind", ""))
+        rid = str(data.get("id", ""))[:100]
+        next_stage = str(data.get("stage", ""))[:40]
+        options = {
+            "tenant": ("enquiry", "viewing", "application", "referencing", "approved", "offer", "converted", "closed"),
+            "landlord": ("lead", "conversation", "valuation", "proposal", "terms", "signed", "onboarding", "active", "closed"),
+            "trades": ("applicant", "credentials_submitted", "checked", "approved", "available", "suspended", "rejected"),
+        }
+        if kind not in options:
+            return self._json({"error": "kind must be tenant|landlord|trades"}, 400)
+        if next_stage not in options[kind]:
+            return self._json({"error": "invalid stage for prospect type"}, 400)
+        if kind == "tenant":
+            record = next((c for c in stage.get("cases", [])
+                           if str(c.get("id")) == rid and c.get("type") == "enquiry"
+                           and c.get("role") in ("renter", "tenant")), None)
+            default = "enquiry"
+        else:
+            record = next((r for r in stage.get("registrations", [])
+                           if str(r.get("id")) == rid and r.get("role") == kind), None)
+            if kind == "trades":
+                default = "rejected" if record and record.get("status") == "rejected" else (
+                    "approved" if record and record.get("status") == "approved" else "applicant")
+            else:
+                default = "closed" if record and record.get("status") == "rejected" else (
+                    "onboarding" if record and record.get("status") == "approved" else "lead")
+        if not record:
+            return self._json({"error": "prospect not found"}, 404)
+        previous = record.get("prospect_stage") or default
+        if previous == next_stage:
+            return self._json({"success": True, "unchanged": True, "stage": next_stage})
+        at = now()
+        record.setdefault("prospect_history", []).append({
+            "from": previous, "to": next_stage, "at": at,
+            "by": (self.user or {}).get("username", "agent")
+        })
+        record["prospect_stage"] = next_stage
+        record["prospect_stage_at"] = at
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                           "action": "prospect_stage_changed", "target": rid,
+                           "note": kind + ": " + previous + " -> " + next_stage})
+        save_stage(stage)
+        self._json({"success": True, "stage": next_stage, "updated_at": at})
 
     # ---------- enquiries (public connect form) ----------
     def handle_enquiry(self, data):
