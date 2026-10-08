@@ -14,6 +14,7 @@
       <a href="#" class="tab" data-view="cases">Cases</a>
       <a href="#" class="tab" data-view="jobs">Jobs</a>
       <a href="#" class="tab" data-view="communications">Communications</a>
+      <a href="#" class="tab" data-view="money">Money</a>
       <a href="#" class="tab" data-view="registrations">Registrations</a>
       <a href="#" class="tab" data-view="prospects">Prospects</a>
       <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
@@ -28,6 +29,7 @@
     <section id="view-cases" style="display:none"></section>
     <section id="view-jobs" style="display:none"></section>
     <section id="view-communications" style="display:none"></section>
+    <section id="view-money" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
     <section id="view-people" style="display:none"></section>
@@ -42,7 +44,7 @@ const money = p => '£' + ((p ?? 0)/100).toFixed(2);
 const ago = iso => { if(!iso) return ''; const m=(Date.now()-new Date(iso))/60000;
   if(m<1)return 'just now'; if(m<60)return Math.round(m)+' min ago'; if(m<1440)return Math.round(m/60)+' h ago'; return Math.round(m/1440)+' days ago'; };
 const when = iso => iso ? `<span class="when" title="${esc(new Date(iso).toLocaleString('en-GB'))}">${ago(iso)}</span>` : '';
-let stage=null, lastGood='', pool=[];
+let stage=null, lastGood='', pool=[], ledgerEntries=[];
 
 async function api(p){const r=await fetch(p);if(!r.ok)throw new Error(p+': '+r.status);return r.json();}
 async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
@@ -110,6 +112,7 @@ async function load(manual){
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
+    try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
     lastGood=new Date().toLocaleTimeString('en-GB');
     document.getElementById('api-error').style.display='none';
     document.getElementById('stamp').textContent='live · updated '+lastGood+' · every 15s';
@@ -119,7 +122,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -513,6 +516,39 @@ async function saveTenancyStage(btn){
  await busy(btn,async()=>{try{await post('/api/tenancy-action',{action:'transition',id:btn.dataset.tenancyId,status,effective_date:date});toast('Tenancy stage updated.');load();}catch(e){}});
 }
 
+function renderMoney(){
+ const eligible=(stage.tenancies||[]).filter(t=>t.agreement_status==='signed'&&['move_in_scheduled','active','renewal','notice_given'].includes(t.status));
+ const tenOptions=eligible.map(t=>{const p=(stage.properties||[]).find(x=>x.id===t.property_id)||{};return '<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc(p.title||t.property_id)+' · '+money(t.rent_amount_pence)+'</option>';}).join('');
+ const totalOutstanding=ledgerEntries.reduce((n,x)=>n+Math.max(0,x.balance_pence||0),0);
+ const overdue=ledgerEntries.filter(x=>x.status==='overdue').reduce((n,x)=>n+(x.balance_pence||0),0);
+ const rows=ledgerEntries.slice().sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date))).map(x=>{
+  const t=(stage.tenancies||[]).find(t=>t.id===x.tenancy_id)||{},p=(stage.properties||[]).find(p=>p.id===x.property_id)||{};
+  return '<div class="card" id="'+esc(x.id)+'"><div class="cardtop"><h3>'+esc(p.title||x.property_id)+' · '+esc(x.due_date)+'</h3><span class="badge '+esc(x.status)+'">'+esc(x.status)+'</span></div><div class="meta">Tenancy '+esc(x.tenancy_id)+' · due '+money(x.amount_due_pence)+' · received '+money(x.amount_received_pence)+' · balance '+money(x.balance_pence)+'</div>'+
+   (x.payments||[]).map(pay=>'<div class="thread">Receipt '+esc(pay.received_date)+' · '+money(pay.amount_pence)+(pay.note?' · '+esc(pay.note):'')+'</div>').join('')+
+   (x.adjustments||[]).map(a=>'<div class="thread">Adjustment '+(a.amount_pence>=0?'+':'')+money(a.amount_pence)+' · '+esc(a.reason)+'</div>').join('')+
+   '<div class="actions"><input class="receipt-amount" type="number" min="0.01" step="0.01" placeholder="Receipt (£)" aria-label="Receipt amount in pounds"><input class="receipt-date" type="date" value="'+new Date().toISOString().slice(0,10)+'" aria-label="Receipt date"><button class="btn primary" data-entry-id="'+esc(x.id)+'" onclick="recordRentReceipt(this)">Record receipt</button><button class="btn" data-entry-id="'+esc(x.id)+'" onclick="adjustRentEntry(this)">Adjust charge</button></div></div>';
+ }).join('');
+ document.getElementById('view-money').innerHTML='<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
+ '<div class="stats"><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
+ '<div class="card"><h2>Generate rent schedule</h2><div class="grid2"><label class="field"><span>Signed tenancy</span><select id="ledger-tenancy">'+tenOptions+'</select></label><label class="field"><span>First due date</span><input id="ledger-first-due" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label class="field"><span>Periods (max 36)</span><input id="ledger-periods" type="number" min="1" max="36" value="12"></label></div><button class="btn primary" onclick="generateRentSchedule(this)">Generate schedule</button>'+(eligible.length?'':'<div class="fineprint">A signed tenancy with move-in scheduled or active status is required.</div>')+'</div>'+
+ '<div class="move">rent entries</div>'+(rows||'<div class="empty">No rent entries yet.</div>');
+}
+async function generateRentSchedule(btn){
+ const periods=Number(document.getElementById('ledger-periods').value);
+ if(!Number.isInteger(periods)||periods<1||periods>36){toast('Choose between 1 and 36 periods.','bad');return;}
+ await busy(btn,async()=>{try{const result=await post('/api/rent-ledger-action',{action:'generate',tenancy_id:document.getElementById('ledger-tenancy').value,first_due_date:document.getElementById('ledger-first-due').value,periods});toast('Created '+result.created.length+' rent entries; skipped '+result.skipped_duplicates+' duplicates.');load();}catch(e){}});
+}
+async function recordRentReceipt(btn){
+ const card=btn.closest('.card'),amount=Number(card.querySelector('.receipt-amount').value),date=card.querySelector('.receipt-date').value;
+ if(!Number.isFinite(amount)||amount<=0){toast('Enter a positive receipt amount.','bad');return;}
+ await busy(btn,async()=>{try{await post('/api/rent-ledger-action',{action:'receipt',entry_id:btn.dataset.entryId,amount_pence:Math.round(amount*100),received_date:date});toast('Receipt recorded.');load();}catch(e){}});
+}
+async function adjustRentEntry(btn){
+ const value=prompt('Adjustment in pounds (use a minus sign to reduce the charge)','0.00');if(value===null)return;
+ const amount=Number(value),reason=(prompt('Reason for adjustment')||'').trim();
+ if(!Number.isFinite(amount)||amount===0||!reason){toast('Enter a non-zero amount and a reason.','bad');return;}
+ await busy(btn,async()=>{try{await post('/api/rent-ledger-action',{action:'adjustment',entry_id:btn.dataset.entryId,amount_pence:Math.round(amount*100),reason});toast('Rent adjustment recorded.');load();}catch(e){}});
+}
 function renderHistory(){
   const log=(stage.audit_log||[]).slice().reverse();
   document.getElementById('view-history').innerHTML=`<div class="move">activity log</div>`+
