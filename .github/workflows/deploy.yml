@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s' "${{ secrets.ROGER_SSH_PRIVATE_KEY_B64 }}" | base64 --decode > ~/.ssh/roger_deploy
+          printf '%s' "${{ secrets.ROGER_SSH_PRIVATE_KEY_B64 }}" | tr -d '\\r\\n\\t ' | base64 --decode > ~/.ssh/roger_deploy
           chmod 600 ~/.ssh/roger_deploy
           ssh-keygen -y -f ~/.ssh/roger_deploy >/dev/null
 
