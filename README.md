@@ -1,69 +1,107 @@
-# Stage — virtual estate agency portal
+# Roger — Virtual Estate Agency Portal
 
-A working demo + dev sandbox for a solopreneur-run UK lettings agency. One case
-book, four role portals, AI triage as the wiring.
+Roger is a single-agent lettings and property-management portal.
 
-## Run it
+## Product goal
+
+The portal has two clear sides:
+
+1. **Front end = advertising**
+   - Show available properties to prospective tenants.
+   - Advertise the agency's service to landlords.
+   - Recruit tradespeople into the contractor network.
+   - Provide registration/enquiry routes and portal sign-in.
+
+2. **Back end = management**
+   - Bring **landlords, tenants and tradespeople under one roof**.
+   - Keep each role in its own scoped portal.
+   - Let **one estate agent operate the whole system** from the Agent Desk.
+
+The agent is the central operator. Tenants report and communicate, landlords own properties and approve money where required, tradespeople quote and carry out work, and the agent coordinates the entire lifecycle.
+
+AI assists with triage and routing; it does not replace the agent's responsibility for legal, safety or money decisions.
+
+## Current application
+
+The working application lives in `stage-clone/`.
+
+```text
+stage-clone/
+├── serve.py                 # HTTP server, auth, API, workflow/state engine
+├── jev_client.py            # AI triage with local keyword fallback
+├── make_users.py            # Seeds role accounts; users.json stays gitignored
+├── stage.json               # Prototype datastore
+├── index.html               # Public advertising / property listings
+├── login.html               # Account login
+├── signin.html              # Role sign-in landing page
+├── register-landlord.html   # Landlord acquisition form
+├── register-trades.html     # Trades recruitment form
+├── agent.html               # Central management cockpit
+├── landlord.html            # Landlord portal
+├── tenant.html              # Tenant portal
+├── trades.html              # Trades portal
+├── dash.css                 # Shared portal styling
+├── api-public.json          # Public demo/listing feed
+├── favicon.svg
+├── sample-home.jpg
+└── _next/                   # Required compiled assets for the public pages
+```
+
+## Current management features
+
+- Real session authentication with role-scoped access.
+- Separate Agent, Landlord, Tenant and Trades portals.
+- Properties, cases and per-case message threads.
+- Maintenance jobs and status synchronisation.
+- Trades assignment and quote requests.
+- Quote approval / decline flows.
+- Invoice handling and landlord approval above standing authority.
+- Trades credential gating with agent override.
+- Landlord and trades registration review.
+- Appointments and viewing scheduling.
+- Invitation tokens.
+- Document upload, verification and role-scoped document access.
+- Audit log.
+- Jev/OpenRouter triage for category, urgency, safety and trade, with keyword fallback.
+- Public advertising and acquisition routes for tenants, landlords and trades.
+
+## Role model
+
+### Agent
+The one operating desk. Has the whole picture and coordinates properties, people, cases, jobs, approvals, registrations, appointments and documents.
+
+### Landlord
+Sees only their properties and relevant management information. Reviews approvals, property activity, appointments and documents.
+
+### Tenant
+Sees their home. Reports problems, follows cases, manages appointments and accesses relevant documents.
+
+### Trades
+Sees available/assigned work, quotes, job progress, invoices and relevant job documents.
+
+## Source-of-truth rules
+
+- The **public site is for advertising and acquisition**.
+- The **private portal is for property management**.
+- The **Agent Desk is the orchestration layer** for the whole system.
+- Do not create parallel role systems or duplicate workflow engines.
+- Extend the existing case/job/approval workflow instead of creating competing versions.
+- Keep management data server-side and role-scoped.
+- Keep human control over legal, safety, credential and money decisions.
+- Do not add old prototypes, audit snapshots or duplicate generated copies back into the working tree.
+
+## Run locally
 
 ```bash
 cd stage-clone
-python3 serve.py            # stdlib only, no pip installs — http://127.0.0.1:8901
+python3 make_users.py   # first run only; prints generated passwords once
+python3 serve.py
 ```
 
-Data is flat files: `stage-clone/stage.json` is the whole database
-(properties, cases, jobs, approvals, registrations, audit_log).
-`stage-clone/users.json` (gitignored) holds scrypt password hashes + sessions —
-seed your own with `python3 make_users.py`.
+Then open:
 
-## Layout
+```text
+http://127.0.0.1:8901
+```
 
-| path | what |
-|---|---|
-| `/` | public site (cloned from the original ChatGPT-hosted stage.site; forms POST `/api/public`) |
-| `/signin` → `/login` | role doors, real session auth (httpOnly cookie) |
-| `/agent` `/landlord` `/tenant` `/trades` | the four portals |
-| `stage-clone/serve.py` | stdlib HTTP server: routing, auth, role-scoped API, workflow engine |
-| `stage-clone/jev_client.py` | Jev (TypeSafe System One via OpenRouter) batched triage: category, urgency, safety, trade — with keyword fallback |
-| `audit/` | 4 persona audits + consolidated fix list + `jev_human_review.py` (see Workflow rules) |
-| `estate-agency-portal-draft.md`, `keyhouse-portal-prototype.html` | original spec + v0.4 single-file prototype (predecessor, reference only) |
-
-## The domain model (Operating Model)
-
-Four dancers on one stage (the property): **tenant** reports, **agent**
-choreographs, **landlord** approves money, **trades** fix things. The AI is
-electricity, not a dancer: every incoming message gets one batched Jev call
-(category/urgency/safety/trade). Rules that stay human: law, safety, money.
-Invoices ≤ £150 ("standing authority") auto-settle; above it the landlord
-signs off; jobs whose required trade the booker lacks are held for agent
-verification. Every action lands in `stage.json.audit_log`.
-
-## Workflow rules (learned the hard way — see audit/)
-
-1. **Status propagates or it lies.** `case.status` must follow job/approval
-   events (dispatched → in_progress → awaiting_approval → resolved/declined).
-   Never introduce a state a lower surface can't see.
-2. **Server-side scoping only.** `/api/stage` answers differ per role. Client
-   filtering is presentation, not security.
-3. **Escape all user text** (`esc()` in every page). A registration probe once
-   XSS'd the agent desk.
-4. **Jev judges, never writes.** Typed score/choice/noul questions only; prose
-   stays human. `audit/jev_human_review.py` re-rates the whole portal in one
-   command after copy changes — JSONL diff is the regression gate.
-5. **Reject/decline needs a reason + consequences** (creates an agent task).
-   Decisions never vanish silently.
-
-## Conventions
-
-- Visual language: paper `#faf7f2`, pine `#1e6b4f`, Fraunces display /
-  Instrument Sans UI, unboxed cards (`dash.css`) — match it in new views.
-- Plain English for users; move vocabulary (REPORT/APPROVE/VERIFY) lives in
-  the data and CSS class names, not headline copy.
-- Demo identities: Daniel Mensah (tenant), T. Blackwood (landlord),
-  R. Doyle Gas & Heat (trades). Keep the stories coherent — the seeded
-  `stage.json` walks through tap-leak, gas-smell and lockout cases.
-
-## Roadmap (from the audit, not invented)
-
-Real Supabase auth + per-account data · receipts/VAT/payment provider ·
-compliance calendar (CP12, EPC, deposits) · landlord standing-authority
-editor · notifications/push · rent ledger.
+No third-party Python package is required for the core server.
