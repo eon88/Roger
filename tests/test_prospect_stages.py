@@ -232,6 +232,73 @@ class ProspectStageTests(unittest.TestCase):
         self.assertNotIn("prospect_stage", self.stage["registrations"][0])
         self.saved.assert_not_called()
 
+    def test_rent_schedule_is_built_from_signed_tenancy_and_is_idempotent(self):
+        self.stage["tenancies"] = [{
+            "id": "tenancy-1", "property_id": "home-1", "status": "active",
+            "agreement_status": "signed", "rent_amount_pence": 125000,
+            "rent_frequency": "monthly",
+        }]
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "generate", "tenancy_id": "tenancy-1",
+            "first_due_date": "2027-01-31", "periods": 3,
+        })
+        self.assertEqual([x["due_date"] for x in self.stage["rent_ledger_entries"]],
+                         ["2027-01-31", "2027-02-28", "2027-03-31"])
+        self.assertEqual(self.responses[-1][0]["skipped_duplicates"], 0)
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "generate", "tenancy_id": "tenancy-1",
+            "first_due_date": "2027-01-31", "periods": 3,
+        })
+        self.assertEqual(len(self.stage["rent_ledger_entries"]), 3)
+        self.assertEqual(self.responses[-1][0]["skipped_duplicates"], 3)
+
+    def test_rent_receipts_track_partial_and_full_balances(self):
+        self.stage["rent_ledger_entries"] = [{
+            "id": "rent-1", "tenancy_id": "tenancy-1", "due_date": "2099-01-01",
+            "amount_due_pence": 125000, "payments": [], "adjustments": [],
+        }]
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "receipt", "entry_id": "rent-1", "amount_pence": 50000,
+            "received_date": "2026-10-01",
+        })
+        self.assertEqual(self.responses[-1][0]["entry"]["balance_pence"], 75000)
+        self.assertEqual(self.responses[-1][0]["entry"]["status"], "partial")
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "receipt", "entry_id": "rent-1", "amount_pence": 75000,
+            "received_date": "2026-10-02",
+        })
+        self.assertEqual(self.responses[-1][0]["entry"]["balance_pence"], 0)
+        self.assertEqual(self.responses[-1][0]["entry"]["status"], "paid")
+
+    def test_rent_receipt_cannot_exceed_balance_and_adjustment_keeps_a_reason(self):
+        self.stage["rent_ledger_entries"] = [{
+            "id": "rent-1", "due_date": "2099-01-01",
+            "amount_due_pence": 10000, "payments": [], "adjustments": [],
+        }]
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "receipt", "entry_id": "rent-1", "amount_pence": 10001,
+            "received_date": "2026-10-01",
+        })
+        self.assertEqual(self.responses[-1][1], 400)
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "adjustment", "entry_id": "rent-1",
+            "amount_pence": -1000, "reason": "",
+        })
+        self.assertEqual(self.responses[-1][1], 400)
+        self.saved.assert_not_called()
+
+    def test_rent_schedule_requires_signed_agreement(self):
+        self.stage["tenancies"] = [{
+            "id": "tenancy-1", "status": "active", "agreement_status": "draft",
+            "rent_amount_pence": 10000, "rent_frequency": "monthly",
+        }]
+        serve.H.handle_rent_ledger_action(self.handler, {
+            "action": "generate", "tenancy_id": "tenancy-1",
+            "first_due_date": "2026-11-01", "periods": 1,
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertNotIn("rent_ledger_entries", self.stage)
+
     def test_trade_cannot_be_approved_before_checked_credentials(self):
         self.stage["registrations"] = [{
             "id": "trade-2", "role": "trades", "status": "pending",
