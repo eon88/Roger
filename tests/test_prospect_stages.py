@@ -99,7 +99,8 @@ class ProspectStageTests(unittest.TestCase):
              "beds": 1, "rent": 90000, "lifecycle_status": "onboarding",
              "public_listing": {"description": "Do not publish."}},
         ]
-        response = serve.H.serve_public_listings(self.handler)
+        serve.H.serve_public_listings(self.handler)
+        response = self.responses[-1][0]
         self.assertEqual([p["id"] for p in response["properties"]], ["live"])
         self.assertNotIn("landlord", response["properties"][0])
         self.assertNotIn("tenant", response["properties"][0])
