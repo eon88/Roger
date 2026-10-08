@@ -931,10 +931,10 @@ We will tackle these in order unless a real operational need changes the priorit
 ## Priority 1 — Core data model
 
 - [x] **1A. Design People model** — [design](docs/people-model-1a.md)
-- [ ] **1B. Design Property model**
-- [ ] **1C. Design Tenancy model**
-- [ ] **1D. Define relationships between them**
-- [ ] **1E. Map existing Roger data into the new model**
+- [x] **1B. Design Property model** — [design](docs/property-model-1b.md)
+- [x] **1C. Design Tenancy model** — [design](docs/tenancy-model-1c.md)
+- [x] **1D. Define relationships between them** — [design](docs/core-relationships-1d.md)
+- [x] **1E. Map existing Roger data into the new model** — [mapping](docs/existing-data-map-1e.md)
 
 ## Priority 2 — Agent Desk
 
