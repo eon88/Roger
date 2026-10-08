@@ -49,7 +49,12 @@ def validate_stage(stage):
     for tenancy in stage.get("tenancies", []):
         if tenancy.get("property_id") and str(tenancy["property_id"]) not in property_ids:
             warnings.append("tenancy " + str(tenancy["id"]) + " references an unknown property")
-        for party_id in (tenancy.get("tenant_party_ids", []) + tenancy.get("landlord_party_ids", [])):
+        tenant_ids = tenancy.get("tenant_party_ids") or []
+        landlord_ids = tenancy.get("landlord_party_ids") or []
+        if not isinstance(tenant_ids, list) or not isinstance(landlord_ids, list):
+            warnings.append("tenancy " + str(tenancy["id"]) + " has malformed Party links")
+            continue
+        for party_id in tenant_ids + landlord_ids:
             if str(party_id) not in party_ids:
                 warnings.append("tenancy " + str(tenancy["id"]) + " references an unknown Party")
     for collection in ("cases", "jobs", "documents"):
@@ -99,10 +104,10 @@ def migrate(source_dir, database_url):
                 if table in ("roger_tenancies", "roger_cases", "roger_jobs", "roger_documents"):
                     connection.execute(
                         "INSERT INTO " + table + "(id,property_id,case_id,payload) VALUES (%s,%s,%s,%s::jsonb)",
-                        (record_id, record.get("property_id"), record.get("case_id"), json.dumps(record)),
+                        (record_id, str(record.get("property_id")) if record.get("property_id") is not None else None, str(record.get("case_id")) if record.get("case_id") is not None else None, json.dumps(record)),
                     ) if table in ("roger_jobs", "roger_documents") else connection.execute(
                         "INSERT INTO " + table + "(id,property_id,payload) VALUES (%s,%s,%s::jsonb)",
-                        (record_id, record.get("property_id"), json.dumps(record)),
+                        (record_id, str(record.get("property_id")) if record.get("property_id") is not None else None, json.dumps(record)),
                     )
                 else:
                     connection.execute(
