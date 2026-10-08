@@ -30,15 +30,15 @@ Portal account linking and tenant access are still not implemented. A Party or T
 
 ## Landlord
 
-**Prospect stages implemented:** `lead → conversation → valuation → proposal → terms → signed → onboarding → active`, with `closed` for withdrawn or declined prospects. These stage changes do not constitute an executed management agreement. Approval remains separate, and source registration data remains intact.
+**Implemented on this branch:** an approved landlord registration can be explicitly linked to a Party without matching or merging by email. Agent Desk management agreements record one landlord Party, one or more properties, service type, fee, evidence note, signed date, status and transition history. A signed date and evidence note are recorded before activation; end dates cannot precede signature. The landlord prospect cannot reach `signed`, `onboarding` or `active` without the linked approved registration and matching agreement. Ending an agreement retains its record and audit history.
 
-A future offboarding flow must end management authority while retaining property, tenancy, finance and audit history. Existing records do not encode signed agreement evidence, so Roger must not imply a contract exists from the `signed` label alone.
+Property onboarding checklists, compliance collection, portfolio reporting, landlord portal access and finance statements remain future work. The `active` prospect label does not grant access or imply that those systems are complete.
 
 ## Trades
 
-**Applicant stages implemented:** `applicant → credentials_submitted → checked → approved → available`; `suspended` and `rejected` are controlled end/hold states. The pipeline stage does not replace the existing registration approval or credential gate. The API blocks `approved`/`available` until registration approval is recorded.
+**Implemented on this branch:** trades applicants progress through `applicant → credentials_submitted → checked → approved → available`, with explicit valid transitions to `suspended` or `rejected`. An agent check is timestamped and attributed. The registration approval endpoint rejects an unchecked trades applicant. `approved` and `available` also require registration approval. Suspended registrations are removed from the assignment pool while their prior jobs remain intact. Agent Desk shows submitted trade categories, Gas Safe number, insurance expiry, coverage and check date where supplied.
 
-Per-job states remain separate: assignment, quote request, quote decision, work, invoice and payment. A trades profile can have many job histories; completing one job must not change its overall approval or availability state.
+Per-job states remain separate: assignment, quote request, quote decision, work, invoice and payment. Performance ratings, credential expiry reminders and a full contractor document vault remain future work.
 
 ## Cross-lifecycle rules
 
