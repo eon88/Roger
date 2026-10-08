@@ -9,7 +9,7 @@ import tarfile
 from datetime import datetime, timezone
 
 
-def create_backup(source_dir, destination_dir, retention_days=14):
+def create_backup(source_dir, destination_dir, retention_days=14, files_dir=None):
     source = Path(source_dir).resolve()
     destination = Path(destination_dir).resolve()
     if destination == source or source in destination.parents:
@@ -20,6 +20,11 @@ def create_backup(source_dir, destination_dir, retention_days=14):
     for path in files:
         with path.open("r", encoding="utf-8") as f:
             json.load(f)
+    file_root = Path(files_dir).resolve() if files_dir else source / "files"
+    if file_root.is_symlink():
+        raise ValueError("document storage directory cannot be a symlink")
+    if file_root.exists() and any(p.is_symlink() for p in file_root.rglob("*")):
+        raise ValueError("document storage contains a symlink")
     destination.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     archive_path = destination / ("roger-data-" + stamp + ".tar.gz")
@@ -28,6 +33,8 @@ def create_backup(source_dir, destination_dir, retention_days=14):
         with tarfile.open(temp_path, "w:gz") as archive:
             for path in files:
                 archive.add(path, arcname=path.name, recursive=False)
+            if file_root.is_dir():
+                archive.add(file_root, arcname="files", recursive=True)
         os.chmod(temp_path, 0o600)
         os.replace(temp_path, archive_path)
     finally:
@@ -50,7 +57,8 @@ def main():
     parser.add_argument("--destination", default=os.environ.get("ROGER_BACKUP_DIR", str(Path(__file__).resolve().parents[1] / "backups")))
     parser.add_argument("--retention-days", type=int, default=14)
     args = parser.parse_args()
-    archive, checksum = create_backup(args.source, args.destination, args.retention_days)
+    archive, checksum = create_backup(args.source, args.destination, args.retention_days,
+                                        os.environ.get("ROGER_FILES_DIR"))
     print(str(archive))
     print(str(checksum))
 
