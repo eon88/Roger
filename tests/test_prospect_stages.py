@@ -12,6 +12,7 @@ class ProspectStageTests(unittest.TestCase):
     def setUp(self):
         self.handler = serve.H.__new__(serve.H)
         self.handler.user = {"username": "agent", "display_name": "Agent"}
+        self.handler.find_prop = lambda data, pid: next((p for p in data.get("properties", []) if p.get("id") == pid), None)
         self.responses = []
         self.handler._json = lambda payload, status=200: self.responses.append((payload, status))
         self.stage = {
@@ -58,6 +59,51 @@ class ProspectStageTests(unittest.TestCase):
         })
         self.assertEqual(self.responses[-1][1], 404)
         self.saved.assert_not_called()
+
+    def test_property_can_be_advertised_after_description_is_added(self):
+        prop = {
+            "id": "home-1", "title": "12 Example Road", "area": "Exampleton",
+            "beds": 2, "rent": 125000, "lifecycle_status": "ready_to_market",
+            "landlord": "Private owner", "tenant": None,
+        }
+        self.stage["properties"] = [prop]
+        serve.H.handle_property_action(self.handler, {
+            "property_id": "home-1", "status": "advertised",
+            "description": "A two-bedroom home near the station.",
+        })
+        self.assertEqual(prop["lifecycle_status"], "advertised")
+        self.assertEqual(prop["public_listing"]["description"], "A two-bedroom home near the station.")
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "property_lifecycle_changed")
+        self.saved.assert_called_once_with(self.stage)
+        self.assertEqual(self.responses[-1][1], 200)
+
+    def test_invalid_property_transition_is_rejected(self):
+        self.stage["properties"] = [{
+            "id": "home-1", "lifecycle_status": "occupied",
+            "title": "12 Example Road", "area": "Exampleton", "beds": 2, "rent": 125000,
+        }]
+        serve.H.handle_property_action(self.handler, {
+            "property_id": "home-1", "status": "advertised",
+            "description": "A home.",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.saved.assert_not_called()
+
+    def test_public_api_returns_only_advertised_safe_fields(self):
+        self.stage["properties"] = [
+            {"id": "live", "title": "12 Example Road", "area": "Exampleton",
+             "beds": 2, "rent": 125000, "landlord": "Private owner", "tenant": "Private tenant",
+             "lifecycle_status": "advertised",
+             "public_listing": {"description": "Public copy."}},
+            {"id": "draft", "title": "Private draft", "area": "Exampleton",
+             "beds": 1, "rent": 90000, "lifecycle_status": "onboarding",
+             "public_listing": {"description": "Do not publish."}},
+        ]
+        response = serve.H.serve_public_listings(self.handler)
+        self.assertEqual([p["id"] for p in response["properties"]], ["live"])
+        self.assertNotIn("landlord", response["properties"][0])
+        self.assertNotIn("tenant", response["properties"][0])
+        self.assertFalse(response["demo"])
 
     def test_trade_cannot_enter_approved_stage_before_registration_approval(self):
         serve.H.handle_prospect_action(self.handler, {
