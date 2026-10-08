@@ -52,12 +52,7 @@ class ProspectStageTests(unittest.TestCase):
         self.saved.assert_not_called()
 
     def test_case_must_be_a_tenant_enquiry(self):
-        serve.H.handle_prospect_action(self.handler, {
-            "kind": "tenant", "id": "490", "stage": "viewing",
-        })
         self.stage["cases"][0]["type"] = "issue"
-        self.responses.clear()
-        self.saved.reset_mock()
         serve.H.handle_prospect_action(self.handler, {
             "kind": "tenant", "id": "490", "stage": "application",
         })
