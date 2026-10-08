@@ -960,12 +960,12 @@ We will tackle these in order unless a real operational need changes the priorit
 
 **Property lifecycle implementation:** Agent Desk properties now move through validated states. Public `/api/public` serves only explicitly advertised properties with a complete description and safe marketing fields; private owner/tenant data is excluded. Existing property records without a state default to onboarding, and the site's sample fallback remains when no live listing qualifies.
 
-**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant and Tenancy stages are now implemented with Party ID links, source enquiry, agreement state, explicit dates and property-state synchronization. Portal account linking, rent ledger/payment handling, landlord agreement evidence and trades performance history remain open. Fifteen endpoint regression tests cover prospect, Party, Tenancy, property transition and public-listing rules; Python compilation, HTML parsing and JavaScript syntax checks pass.
+**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant and Tenancy stages use Party ID links, source enquiry, agreement state, explicit dates and property-state synchronization. Landlord registrations link to Party records, and management agreements capture property scope, terms, signed evidence and active/ended states. Trades credentials must be marked checked before approval; suspended trades are excluded from new assignments. Portal account linking, rent ledger/payment handling, portfolio reporting, credential expiry reminders and trades performance history remain open. Twenty-five endpoint regression tests cover these workflows; Python compilation, HTML parsing and JavaScript syntax checks pass.
 
 - [x] Property state machine — agent-approved transitions and public listing gate
 - [x] Tenant lifecycle — prospect through active, notice, checkout and former tenant
-- [ ] Landlord lifecycle
-- [ ] Trades lifecycle
+- [x] Landlord lifecycle — approved registration to linked Party, signed management authority, onboarding and active gate
+- [x] Trades lifecycle — credential check, approval, availability and suspension gates
 
 ## Priority 5 — Communications
 
@@ -1020,4 +1020,4 @@ For each roadmap item:
 
 **Completed on this branch:** Agent Desk daily command centre and search; tenant, landlord and trades prospect pipelines; property lifecycle and public listing gate; tenant/tenancy lifecycle with agreement and dated move-in/notice/checkout transitions.
 
-Next: **Priority 4 — Landlord lifecycle**, including management-authority records and signed-agreement evidence.
+Next: **Priority 5 — Communications**, beginning with a unified communication timeline across people, properties, tenancies and cases.
