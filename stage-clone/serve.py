@@ -9,6 +9,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 import smtplib
 import hashlib
+import imaplib
 import hmac
 import http.cookies
 import json
@@ -102,7 +103,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -332,6 +333,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/management-agreement-action": self.handle_management_agreement_action,
             "/api/case-action": self.handle_case_action,
             "/api/email-reply": self.handle_email_reply,
+            "/api/email-sync": self.handle_email_sync,
         }
         if path in handlers:
             return handlers[path](data)
@@ -1273,6 +1275,95 @@ class H(SimpleHTTPRequestHandler):
         self._json({"success": True, "approval": appr})
 
     # ---------- agent: close with reason ----------
+    def handle_email_sync(self, data):
+        """Import unseen plain-text email into the best matching case, or create a new email case."""
+        host = os.environ.get("ROGER_IMAP_HOST", "").strip()
+        username = os.environ.get("ROGER_IMAP_USER", "").strip()
+        password = os.environ.get("ROGER_IMAP_PASSWORD", "")
+        if not host or not username or not password:
+            return self._json({"error": "inbound email is not configured"}, 503)
+        try:
+            port = int(os.environ.get("ROGER_IMAP_PORT", "993"))
+        except ValueError:
+            return self._json({"error": "ROGER_IMAP_PORT must be a number"}, 503)
+        folder = os.environ.get("ROGER_IMAP_FOLDER", "INBOX").strip()[:100] or "INBOX"
+        try:
+            mailbox = imaplib.IMAP4_SSL(host, port, timeout=15)
+            mailbox.login(username, password)
+            mailbox.select(folder)
+            status, data = mailbox.uid("search", None, "UNSEEN")
+            if status != "OK":
+                mailbox.logout()
+                return self._json({"error": "mailbox search failed"}, 502)
+            uids = (data[0] or b"").split()
+            stage = load_stage()
+            seen = set(stage.get("imported_email_uids", []))
+            imported = []
+            to_mark_seen = []
+            for uid in uids:
+                key = host + ":" + folder + ":" + uid.decode("ascii", "ignore")
+                if key in seen:
+                    to_mark_seen.append(uid)
+                    continue
+                status, fetched = mailbox.uid("fetch", uid, "(RFC822)")
+                if status != "OK":
+                    continue
+                raw = next((part[1] for part in fetched if isinstance(part, tuple) and isinstance(part[1], bytes)), None)
+                if raw is None:
+                    continue
+                incoming = email.parser.BytesParser(policy=email.policy.default).parsebytes(raw)
+                sender_name, sender_addr = email.utils.parseaddr(str(incoming.get("From", "")))
+                sender_addr = sender_addr.strip().lower()
+                if not sender_addr or not re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", sender_addr):
+                    continue
+                part = incoming.get_body(preferencelist=("plain",))
+                body_text = part.get_content() if part else ""
+                text = ("Subject: " + str(incoming.get("Subject", "(no subject)"))[:200] + "\\n\\n" + str(body_text)).strip()[:3000]
+                if not text:
+                    text = "(Email contained no plain-text body.)"
+                existing = [c for c in stage.get("cases", []) if str(c.get("email", "")).strip().lower() == sender_addr]
+                existing.sort(key=lambda c: str(c.get("thread", [{}])[-1].get("at", c.get("submitted_at", "")) if c.get("thread") else c.get("submitted_at", "")), reverse=True)
+                case = next((c for c in existing if c.get("status") not in ("closed", "resolved", "declined")), None) or (existing[0] if existing else None)
+                at = now()
+                if case:
+                    case.setdefault("thread", []).append({
+                        "author": sender_name or sender_addr, "role": "contact",
+                        "text": text[:2000], "to": ["agent"], "channel": "email",
+                        "email_from": sender_addr, "at": at,
+                    })
+                    case_id = case.get("id")
+                    event = "case_email_received"
+                else:
+                    case_id = stage.get("next_case_id", 490)
+                    triage = self.triage(text)
+                    case = {
+                        "id": case_id, "type": "email", "property_id": None,
+                        "role": "other", "name": sender_name or sender_addr,
+                        "email": sender_addr, "message": text[:2000],
+                        "status": "new", "triage": triage, "submitted_at": at,
+                        "source": "email",
+                        "thread": [{"author": sender_name or sender_addr, "role": "contact",
+                                    "text": text[:2000], "to": ["agent"], "channel": "email",
+                                    "email_from": sender_addr, "at": at}],
+                    }
+                    stage["next_case_id"] = case_id + 1
+                    stage.setdefault("cases", []).append(case)
+                    event = "email_case_created"
+                self.audit(stage, {"actor": sender_addr, "action": event,
+                                   "target": case_id, "note": "Inbound email"})
+                seen.add(key)
+                stage["imported_email_uids"] = sorted(seen)
+                imported.append({"case_id": case_id, "email": sender_addr})
+                to_mark_seen.append(uid)
+            if imported:
+                save_stage(stage)
+            for uid in to_mark_seen:
+                mailbox.uid("store", uid, "+FLAGS", "(\\Seen)")
+            mailbox.logout()
+            return self._json({"success": True, "imported": imported, "count": len(imported)})
+        except (OSError, imaplib.IMAP4.error, ValueError) as exc:
+            return self._json({"error": "mailbox sync failed: " + str(exc)[:240]}, 502)
+
     def handle_email_reply(self, data):
         """Send a deliberate agent-authored reply to the contact email on a case."""
         stage = load_stage()
