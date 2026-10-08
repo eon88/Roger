@@ -995,7 +995,7 @@ We will tackle these in order unless a real operational need changes the priorit
 ## Priority 8 — Technical migration
 
 - [ ] PostgreSQL — production store cutover and relational migration
-- [ ] Proper file storage — extract document bodies from JSON and use persistent object storage
+- [ ] Proper file storage — content-addressed private files plus legacy extraction utility; provision and verify durable object storage before cutover
 - [x] Security hardening — atomic JSON replacement and mode 0600 for stage/user snapshots
 - [x] Test suite — GitHub Actions workflow plus endpoint, storage and backup tests
 - [x] Backups — validated private archive, SHA-256 manifest and restore runbook
