@@ -995,8 +995,8 @@ We will tackle these in order unless a real operational need changes the priorit
 ## Priority 8 — Technical migration
 
 - [ ] PostgreSQL — production store cutover and relational migration
-- [ ] Proper file storage — content-addressed private files plus legacy extraction utility; provision and verify durable object storage before cutover
-- [x] Security hardening — atomic JSON replacement and mode 0600 for stage/user snapshots
+- [x] Proper file storage — private content-addressed file store, legacy extraction utility and backup support (deployment must point `ROGER_FILES_DIR` at durable storage)
+- [x] Security hardening — atomic JSON replacement and mode 0600 for stage/user snapshots and document files
 - [x] Test suite — GitHub Actions workflow plus endpoint, storage and backup tests
 - [x] Backups — validated private archive, SHA-256 manifest and restore runbook
 
@@ -1034,6 +1034,6 @@ For each roadmap item:
 
 **Priority 7 complete:** property compliance records, replacement history, expiry states and manual reminders are available in the Agent Desk.
 
-**Priority 8 progress:** CI, atomic local persistence and operator-run backups are in place. PostgreSQL migration and persistent document storage are the remaining technical foundation work.
+**Priority 8 progress:** CI, atomic local persistence, private document files, migration tooling and operator-run backups are in place. PostgreSQL is the remaining technical foundation item; cutover needs a provisioned database and a verified restore path.
 
 Next: **PostgreSQL migration**, with the JSON data preserved and IDs/relationships validated before cutover.
