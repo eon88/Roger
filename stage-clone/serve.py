@@ -99,7 +99,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -326,6 +326,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/property-action": self.handle_property_action,
             "/api/party-action": self.handle_party_action,
             "/api/tenancy-action": self.handle_tenancy_action,
+            "/api/management-agreement-action": self.handle_management_agreement_action,
             "/api/case-action": self.handle_case_action,
         }
         if path in handlers:
@@ -529,6 +530,19 @@ class H(SimpleHTTPRequestHandler):
             "created_at": now(),
             "created_by": (self.user or {}).get("username", "agent"),
         }
+        registration_id = str(data.get("registration_id", ""))[:100] or None
+        registration = None
+        if registration_id:
+            registration = next((r for r in stage.get("registrations", [])
+                                 if str(r.get("id")) == registration_id), None)
+            if (kind != "person" or "landlord" not in party["roles"] or not registration
+                    or registration.get("role") != "landlord" or registration.get("status") != "approved"):
+                return self._json({"error": "link only an approved landlord registration to a landlord Party"}, 409)
+            if registration.get("party_id"):
+                return self._json({"error": "this registration is already linked to a Party"}, 409)
+            party["source_registration_id"] = registration_id
+            registration["party_id"] = party["id"]
+            registration["party_linked_at"] = now()
         stage["next_party_id"] = pid_num + 1
         stage.setdefault("parties", []).append(party)
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
@@ -536,6 +550,106 @@ class H(SimpleHTTPRequestHandler):
                            "note": kind + ": " + name})
         save_stage(stage)
         return self._json({"success": True, "party": party})
+
+    def handle_management_agreement_action(self, data):
+        """Create or advance a dated management agreement for a landlord and properties."""
+        transitions = {
+            "draft": ("sent", "cancelled"),
+            "sent": ("signed", "cancelled"),
+            "signed": ("active", "ended"),
+            "active": ("ended",),
+            "ended": (),
+            "cancelled": (),
+        }
+        stage = load_stage()
+        action = str(data.get("action", "create"))
+        if action == "create":
+            landlord_id = str(data.get("landlord_party_id", ""))[:100]
+            landlord = next((p for p in stage.get("parties", [])
+                             if p.get("id") == landlord_id and p.get("status") == "active"
+                             and "landlord" in p.get("roles", [])), None)
+            if not landlord:
+                return self._json({"error": "active landlord Party not found"}, 404)
+            property_ids = data.get("property_ids", [])
+            known = {p.get("id") for p in stage.get("properties", [])}
+            if not isinstance(property_ids, list) or not property_ids:
+                return self._json({"error": "select at least one property"}, 400)
+            property_ids = list(dict.fromkeys(str(pid) for pid in property_ids))
+            if any(pid not in known for pid in property_ids):
+                return self._json({"error": "one or more properties were not found"}, 404)
+            agreement_type = str(data.get("agreement_type", "full_management"))
+            if agreement_type not in ("let_only", "full_management"):
+                return self._json({"error": "invalid management agreement type"}, 400)
+            try:
+                fee_bps = int(data.get("management_fee_bps", 0))
+            except (TypeError, ValueError):
+                return self._json({"error": "management fee must be an integer basis point value"}, 400)
+            if fee_bps < 0 or fee_bps > 10000:
+                return self._json({"error": "management fee must be between 0 and 10000 basis points"}, 400)
+            agreement_num = int(stage.get("next_management_agreement_id", 1))
+            aid = "management-" + str(agreement_num)
+            at = now()
+            agreement = {
+                "id": aid, "landlord_party_id": landlord_id, "property_ids": property_ids,
+                "agreement_type": agreement_type, "management_fee_bps": fee_bps,
+                "status": "draft", "signed_at": None, "ended_at": None,
+                "evidence_note": str(data.get("evidence_note", "")).strip()[:1000],
+                "created_at": at, "updated_at": at,
+                "history": [{"from": None, "to": "draft", "at": at,
+                             "by": (self.user or {}).get("username", "agent")}],
+            }
+            stage["next_management_agreement_id"] = agreement_num + 1
+            stage.setdefault("management_agreements", []).append(agreement)
+            self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                               "action": "management_agreement_created", "target": aid,
+                               "note": "Landlord " + landlord_id})
+            save_stage(stage)
+            return self._json({"success": True, "agreement": agreement})
+        if action != "transition":
+            return self._json({"error": "action must be create|transition"}, 400)
+        aid = str(data.get("id", ""))[:100]
+        agreement = next((a for a in stage.get("management_agreements", []) if a.get("id") == aid), None)
+        if not agreement:
+            return self._json({"error": "management agreement not found"}, 404)
+        target = str(data.get("status", ""))
+        current = agreement.get("status")
+        if target not in transitions:
+            return self._json({"error": "invalid management agreement status"}, 400)
+        if target == current:
+            return self._json({"success": True, "unchanged": True, "status": current})
+        if target not in transitions.get(current, ()):
+            return self._json({"error": "invalid management agreement transition"}, 409)
+        signed_at = None
+        ended_at = None
+        if target == "signed":
+            try:
+                signed_at = datetime.strptime(str(data.get("signed_at", "")), "%Y-%m-%d").date().isoformat()
+            except ValueError:
+                return self._json({"error": "signed date in YYYY-MM-DD format is required"}, 400)
+            if signed_at > datetime.now(timezone.utc).date().isoformat():
+                return self._json({"error": "signed date cannot be in the future"}, 400)
+            agreement["signed_at"] = signed_at
+            agreement["evidence_note"] = str(data.get("evidence_note", agreement.get("evidence_note", ""))).strip()[:1000]
+        if target == "active" and not agreement.get("signed_at"):
+            return self._json({"error": "record the signed agreement before activating management"}, 409)
+        if target == "ended":
+            try:
+                ended_at = datetime.strptime(str(data.get("ended_at", "")), "%Y-%m-%d").date().isoformat()
+            except ValueError:
+                return self._json({"error": "end date in YYYY-MM-DD format is required"}, 400)
+            agreement["ended_at"] = ended_at
+        at = now()
+        agreement["status"] = target
+        agreement["updated_at"] = at
+        agreement.setdefault("history", []).append({
+            "from": current, "to": target, "at": at, "signed_at": signed_at,
+            "ended_at": ended_at, "by": (self.user or {}).get("username", "agent")
+        })
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                           "action": "management_agreement_status_changed", "target": aid,
+                           "note": current + " -> " + target})
+        save_stage(stage)
+        return self._json({"success": True, "status": target, "updated_at": at})
 
     def handle_tenancy_action(self, data):
         """Agent creates a tenancy or advances its audited lifecycle state."""
@@ -813,6 +927,14 @@ class H(SimpleHTTPRequestHandler):
                     "onboarding" if record and record.get("status") == "approved" else "lead")
         if not record:
             return self._json({"error": "prospect not found"}, 404)
+        if kind == "landlord" and next_stage in ("signed", "onboarding", "active"):
+            party_id = record.get("party_id")
+            required_agreement_status = "signed" if next_stage == "signed" else "active"
+            if record.get("status") != "approved" or not party_id or not any(
+                    a.get("landlord_party_id") == party_id and a.get("status") in
+                    (("signed", "active") if required_agreement_status == "signed" else ("active",))
+                    for a in stage.get("management_agreements", [])):
+                return self._json({"error": "an approved landlord Party needs the matching signed management agreement"}, 409)
         if kind == "trades" and next_stage in ("approved", "available") and record.get("status") != "approved":
             return self._json({"error": "approve the trades registration before advancing this stage"}, 409)
         if kind == "landlord" and next_stage in ("signed", "onboarding", "active") and record.get("status") != "approved":
