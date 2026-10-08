@@ -283,6 +283,33 @@ class ProspectStageTests(unittest.TestCase):
 
 
 
+    def test_email_reply_fails_closed_when_smtp_is_not_configured(self):
+        with patch.dict("os.environ", {"ROGER_SMTP_HOST": "", "ROGER_FROM_EMAIL": ""}):
+            serve.H.handle_email_reply(self.handler, {"id": 490, "text": "Hello"})
+        self.assertEqual(self.responses[-1][1], 503)
+        self.assertNotIn("thread", self.stage["cases"][0])
+        self.saved.assert_not_called()
+
+    def test_email_reply_sends_only_to_case_contact_and_records_timeline(self):
+        self.stage["cases"][0]["email"] = "tenant@example.test"
+        with patch.dict("os.environ", {
+            "ROGER_SMTP_HOST": "smtp.example.test", "ROGER_SMTP_PORT": "587",
+            "ROGER_FROM_EMAIL": "agent@example.test", "ROGER_SMTP_USER": "agent",
+            "ROGER_SMTP_PASSWORD": "secret",
+        }):
+            with patch.object(serve.smtplib, "SMTP") as smtp:
+                serve.H.handle_email_reply(self.handler, {"id": 490, "text": "Hello from Roger"})
+        smtp.return_value.__enter__.return_value.send_message.assert_called_once()
+        sent = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+        self.assertEqual(sent["To"], "tenant@example.test")
+        self.assertEqual(sent["From"], "Roger <agent@example.test>")
+        msg = self.stage["cases"][0]["thread"][0]
+        self.assertEqual(msg["channel"], "email")
+        self.assertEqual(msg["email_to"], "tenant@example.test")
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "case_email_sent")
+        self.saved.assert_called_once_with(self.stage)
+        self.assertEqual(self.responses[-1][1], 200)
+
     def test_approved_landlord_registration_links_to_party_without_merging(self):
         self.stage["registrations"] = [{"id": "land-1", "role": "landlord", "status": "approved"}]
         serve.H.handle_party_action(self.handler, {
