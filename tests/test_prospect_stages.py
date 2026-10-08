@@ -118,6 +118,26 @@ class ProspectStageTests(unittest.TestCase):
         self.assertEqual(self.responses[-1][1], 200)
         self.saved.assert_called_once_with(self.stage)
 
+    def test_party_roles_reject_malformed_values(self):
+        serve.H.handle_party_action(self.handler, {
+            "kind": "person", "display_name": "Bad role", "roles": [{}],
+        })
+        self.assertEqual(self.responses[-1][1], 400)
+        self.saved.assert_not_called()
+
+    def test_signed_agreement_cannot_be_rewritten(self):
+        self.stage["tenancies"] = [{
+            "id": "tenancy-1", "agreement_status": "signed",
+            "agreement_signed_at": "2026-09-25", "history": [],
+        }]
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "agreement", "id": "tenancy-1",
+            "agreement_status": "draft", "signed_at": "",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertEqual(self.stage["tenancies"][0]["agreement_status"], "signed")
+        self.saved.assert_not_called()
+
     def test_tenancy_creation_requires_and_links_party_ids(self):
         self.stage["properties"] = [{"id": "home-1", "title": "Home"}]
         self.stage["cases"] = [{"id": 490, "type": "enquiry", "role": "renter", "name": "Prospect"}]
