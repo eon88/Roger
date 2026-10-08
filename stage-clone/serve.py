@@ -476,7 +476,10 @@ class H(SimpleHTTPRequestHandler):
         properties = []
         for prop in stage.get("properties", []):
             listing = prop.get("public_listing") or {}
-            if prop.get("lifecycle_status") != "advertised" or not listing.get("description"):
+            occupied = any(t.get("property_id") == prop.get("id")
+                           and t.get("status") in ("active", "renewal", "notice_given", "checkout")
+                           for t in stage.get("tenancies", []))
+            if occupied or prop.get("lifecycle_status") != "advertised" or not listing.get("description"):
                 continue
             try:
                 rent = int(listing.get("rent", prop.get("rent", 0)))
@@ -601,8 +604,39 @@ class H(SimpleHTTPRequestHandler):
                                "note": "Property " + str(prop["id"])})
             save_stage(stage)
             return self._json({"success": True, "tenancy": tenancy})
+        if action == "agreement":
+            tid = str(data.get("id", ""))[:100]
+            tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == tid), None)
+            if not tenancy:
+                return self._json({"error": "tenancy not found"}, 404)
+            agreement_status = str(data.get("agreement_status", ""))
+            if agreement_status not in ("draft", "sent", "signed", "cancelled"):
+                return self._json({"error": "invalid agreement status"}, 400)
+            signed_at = None
+            if agreement_status == "signed":
+                try:
+                    signed_at = datetime.strptime(str(data.get("signed_at", "")), "%Y-%m-%d").date().isoformat()
+                except ValueError:
+                    return self._json({"error": "signed_at in YYYY-MM-DD format is required"}, 400)
+            previous_agreement_status = tenancy.get("agreement_status", "draft")
+            if previous_agreement_status == agreement_status and tenancy.get("agreement_signed_at") == signed_at:
+                return self._json({"success": True, "unchanged": True, "agreement_status": agreement_status})
+            at = now()
+            tenancy["agreement_status"] = agreement_status
+            tenancy["agreement_signed_at"] = signed_at
+            tenancy["updated_at"] = at
+            tenancy.setdefault("history", []).append({
+                "event": "agreement_status", "from": previous_agreement_status,
+                "to": agreement_status, "at": at,
+                "by": (self.user or {}).get("username", "agent")
+            })
+            self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                               "action": "tenancy_agreement_status_changed", "target": tid,
+                               "note": previous_agreement_status + " -> " + agreement_status})
+            save_stage(stage)
+            return self._json({"success": True, "agreement_status": agreement_status, "updated_at": at})
         if action != "transition":
-            return self._json({"error": "action must be create|transition"}, 400)
+            return self._json({"error": "action must be create|transition|agreement"}, 400)
         tid = str(data.get("id", ""))[:100]
         tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == tid), None)
         if not tenancy:
@@ -616,13 +650,15 @@ class H(SimpleHTTPRequestHandler):
         if target not in transitions.get(current, ()):
             return self._json({"error": "invalid tenancy transition"}, 409)
         effective_date = str(data.get("effective_date", ""))
-        if target in ("notice_given", "checkout", "former_tenant"):
+        if target in ("notice_given", "checkout"):
             try:
                 parsed_date = datetime.strptime(effective_date, "%Y-%m-%d").date()
             except ValueError:
                 return self._json({"error": "an effective_date in YYYY-MM-DD format is required"}, 400)
             field = "notice_date" if target == "notice_given" else "checkout_date"
             tenancy[field] = parsed_date.isoformat()
+        if target == "former_tenant" and not tenancy.get("checkout_date"):
+            return self._json({"error": "checkout must be recorded before ending the tenancy"}, 409)
         if target == "active":
             if tenancy.get("agreement_status") != "signed":
                 return self._json({"error": "mark the agreement signed before activating the tenancy"}, 409)
@@ -634,7 +670,26 @@ class H(SimpleHTTPRequestHandler):
                 if other.get("status") in ("active", "renewal", "notice_given"):
                     return self._json({"error": "another tenancy is still active for this property"}, 409)
         if target == "former_tenant":
-            tenancy["end_date"] = effective_date
+            tenancy["end_date"] = tenancy.get("checkout_date")
+        prop = self.find_prop(stage, tenancy.get("property_id"))
+        property_targets = {"active": ("let_agreed", "occupied"), "notice_given": ("occupied", "notice_given"),
+                            "checkout": ("notice_given", "checkout"), "former_tenant": ("checkout", "void")}
+        if target in property_targets:
+            expected, next_property = property_targets[target]
+            property_status = (prop or {}).get("lifecycle_status") or "onboarding"
+            if not prop or property_status != expected:
+                return self._json({"error": "advance the property to " + expected + " before this tenancy transition"}, 409)
+            prop["lifecycle_status"] = next_property
+            prop["lifecycle_status_at"] = now()
+            prop.setdefault("lifecycle_history", []).append({
+                "from": expected, "to": next_property, "at": prop["lifecycle_status_at"],
+                "by": (self.user or {}).get("username", "agent")
+            })
+            self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
+                               "action": "property_lifecycle_changed", "target": prop["id"],
+                               "note": expected + " -> " + next_property + " (tenancy " + tid + ")"})
+        if target == "active":
+            tenancy["move_in_date"] = tenancy.get("start_date")
         at = now()
         tenancy["status"] = target
         tenancy["updated_at"] = at
