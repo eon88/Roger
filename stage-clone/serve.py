@@ -5,6 +5,9 @@ v2 (post-audit): status-sync between cases/jobs/approvals, credential gating
 on trades jobs, structured registrations, evidence on approvals, validation.
 """
 from http.server import SimpleHTTPRequestHandler, HTTPServer
+from email.message import EmailMessage
+from email.utils import formataddr
+import smtplib
 import hashlib
 import hmac
 import http.cookies
@@ -99,7 +102,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -328,6 +331,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/tenancy-action": self.handle_tenancy_action,
             "/api/management-agreement-action": self.handle_management_agreement_action,
             "/api/case-action": self.handle_case_action,
+            "/api/email-reply": self.handle_email_reply,
         }
         if path in handlers:
             return handlers[path](data)
@@ -1269,6 +1273,62 @@ class H(SimpleHTTPRequestHandler):
         self._json({"success": True, "approval": appr})
 
     # ---------- agent: close with reason ----------
+    def handle_email_reply(self, data):
+        """Send a deliberate agent-authored reply to the contact email on a case."""
+        stage = load_stage()
+        case_id = data.get("id")
+        case = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
+        if not case:
+            return self._json({"error": "case not found"}, 404)
+        recipient = str(case.get("email") or "").strip()
+        if not recipient or not re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", recipient):
+            return self._json({"error": "this case has no valid contact email"}, 400)
+        body = str(data.get("text", "")).strip()[:2000]
+        if not body:
+            return self._json({"error": "email reply text is required"}, 400)
+        host = os.environ.get("ROGER_SMTP_HOST", "").strip()
+        sender = os.environ.get("ROGER_FROM_EMAIL", "").strip()
+        if not host or not sender:
+            return self._json({"error": "outbound email is not configured"}, 503)
+        try:
+            port = int(os.environ.get("ROGER_SMTP_PORT", "587"))
+        except ValueError:
+            return self._json({"error": "ROGER_SMTP_PORT must be a number"}, 503)
+        message = EmailMessage()
+        message["Subject"] = "Re: Roger case #" + str(case.get("id"))
+        message["From"] = formataddr(("Roger", sender))
+        message["To"] = recipient
+        message.set_content(body)
+        try:
+            if port == 465:
+                with smtplib.SMTP_SSL(host, port, timeout=15) as client:
+                    username = os.environ.get("ROGER_SMTP_USER", "")
+                    password = os.environ.get("ROGER_SMTP_PASSWORD", "")
+                    if username:
+                        client.login(username, password)
+                    client.send_message(message)
+            else:
+                with smtplib.SMTP(host, port, timeout=15) as client:
+                    client.starttls()
+                    username = os.environ.get("ROGER_SMTP_USER", "")
+                    password = os.environ.get("ROGER_SMTP_PASSWORD", "")
+                    if username:
+                        client.login(username, password)
+                    client.send_message(message)
+        except (OSError, smtplib.SMTPException) as exc:
+            return self._json({"error": "email provider could not accept this message: " + str(exc)[:240]}, 502)
+        at = now()
+        case.setdefault("thread", []).append({
+            "author": (self.user or {}).get("display_name", "Agent"),
+            "role": "agent", "text": body, "to": ["email"], "channel": "email",
+            "email_to": recipient, "at": at,
+        })
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "Agent"),
+                           "action": "case_email_sent", "target": case.get("id"),
+                           "note": "to " + recipient})
+        save_stage(stage)
+        return self._json({"success": True, "sent_at": at, "to": recipient})
+
     def handle_case_action(self, data):
         stage = load_stage()
         c = next((c for c in stage.get("cases", []) if c["id"] == data.get("id")), None)
