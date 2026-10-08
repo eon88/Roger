@@ -22,9 +22,11 @@ The public endpoint returns only the safe marketing projection. No tenant or lan
 
 **Prospect stages implemented:** `enquiry → viewing → application → referencing → approved → offer → converted`, with `closed` available from any stage. These stages are agent-maintained pipeline notes on the original enquiry record and preserve its message, submitted contact details and consent.
 
-**Tenancy stages still require a first-class Tenancy model:** `agreement → deposit → move_in → active → renewal`, then `notice → checkout → deposit_resolution → former_tenant`. A withdrawn notice returns to active; an unsuccessful application closes the prospect without creating a tenancy. Move-in, notice and checkout dates must be explicit. A tenancy transition must never be inferred from a free-text property tenant name or a prospect's pipeline stage.
+**Tenancy lifecycle implemented on this branch:** an agent can create a tenancy application linked to a Property, one or more landlord/tenant Party IDs, and an optional source enquiry. The record stores start/end dates, rent amount/frequency, deposit amount and separate agreement status. The workflow advances through application, referencing, approval, offer, agreement, deposit, move-in scheduled, active, renewal, notice, checkout, deposit resolution and former tenant; cancellation is available before move-in.
 
-Before implementing these states, Roger needs stable Party IDs, tenant-to-tenancy participation, a property-to-tenancy link, date history, document links, and account access derived from verified Party relationships. Current sample data has none of those records or dates; migration must leave uncertain identities unresolved for agent review.
+Move-in requires a signed agreement and a property at `let_agreed`. Activation moves the property to occupied; notice, checkout and former-tenant transitions move it through matching property states. Notice and checkout dates are explicit, signed agreement snapshots cannot be rewritten, and active occupancies suppress public listing visibility. Every transition is timestamped and audited.
+
+Portal account linking and tenant access are still not implemented. A Party or Tenancy record does not grant portal access. Deposit scheme/reference metadata can be stored, but payment processing, rent ledger, reminders, and tenancy document workflows remain future work. Existing records are not auto-migrated from names; uncertain identity matches remain for agent review.
 
 ## Landlord
 
