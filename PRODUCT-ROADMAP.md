@@ -960,10 +960,10 @@ We will tackle these in order unless a real operational need changes the priorit
 
 **Property lifecycle implementation:** Agent Desk properties now move through validated states. Public `/api/public` serves only explicitly advertised properties with a complete description and safe marketing fields; private owner/tenant data is excluded. Existing property records without a state default to onboarding, and the site's sample fallback remains when no live listing qualifies.
 
-**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant tenancy stages, management-agreement evidence and trades performance history remain unimplemented. The tenant lifecycle depends on implementing Tenancy records and date-bound access relationships. Eight endpoint regression tests now cover prospect stages, property transitions and public-listing privacy; Python compilation, HTML parsing and JavaScript syntax checks pass.
+**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant and Tenancy stages are now implemented with Party ID links, source enquiry, agreement state, explicit dates and property-state synchronization. Portal account linking, rent ledger/payment handling, landlord agreement evidence and trades performance history remain open. Fifteen endpoint regression tests cover prospect, Party, Tenancy, property transition and public-listing rules; Python compilation, HTML parsing and JavaScript syntax checks pass.
 
 - [x] Property state machine — agent-approved transitions and public listing gate
-- [ ] Tenant lifecycle
+- [x] Tenant lifecycle — prospect through active, notice, checkout and former tenant
 - [ ] Landlord lifecycle
 - [ ] Trades lifecycle
 
@@ -1016,8 +1016,8 @@ For each roadmap item:
 
 # 25. Next item
 
-## 1A — People model
+**Priority 1 design set complete:** People, Property, Tenancy, relationship rules and the existing-data map are in `docs/`. Agent-managed Party and Tenancy records now use stable IDs, while legacy names remain untouched and are not used to grant new access.
 
-**Design complete:** [Canonical People model](docs/people-model-1a.md). The design separates Parties (individuals and organisations), role assignments, login accounts, and prospect/application records. It uses stable IDs for relationships and prevents email matches from granting access or silently merging identities.
+**Completed on this branch:** Agent Desk daily command centre and search; tenant, landlord and trades prospect pipelines; property lifecycle and public listing gate; tenant/tenancy lifecycle with agreement and dated move-in/notice/checkout transitions.
 
-Next: **1B — Property model**, including how Parties own, occupy, manage and work at properties.
+Next: **Priority 4 — Landlord lifecycle**, including management-authority records and signed-agreement evidence.
