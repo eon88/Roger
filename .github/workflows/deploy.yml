@@ -1,0 +1,51 @@
+name: Deploy Roger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: roger-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Hostinger VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.ROGER_SSH_PRIVATE_KEY }}" > ~/.ssh/roger_deploy
+          chmod 600 ~/.ssh/roger_deploy
+
+      - name: Deploy Roger
+        shell: bash
+        run: |
+          ssh \
+            -i ~/.ssh/roger_deploy \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=15 \
+            root@187.77.99.243
+
+      - name: Verify public site
+        shell: bash
+        run: |
+          for i in {1..10}; do
+            if curl --fail --silent --show-error --max-time 10 https://agency.lifecompass.shop/ >/dev/null; then
+              echo "Roger is live at https://agency.lifecompass.shop"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Public verification failed."
+          exit 1
