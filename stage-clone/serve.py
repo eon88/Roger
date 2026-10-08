@@ -108,7 +108,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -187,6 +187,11 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"trades": self.approved_trades(load_stage())})
+        if path == "/api/compliance":
+            if not self.require({"agent"}):
+                return
+            stage = load_stage()
+            return self._json({"records": [self.safe_compliance_record(x) for x in stage.get("compliance_records", [])]})
         if path == "/api/landlord-statements":
             if not self.require({"agent"}):
                 return
@@ -350,6 +355,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/email-sync": self.handle_email_sync,
             "/api/rent-ledger-action": self.handle_rent_ledger_action,
             "/api/landlord-statement-action": self.handle_landlord_statement_action,
+            "/api/compliance-action": self.handle_compliance_action,
         }
         if path in handlers:
             return handlers[path](data)
@@ -1305,6 +1311,99 @@ class H(SimpleHTTPRequestHandler):
             status = "overdue"
         return {**entry, "amount_due_pence": due, "amount_received_pence": received,
                 "balance_pence": balance, "status": status}
+
+    def safe_compliance_record(self, record):
+        """Derive expiry and reminder states from explicit dates."""
+        today = datetime.now(timezone.utc).date()
+        expiry = None
+        if record.get("expiry_date"):
+            try:
+                expiry = datetime.strptime(record["expiry_date"], "%Y-%m-%d").date()
+            except ValueError:
+                expiry = None
+        superseded = bool(record.get("superseded_by"))
+        if superseded:
+            status = "superseded"
+        elif record.get("record_status") == "missing":
+            status = "missing"
+        elif expiry and expiry < today:
+            status = "expired"
+        elif expiry and expiry <= today + timedelta(days=30):
+            status = "expiring_soon"
+        else:
+            status = "current"
+        reminder_due = False
+        if record.get("reminder_date") and not superseded:
+            try:
+                reminder_due = datetime.strptime(record["reminder_date"], "%Y-%m-%d").date() <= today
+            except ValueError:
+                pass
+        return {**record, "status": status, "reminder_due": reminder_due}
+
+    def handle_compliance_action(self, data):
+        """Record missing evidence or a dated compliance record and retain replaced versions."""
+        stage = load_stage()
+        prop_id = str(data.get("property_id", ""))[:100]
+        prop = self.find_prop(stage, prop_id)
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        requirement = str(data.get("requirement_type", ""))
+        allowed = {"gas_safety", "eicr", "epc", "smoke_co_alarms",
+                   "deposit_protection", "right_to_rent", "tenancy_agreement",
+                   "inventory", "landlord_authority", "trades_credentials", "other"}
+        if requirement not in allowed:
+            return self._json({"error": "invalid compliance requirement type"}, 400)
+        action = str(data.get("action", "record"))
+        if action not in ("record", "missing"):
+            return self._json({"error": "action must be record|missing"}, 400)
+        issue = expiry = reminder = None
+        document_id = str(data.get("document_id", ""))[:100] or None
+        if action == "record":
+            try:
+                issue = datetime.strptime(str(data.get("issue_date", "")), "%Y-%m-%d").date()
+            except ValueError:
+                return self._json({"error": "issue date in YYYY-MM-DD format is required"}, 400)
+            if issue > datetime.now(timezone.utc).date():
+                return self._json({"error": "issue date cannot be in the future"}, 400)
+            if data.get("expiry_date"):
+                try:
+                    expiry = datetime.strptime(str(data.get("expiry_date")), "%Y-%m-%d").date()
+                except ValueError:
+                    return self._json({"error": "expiry date must use YYYY-MM-DD"}, 400)
+                if expiry <= issue:
+                    return self._json({"error": "expiry date must be after issue date"}, 400)
+            if document_id and not any(d.get("id") == document_id for d in stage.get("documents", [])):
+                return self._json({"error": "document not found"}, 404)
+        if data.get("reminder_date"):
+            try:
+                reminder = datetime.strptime(str(data.get("reminder_date")), "%Y-%m-%d").date()
+            except ValueError:
+                return self._json({"error": "reminder date must use YYYY-MM-DD"}, 400)
+        records = stage.setdefault("compliance_records", [])
+        num = int(stage.get("next_compliance_record_id", 1))
+        rid = "compliance-" + str(num)
+        at = now()
+        record = {
+            "id": rid, "property_id": prop_id, "requirement_type": requirement,
+            "record_status": "missing" if action == "missing" else "recorded",
+            "issue_date": issue.isoformat() if issue else None,
+            "expiry_date": expiry.isoformat() if expiry else None,
+            "reminder_date": reminder.isoformat() if reminder else None,
+            "document_id": document_id,
+            "notes": str(data.get("notes", "")).strip()[:1000],
+            "created_at": at, "created_by": (self.user or {}).get("username", "agent"),
+        }
+        for prior in records:
+            if prior.get("property_id") == prop_id and prior.get("requirement_type") == requirement and not prior.get("superseded_by"):
+                prior["superseded_by"] = rid
+                prior["superseded_at"] = at
+        records.append(record)
+        stage["next_compliance_record_id"] = num + 1
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "Agent"),
+                           "action": "compliance_" + action, "target": rid,
+                           "note": requirement + " · " + prop_id})
+        save_stage(stage)
+        return self._json({"success": True, "record": self.safe_compliance_record(record)})
 
     def handle_landlord_statement_action(self, data):
         """Create an immutable landlord period snapshot from recorded rent and paid jobs."""
