@@ -106,6 +106,65 @@ class ProspectStageTests(unittest.TestCase):
         self.assertNotIn("tenant", response["properties"][0])
         self.assertFalse(response["demo"])
 
+    def test_party_creation_keeps_identity_separate_from_account(self):
+        serve.H.handle_party_action(self.handler, {
+            "kind": "person", "display_name": "Alex Example",
+            "email": "shared@example.test", "roles": ["tenant"],
+        })
+        party = self.stage["parties"][0]
+        self.assertEqual(party["id"], "party-1")
+        self.assertEqual(party["account_id"], None)
+        self.assertEqual(party["roles"], ["tenant"])
+        self.assertEqual(self.responses[-1][1], 200)
+        self.saved.assert_called_once_with(self.stage)
+
+    def test_tenancy_creation_requires_and_links_party_ids(self):
+        self.stage["properties"] = [{"id": "home-1", "title": "Home"}]
+        self.stage["parties"] = [
+            {"id": "party-1", "roles": ["landlord"], "status": "active"},
+            {"id": "party-2", "roles": ["tenant"], "status": "active", "account_id": None},
+        ]
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "create", "property_id": "home-1",
+            "landlord_party_ids": ["party-1"], "tenant_party_ids": ["party-2"],
+            "start_date": "2026-10-01", "rent_amount_pence": 125000,
+            "deposit_amount_pence": 0, "rent_frequency": "monthly",
+        })
+        tenancy = self.stage["tenancies"][0]
+        self.assertEqual(tenancy["tenant_party_ids"], ["party-2"])
+        self.assertEqual(tenancy["landlord_party_ids"], ["party-1"])
+        self.assertEqual(tenancy["status"], "application")
+        self.assertEqual(tenancy["agreement_status"], "draft")
+        self.assertIsNone(self.stage["parties"][1]["account_id"])
+        self.saved.assert_called_once_with(self.stage)
+
+    def test_active_tenancy_requires_signed_agreement_and_property_let_agreed(self):
+        self.stage["properties"] = [{"id": "home-1", "lifecycle_status": "let_agreed"}]
+        self.stage["tenancies"] = [{
+            "id": "tenancy-1", "property_id": "home-1", "status": "move_in_scheduled",
+            "agreement_status": "draft", "start_date": "2026-10-01",
+        }]
+        serve.H.handle_tenancy_action(self.handler, {
+            "action": "transition", "id": "tenancy-1", "status": "active",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.saved.assert_not_called()
+
+    def test_active_tenancy_moves_property_out_of_public_inventory(self):
+        prop = {
+            "id": "home-1", "title": "12 Example Road", "area": "Exampleton",
+            "beds": 2, "rent": 125000, "lifecycle_status": "advertised",
+            "public_listing": {"description": "Public copy."},
+        }
+        self.stage["properties"] = [prop]
+        self.stage["tenancies"] = [{
+            "id": "tenancy-1", "property_id": "home-1", "status": "active",
+        }]
+        serve.H.serve_public_listings(self.handler)
+        response = self.responses[-1][0]
+        self.assertEqual(response["properties"], [])
+        self.assertTrue(response["demo"])
+
     def test_trade_cannot_enter_approved_stage_before_registration_approval(self):
         serve.H.handle_prospect_action(self.handler, {
             "kind": "trades", "id": "reg-1", "stage": "approved",
