@@ -47,8 +47,23 @@ def login_note(ip, ok):
     else:
         LOGIN_TRIES.setdefault(ip, []).append(datetime.now(timezone.utc))
 
+def postgres_connection():
+    if not os.environ.get("DATABASE_URL"):
+        raise RuntimeError("DATABASE_URL is required when ROGER_STORAGE_BACKEND=postgres")
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError("install psycopg[binary] to use PostgreSQL storage") from exc
+    return psycopg.connect(os.environ["DATABASE_URL"])
+
 def load_users():
-    with open(USERS_FILE, "r") as f:
+    if os.environ.get("ROGER_STORAGE_BACKEND", "file") == "postgres":
+        with postgres_connection() as connection:
+            row = connection.execute("SELECT payload FROM roger_users_snapshot WHERE singleton_id=1").fetchone()
+        if not row:
+            raise RuntimeError("PostgreSQL users snapshot is empty; run the migration first")
+        return row[0]
+    with open(USERS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def atomic_json_write(path, data):
@@ -77,11 +92,55 @@ def save_users(data):
     atomic_json_write(USERS_FILE, data)
 
 def load_stage():
+    if os.environ.get("ROGER_STORAGE_BACKEND", "file") == "postgres":
+        with postgres_connection() as connection:
+            row = connection.execute("SELECT payload FROM roger_stage_snapshot WHERE singleton_id=1").fetchone()
+        if not row:
+            raise RuntimeError("PostgreSQL stage snapshot is empty; run the migration first")
+        return row[0]
     with open(STAGE_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def save_users(data):
+    if os.environ.get("ROGER_STORAGE_BACKEND", "file") == "postgres":
+        with postgres_connection() as connection:
+            connection.execute(
+                "INSERT INTO roger_users_snapshot(singleton_id,payload) VALUES (1,%s::jsonb) "
+                "ON CONFLICT(singleton_id) DO UPDATE SET payload=EXCLUDED.payload, imported_at=now()",
+                (json.dumps(data),),
+            )
+        return
+    atomic_json_write(USERS_FILE, data)
+
 def save_stage(data):
-    atomic_json_write(STAGE_FILE, data)
+    if os.environ.get("ROGER_STORAGE_BACKEND", "file") != "postgres":
+        atomic_json_write(STAGE_FILE, data)
+        return
+    collection_tables = {
+        "parties": ("roger_parties", ("id",)),
+        "properties": ("roger_properties", ("id",)),
+        "tenancies": ("roger_tenancies", ("id", "property_id")),
+        "cases": ("roger_cases", ("id", "property_id")),
+        "jobs": ("roger_jobs", ("id", "case_id", "property_id")),
+        "documents": ("roger_documents", ("id", "case_id", "property_id")),
+    }
+    with postgres_connection() as connection:
+        connection.execute(
+            "INSERT INTO roger_stage_snapshot(singleton_id,payload) VALUES (1,%s::jsonb) "
+            "ON CONFLICT(singleton_id) DO UPDATE SET payload=EXCLUDED.payload, imported_at=now()",
+            (json.dumps(data),),
+        )
+        for collection, (table, columns) in collection_tables.items():
+            connection.execute("TRUNCATE TABLE " + table)
+            for record in data.get(collection, []):
+                values = [record.get(column) if column != "id" else str(record.get("id")) for column in columns]
+                values.append(json.dumps(record))
+                placeholders = ",".join(["%s"] * len(columns) + ["%s::jsonb"])
+                column_sql = ",".join(columns + ("payload",))
+                connection.execute(
+                    "INSERT INTO " + table + "(" + column_sql + ") VALUES (" + placeholders + ")",
+                    tuple(values),
+                )
 
 # Demo tradesperson credential store. In the real product: verified at
 # registration (Gas Safe lookup), carried on the profile.
