@@ -960,7 +960,7 @@ We will tackle these in order unless a real operational need changes the priorit
 
 **Property lifecycle implementation:** Agent Desk properties now move through validated states. Public `/api/public` serves only explicitly advertised properties with a complete description and safe marketing fields; private owner/tenant data is excluded. Existing property records without a state default to onboarding, and the site's sample fallback remains when no live listing qualifies.
 
-**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant and Tenancy stages use Party ID links, source enquiry, agreement state, explicit dates and property-state synchronization. Landlord registrations link to Party records, and management agreements capture property scope, terms, signed evidence and active/ended states. Trades credentials must be marked checked before approval; suspended trades are excluded from new assignments. Portal account linking, rent ledger/payment handling, portfolio reporting, credential expiry reminders and trades performance history remain open. Twenty-five endpoint regression tests cover these workflows; Python compilation, HTML parsing and JavaScript syntax checks pass.
+**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant and Tenancy stages use Party ID links, source enquiry, agreement state, explicit dates and property-state synchronization. Landlord registrations link to Party records, and management agreements capture property scope, terms, signed evidence and active/ended states. Trades credentials must be marked checked before approval; suspended trades are excluded from new assignments. Portal account linking, rent ledger/payment handling, portfolio reporting, credential expiry reminders and trades performance history remain open. Twenty-nine endpoint regression tests cover these workflows; Python compilation, HTML parsing and JavaScript syntax checks pass.
 
 - [x] Property state machine — agent-approved transitions and public listing gate
 - [x] Tenant lifecycle — prospect through active, notice, checkout and former tenant
@@ -971,7 +971,9 @@ We will tackle these in order unless a real operational need changes the priorit
 
 - [x] Unified communication timeline — case messages grouped with contact and property context
 - [x] Inbox — filter by text and property; reply into the existing case thread
-- [ ] Email integration
+- [x] Email integration — agent-triggered IMAP inbox sync and SMTP replies with case audit history
+
+**Priority 5 implementation:** communications are grouped by case and property; exact contact email matching attaches incoming messages to the newest matching case or creates a new email case. SMTP replies go only to the email already on the case, and mail actions are recorded in the timeline and audit log. Setup: [outbound and inbound email](docs/outbound-email-setup.md). Provider OAuth, automatic polling, bounce/delivery tracking and attachments remain future work.
 
 ## Priority 6 — Money
 
@@ -1020,6 +1022,6 @@ For each roadmap item:
 
 **Completed on this branch:** Agent Desk daily command centre and search; tenant, landlord and trades prospect pipelines; property lifecycle and public listing gate; tenant/tenancy lifecycle with agreement and dated move-in/notice/checkout transitions.
 
-**Priority 5 progress:** Agent Desk now has a communications inbox that groups case messages with their contact snapshot and property, sorts conversations by latest activity, filters by text/property, and sends replies into the case audit trail. This is the internal portal timeline; email remains unconnected.
+**Priority 5 complete:** Agent Desk has a communications inbox, case/property/contact context, portal replies, SMTP outbound email, and manual IMAP inbox sync. Email credentials are deployment configuration and are not stored in Roger data.
 
-Next: **Priority 5 — Email integration**, after selecting the provider and required account credentials.
+Next: **Priority 6 — Money**, beginning with the rent ledger.
