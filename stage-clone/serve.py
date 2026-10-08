@@ -1301,7 +1301,7 @@ class H(SimpleHTTPRequestHandler):
         """Create rent schedules and record manual payments or adjustments."""
         stage = load_stage()
         action = str(data.get("action", ""))
-        entries = stage.setdefault("rent_ledger_entries", [])
+        entries = stage.get("rent_ledger_entries", [])
         if action == "generate":
             tenancy_id = str(data.get("tenancy_id", ""))[:100]
             tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == tenancy_id), None)
@@ -1326,6 +1326,8 @@ class H(SimpleHTTPRequestHandler):
             days = {"weekly": 7, "fortnightly": 14}
             if frequency not in months and frequency not in days:
                 return self._json({"error": "unsupported rent frequency"}, 409)
+            if "rent_ledger_entries" not in stage:
+                stage["rent_ledger_entries"] = entries
             existing_dates = {x.get("due_date") for x in entries if x.get("tenancy_id") == tenancy_id}
             next_num = int(stage.get("next_rent_ledger_id", 1))
             created = []
