@@ -944,24 +944,23 @@ We will tackle these in order unless a real operational need changes the priorit
 - [x] Upcoming items — confirmed appointments in the next seven days
 - [x] Unified search — current properties, cases, jobs, registrations, appointments and documents; legacy names/contact values included
 
-## Priority 3 — CRM / acquisition pipelines
-
 **Priority 2 implementation:** the Agent Desk command centre, waiting-on sections, upcoming appointments, overdue-date checks and unified record search are implemented in `stage-clone/agent.html`. The overdue view uses explicit due fields and past confirmed appointments; it does not infer deadlines from record age. Search preserves focus through the 15-second refresh. HTML parsing and JavaScript syntax checks pass.
+
+## Priority 3 — CRM / acquisition pipelines
 
 
 - [x] Tenant prospect pipeline — enquiry, viewing, application, referencing, approval, offer, conversion, closed
 - [x] Landlord prospect pipeline — lead, conversation, valuation, proposal, terms, signed, onboarding, active, closed
 - [x] Trades applicant pipeline — applicant, credentials, checked, approved, available, suspended, rejected
 
+**Priority 3 implementation:** the Agent Desk now has separate tenant, landlord and trades pipelines. Stage changes persist on the source enquiry/registration, append history and write an audit event. Registration approval remains a separate permission gate. Five endpoint regression tests pass.
+
+
 ## Priority 4 — Property / tenancy lifecycle
 
 **Property lifecycle implementation:** Agent Desk properties now move through validated states. Public `/api/public` serves only explicitly advertised properties with a complete description and safe marketing fields; private owner/tenant data is excluded. Existing property records without a state default to onboarding, and the site's sample fallback remains when no live listing qualifies.
 
-**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant tenancy stages, management-agreement evidence and trades performance history remain unimplemented. The tenant lifecycle depends on implementing Tenancy records and date-bound access relationships.
-
-
-**Priority 3 implementation:** the Agent Desk now has separate tenant, landlord and trades pipelines. Stage changes persist on the source enquiry/registration, append history and write an audit event. Registration approval remains a separate permission gate. Five endpoint regression tests pass.
-
+**Lifecycle design:** [State machines and dependencies](docs/lifecycle-state-machines-pr4.md). Tenant tenancy stages, management-agreement evidence and trades performance history remain unimplemented. The tenant lifecycle depends on implementing Tenancy records and date-bound access relationships. Eight endpoint regression tests now cover prospect stages, property transitions and public-listing privacy; Python compilation, HTML parsing and JavaScript syntax checks pass.
 
 - [x] Property state machine — agent-approved transitions and public listing gate
 - [ ] Tenant lifecycle
