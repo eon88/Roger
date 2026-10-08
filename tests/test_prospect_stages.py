@@ -283,6 +283,44 @@ class ProspectStageTests(unittest.TestCase):
 
 
 
+    def test_email_sync_fails_closed_without_imap_configuration(self):
+        with patch.dict("os.environ", {"ROGER_IMAP_HOST": "", "ROGER_IMAP_USER": "", "ROGER_IMAP_PASSWORD": ""}):
+            serve.H.handle_email_sync(self.handler, {})
+        self.assertEqual(self.responses[-1][1], 503)
+        self.saved.assert_not_called()
+
+    def test_email_sync_matches_contact_and_creates_unmatched_email_case(self):
+        self.stage["cases"][0]["email"] = "tenant@example.test"
+        raw_messages = {
+            b"42": b"From: Tenant Example <tenant@example.test>\\r\\nSubject: Re: Repair\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n\\r\\nAny update?\\r\\n",
+            b"43": b"From: New Person <new@example.test>\\r\\nSubject: Viewing request\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n\\r\\nCan I view tomorrow?\\r\\n",
+        }
+        class FakeMailbox:
+            def __init__(self, *args, **kwargs): self.marked=[]
+            def login(self, *args): return "OK", []
+            def select(self, *args): return "OK", []
+            def uid(self, action, *args):
+                if action == "search": return "OK", [b"42 43"]
+                if action == "fetch": return "OK", [(b"RFC822", raw_messages[args[0]])]
+                if action == "store": self.marked.append(args[0]); return "OK", []
+                raise AssertionError(action)
+            def logout(self): return "BYE", []
+        with patch.dict("os.environ", {
+            "ROGER_IMAP_HOST": "imap.example.test", "ROGER_IMAP_USER": "agent",
+            "ROGER_IMAP_PASSWORD": "secret", "ROGER_IMAP_FOLDER": "INBOX",
+        }):
+            with patch.object(serve.imaplib, "IMAP4_SSL", FakeMailbox):
+                serve.H.handle_email_sync(self.handler, {})
+        self.assertEqual(self.responses[-1][1], 200)
+        self.assertEqual(self.responses[-1][0]["count"], 2)
+        self.assertEqual(self.stage["cases"][0]["thread"][-1]["email_from"], "tenant@example.test")
+        created = self.stage["cases"][-1]
+        self.assertEqual(created["type"], "email")
+        self.assertEqual(created["email"], "new@example.test")
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "email_case_created")
+        self.assertEqual(self.stage["imported_email_uids"], ["imap.example.test:INBOX:42", "imap.example.test:INBOX:43"])
+        self.saved.assert_called_once_with(self.stage)
+
     def test_email_reply_fails_closed_when_smtp_is_not_configured(self):
         with patch.dict("os.environ", {"ROGER_SMTP_HOST": "", "ROGER_FROM_EMAIL": ""}):
             serve.H.handle_email_reply(self.handler, {"id": 490, "text": "Hello"})
