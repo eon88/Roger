@@ -1332,6 +1332,7 @@ class H(SimpleHTTPRequestHandler):
                                 if a.get("landlord_party_id") == landlord_id
                                 and a.get("status") in ("active", "ended")
                                 and (not a.get("ended_at") or a.get("ended_at") >= start_iso)
+                                and (not a.get("created_at") or str(a.get("created_at"))[:10] <= end_iso)
                                 for pid in a.get("property_ids", [])})
         if not property_ids:
             return self._json({"error": "no managed properties found for this landlord"}, 409)
@@ -1341,7 +1342,7 @@ class H(SimpleHTTPRequestHandler):
                 continue
             for payment in entry.get("payments", []):
                 paid_date = str(payment.get("received_date", ""))
-                if start_iso <= paid_date <= end_iso:
+                if start_iso <= paid_date <= end_iso and payment.get("landlord_party_id") == landlord_id:
                     rent_lines.append({
                         "rent_entry_id": entry.get("id"), "tenancy_id": entry.get("tenancy_id"),
                         "property_id": entry.get("property_id"), "received_date": paid_date,
@@ -1351,7 +1352,13 @@ class H(SimpleHTTPRequestHandler):
         maintenance_lines = []
         for job in stage.get("jobs", []):
             paid_date = str(job.get("paid_at", ""))[:10]
-            if job.get("property_id") in property_ids and job.get("status") == "paid" and start_iso <= paid_date <= end_iso:
+            covered = any(a.get("landlord_party_id") == landlord_id
+                           and job.get("property_id") in a.get("property_ids", [])
+                           and a.get("status") in ("active", "ended")
+                           and (not a.get("created_at") or str(a.get("created_at"))[:10] <= paid_date)
+                           and (not a.get("ended_at") or a.get("ended_at") >= paid_date)
+                           for a in stage.get("management_agreements", []))
+            if covered and job.get("property_id") in property_ids and job.get("status") == "paid" and start_iso <= paid_date <= end_iso:
                 maintenance_lines.append({
                     "job_id": job.get("id"), "property_id": job.get("property_id"),
                     "paid_date": paid_date, "amount_pence": int(job.get("invoice_pence") or 0),
