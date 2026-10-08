@@ -325,7 +325,7 @@ class ProspectStageTests(unittest.TestCase):
     def test_landlord_pipeline_requires_approved_linked_party_and_active_agreement(self):
         self.stage["registrations"] = [{
             "id": "land-1", "role": "landlord", "status": "approved",
-            "party_id": "party-1",
+            "party_id": "party-1", "prospect_stage": "proposal",
         }]
         self.stage["parties"] = [{"id": "party-1", "status": "active", "roles": ["landlord"]}]
         self.stage["management_agreements"] = [{
