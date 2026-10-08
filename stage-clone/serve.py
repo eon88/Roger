@@ -1318,11 +1318,11 @@ class H(SimpleHTTPRequestHandler):
                 incoming = email.parser.BytesParser(policy=email.policy.default).parsebytes(raw)
                 sender_name, sender_addr = email.utils.parseaddr(str(incoming.get("From", "")))
                 sender_addr = sender_addr.strip().lower()
-                if not sender_addr or not re.fullmatch(r"[^\\s@]+@[^\\s@]+\\.[^\\s@]+", sender_addr):
+                if not sender_addr or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", sender_addr):
                     continue
                 part = incoming.get_body(preferencelist=("plain",))
                 body_text = part.get_content() if part else ""
-                text = ("Subject: " + str(incoming.get("Subject", "(no subject)"))[:200] + "\\n\\n" + str(body_text)).strip()[:3000]
+                text = ("Subject: " + str(incoming.get("Subject", "(no subject)"))[:200] + "\n\n" + str(body_text)).strip()[:3000]
                 if not text:
                     text = "(Email contained no plain-text body.)"
                 existing = [c for c in stage.get("cases", []) if str(c.get("email", "")).strip().lower() == sender_addr]
