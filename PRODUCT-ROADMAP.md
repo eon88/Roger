@@ -938,13 +938,16 @@ We will tackle these in order unless a real operational need changes the priorit
 
 ## Priority 2 — Agent Desk
 
-- [ ] Build “What needs me today?”
-- [ ] Waiting-on states
-- [ ] Overdue items
-- [ ] Upcoming items
-- [ ] Unified search
+- [x] Build “What needs me today?” — Agent Desk command centre
+- [x] Waiting-on states — approvals, trade work/quotes and appointment replies
+- [x] Overdue items — explicit due dates plus past confirmed appointments needing an outcome
+- [x] Upcoming items — confirmed appointments in the next seven days
+- [x] Unified search — current properties, cases, jobs, registrations, appointments and documents; legacy names/contact values included
 
 ## Priority 3 — CRM / acquisition pipelines
+
+**Priority 2 implementation:** the Agent Desk command centre, waiting-on sections, upcoming appointments, overdue-date checks and unified record search are implemented in `stage-clone/agent.html`. The overdue view uses explicit due fields and past confirmed appointments; it does not infer deadlines from record age. Search preserves focus through the 15-second refresh. HTML parsing and JavaScript syntax checks pass.
+
 
 - [ ] Tenant prospect pipeline
 - [ ] Landlord prospect pipeline
