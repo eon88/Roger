@@ -15,6 +15,7 @@
       <a href="#" class="tab" data-view="jobs">Jobs</a>
       <a href="#" class="tab" data-view="registrations">Registrations</a>
       <a href="#" class="tab" data-view="prospects">Prospects</a>
+      <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
       <a href="#" class="tab" data-view="properties">Properties</a>
       <a href="#" class="tab" data-view="history">History</a>
       <a href="/" class="tab out">Lettings site</a><a href="/logout" class="tab out">Log out</a>
@@ -27,6 +28,7 @@
     <section id="view-jobs" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
+    <section id="view-people" style="display:none"></section>
     <section id="view-properties" style="display:none"></section>
     <section id="view-history" style="display:none"></section>
   </main>
@@ -116,7 +118,7 @@ async function load(manual){
 function renderAll(){
   const y=window.scrollY, searchFocused=document.activeElement?.id==='desk-search';
   const searchPos=searchFocused?document.activeElement.selectionStart:null;
-  markFlips(); renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProspects(); renderProps(); renderHistory();
+  markFlips(); renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(searchFocused){const input=document.getElementById('desk-search');input?.focus();if(searchPos!==null)input?.setSelectionRange(searchPos,searchPos);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -139,6 +141,8 @@ function renderDeskSearch(q){
   add(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id+' · '+(x.type||'case'),x=>[prop(x.property_id)?.title,x.name,x.email,x.status,x.message].filter(Boolean).join(' · '));
   add(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id+' · case #'+x.case_id,x=>[prop(x.property_id)?.title,x.status,x.assigned_to,x.message].filter(Boolean).join(' · '));
   add(stage.registrations,'registrations',x=>'reg-'+x.id,x=>(x.role||'registration')+' · '+(x.name||x.id),x=>[x.email,x.status,x.details].filter(Boolean).join(' · '));
+  add(stage.parties,'people',x=>x.id,x=>x.display_name||x.id,x=>[x.kind,(x.roles||[]).join(', '),x.email,x.phone,x.status].filter(Boolean).join(' · '));
+  add(stage.tenancies,'people',x=>x.id,x=>'Tenancy '+x.id,x=>[prop(x.property_id)?.title,(x.tenant_party_ids||[]).map(id=>(stage.parties||[]).find(p=>p.id===id)?.display_name||id).join(', '),x.status].filter(Boolean).join(' · '));
   add(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>[prop(x.property_id)?.title,x.status,x.start_time,x.description].filter(Boolean).join(' · '));
   add(window._docs,'overview',x=>'doc-'+x.id,x=>x.title||x.file_name||'Document',x=>[prop(x.property_id)?.title,x.document_type,x.status].filter(Boolean).join(' · '));
   host.innerHTML=found.length?found.slice(0,12).map(x=>deskLink(x.label,x.detail,x.view,x.id,'')).join(''):'<div class="empty">No matching records.</div>';
@@ -379,6 +383,71 @@ async function savePropertyLifecycle(btn){
  if(!select||!description)return;
  await busy(btn,async()=>{try{await post('/api/property-action',{property_id:btn.dataset.propertyId,status:select.value,description:description.value});toast('Property stage saved. Public listings follow the Advertised stage.');load();}catch(e){}});
 }
+const TENANCY_TRANSITIONS={
+ application:['referencing','cancelled'],referencing:['approved','cancelled'],approved:['offer','cancelled'],
+ offer:['agreement','cancelled'],agreement:['deposit','cancelled'],deposit:['move_in_scheduled','cancelled'],
+ move_in_scheduled:['active','cancelled'],active:['renewal','notice_given'],renewal:['active','notice_given'],
+ notice_given:['active','checkout'],checkout:['deposit_resolution','former_tenant'],
+ deposit_resolution:['former_tenant'],former_tenant:[],cancelled:[]
+};
+function renderPeopleTenancies(){
+ const parties=stage.parties||[],tenancies=stage.tenancies||[],props=stage.properties||[];
+ const partyOptions=(role,selected)=>parties.filter(p=>p.status==='active'&&(p.roles||[]).includes(role)).map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.display_name)+' · '+esc(p.id)+'</option>').join('');
+ const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title)+' · '+esc(p.area)+'</option>').join('');
+ const prospectOptions=(stage.cases||[]).filter(c=>c.type==='enquiry'&&['renter','tenant'].includes(c.role)).map(c=>'<option value="'+esc(c.id)+'">#'+esc(c.id)+' · '+esc(c.name||'Prospect')+'</option>').join('');
+ const partyCards=parties.length?parties.map(p=>'<div class="appt" id="'+esc(p.id)+'"><div><b>'+esc(p.display_name)+'</b><div class="meta">'+esc(p.kind)+' · '+esc((p.roles||[]).join(', '))+(p.email?' · '+esc(p.email):'')+'</div><div class="meta">'+(p.account_id?'Portal account linked':'No portal account linked')+'</div></div><span class="badge">'+esc(p.status)+'</span></div>').join(''):'<div class="empty">No Party records yet. Create landlord and tenant Parties before adding a tenancy.</div>';
+ const tenancyCards=tenancies.length?tenancies.slice().reverse().map(t=>{
+   const tenants=(t.tenant_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
+   const landlords=(t.landlord_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
+   const p=props.find(x=>x.id===t.property_id)||{};
+   const choices=[t.status,...(TENANCY_TRANSITIONS[t.status]||[])];
+   return '<div class="card" id="'+esc(t.id)+'"><div class="cardtop"><h3>'+esc(t.id)+' · '+esc(p.title||t.property_id)+'</h3><span class="badge '+esc(t.status)+'">'+esc(t.status.replace(/_/g,' '))+'</span></div>'+
+    '<div class="meta">Tenant: '+esc(tenants)+' · Landlord: '+esc(landlords)+(t.source_prospect_id?' · from enquiry #'+esc(t.source_prospect_id):'')+'</div>'+
+    '<div class="meta">From '+esc(t.start_date||'—')+(t.end_date?' to '+esc(t.end_date):'')+' · £'+((t.rent_amount_pence||0)/100).toFixed(2)+' / '+esc(t.rent_frequency||'period')+' · Agreement '+esc(t.agreement_status||'draft')+'</div>'+
+    '<div class="fineprint">Portal access is not linked by this record. Link a verified account separately before granting access.</div>'+
+    '<div class="grid2"><div><label class="field"><span>Agreement state</span><select class="agreement-status"><option value="draft"'+(t.agreement_status==='draft'?' selected':'')+'>draft</option><option value="sent"'+(t.agreement_status==='sent'?' selected':'')+'>sent</option><option value="signed"'+(t.agreement_status==='signed'?' selected':'')+'>signed</option><option value="cancelled"'+(t.agreement_status==='cancelled'?' selected':'')+'>cancelled</option></select></label><label class="field"><span>Signed date (required when signed)</span><input class="agreement-date" type="date" value="'+esc(t.agreement_signed_at||'')+'"></label><button class="btn" data-tenancy-id="'+esc(t.id)+'" onclick="saveTenancyAgreement(this)">Save agreement state</button></div>'+
+    '<div><label class="field"><span>Tenancy stage</span><select class="tenancy-stage">'+choices.map(s=>'<option value="'+esc(s)+'">'+esc(s.replace(/_/g,' '))+'</option>').join('')+'</select></label><label class="field"><span>Notice / checkout date</span><input class="tenancy-date" type="date"></label><button class="btn primary" data-tenancy-id="'+esc(t.id)+'" onclick="saveTenancyStage(this)">Advance tenancy</button></div></div>'+
+    '<div class="meta">History: '+(t.history||[]).slice(-4).map(h=>esc((h.from||'new')+' → '+(h.to||h.event)+' · '+(h.at||''))).join(' · ')+'</div></div>';
+ }).join(''):'<div class="empty">No tenancy records yet.</div>';
+ document.getElementById('view-people').innerHTML='<div class="move">people and tenancies</div>'+
+ '<p class="fineprint">Create explicit Party records and link tenancies by stable IDs. This does not merge records by email or grant portal access.</p>'+
+ '<div class="grid2"><div class="card"><h2>New Party</h2><label class="field"><span>Type</span><select id="party-kind"><option value="person">Person</option><option value="organisation">Organisation</option></select></label>'+
+ '<label class="field"><span>Display name</span><input id="party-name" type="text" maxlength="160"></label><label class="field"><span>Legal name (optional)</span><input id="party-legal-name" type="text" maxlength="160"></label>'+
+ '<label class="field"><span>Email</span><input id="party-email" type="email" maxlength="254"></label><label class="field"><span>Phone</span><input id="party-phone" type="text" maxlength="40"></label>'+
+ '<label class="field"><span>Address</span><input id="party-address" type="text" maxlength="300"></label><div class="field"><span>Role assignments</span>'+
+ '<label><input type="checkbox" name="party-role" value="landlord"> Landlord</label> <label><input type="checkbox" name="party-role" value="tenant"> Tenant</label> <label><input type="checkbox" name="party-role" value="trades"> Trades</label> <label><input type="checkbox" name="party-role" value="agent"> Agent</label></div>'+
+ '<label class="field"><span>Agent notes</span><textarea id="party-notes" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="createParty(this)">Create Party</button></div>'+
+ '<div class="card"><h2>People records</h2>'+partyCards+'</div></div>'+
+ '<div class="card"><h2>Create tenancy application</h2><div class="grid2"><label class="field"><span>Property</span><select id="tenancy-property">'+propOptions+'</select></label><label class="field"><span>Source tenant enquiry (optional)</span><select id="tenancy-prospect"><option value="">No linked enquiry</option>'+prospectOptions+'</select></label>'+
+ '<label class="field"><span>Tenant Party (select multiple with Ctrl/Cmd)</span><select id="tenancy-tenants" multiple>'+partyOptions('tenant')+'</select></label>'+
+ '<label class="field"><span>Landlord Party (select multiple with Ctrl/Cmd)</span><select id="tenancy-landlords" multiple>'+partyOptions('landlord')+'</select></label>'+
+ '<label class="field"><span>Start date</span><input id="tenancy-start" type="date"></label><label class="field"><span>Rent (£ per period)</span><input id="tenancy-rent" type="number" min="0" step="0.01"></label>'+
+ '<label class="field"><span>Frequency</span><select id="tenancy-frequency"><option>monthly</option><option>weekly</option><option>fortnightly</option><option>quarterly</option><option>annually</option></select></label>'+
+ '<label class="field"><span>Deposit (£; optional if unknown)</span><input id="tenancy-deposit" type="number" min="0" step="0.01" value="0"></label></div>'+
+ '<button class="btn primary" onclick="createTenancy(this)">Create tenancy record</button></div>'+
+ '<div class="move">tenancy records</div>'+tenancyCards;
+}
+async function createParty(btn){
+ const roles=Array.from(document.querySelectorAll('input[name="party-role"]:checked')).map(x=>x.value);
+ await busy(btn,async()=>{try{await post('/api/party-action',{kind:document.getElementById('party-kind').value,display_name:document.getElementById('party-name').value,legal_name:document.getElementById('party-legal-name').value,email:document.getElementById('party-email').value,phone:document.getElementById('party-phone').value,address:document.getElementById('party-address').value,notes:document.getElementById('party-notes').value,roles});toast('Party created. No account was linked.');load();}catch(e){}});
+}
+async function createTenancy(btn){
+ const property=document.getElementById('tenancy-property'),tenants=document.getElementById('tenancy-tenants'),landlords=document.getElementById('tenancy-landlords');
+ const pounds=document.getElementById('tenancy-rent').value,deposit=document.getElementById('tenancy-deposit').value;
+ const rentNumber=Number(pounds),depositNumber=Number(deposit||0);
+ if(!Number.isFinite(rentNumber)||rentNumber<0||!Number.isFinite(depositNumber)||depositNumber<0){toast('Enter a valid rent and deposit amount.','bad');return;}
+ const tenantIds=Array.from(tenants.selectedOptions).map(x=>x.value),landlordIds=Array.from(landlords.selectedOptions).map(x=>x.value);
+ await busy(btn,async()=>{try{await post('/api/tenancy-action',{action:'create',property_id:property.value,source_prospect_id:document.getElementById('tenancy-prospect').value,tenant_party_ids:tenantIds,landlord_party_ids:landlordIds,start_date:document.getElementById('tenancy-start').value,rent_amount_pence:Math.round(rentNumber*100),deposit_amount_pence:Math.round(depositNumber*100),rent_frequency:document.getElementById('tenancy-frequency').value});toast('Tenancy application created. It does not grant portal access.');load();}catch(e){}});
+}
+async function saveTenancyAgreement(btn){
+ const card=btn.closest('.card'),status=card.querySelector('.agreement-status').value,signedAt=card.querySelector('.agreement-date').value;
+ await busy(btn,async()=>{try{await post('/api/tenancy-action',{action:'agreement',id:btn.dataset.tenancyId,agreement_status:status,signed_at:signedAt});toast('Agreement state recorded.');load();}catch(e){}});
+}
+async function saveTenancyStage(btn){
+ const card=btn.closest('.card'),status=card.querySelector('.tenancy-stage').value,date=card.querySelector('.tenancy-date').value;
+ await busy(btn,async()=>{try{await post('/api/tenancy-action',{action:'transition',id:btn.dataset.tenancyId,status,effective_date:date});toast('Tenancy stage updated.');load();}catch(e){}});
+}
+
 function renderHistory(){
   const log=(stage.audit_log||[]).slice().reverse();
   document.getElementById('view-history').innerHTML=`<div class="move">activity log</div>`+
