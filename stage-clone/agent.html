@@ -238,10 +238,15 @@ function renderCommunicationItems(){
   .sort((a,b)=>String(b.items[b.items.length-1]?.at||b.c.submitted_at||'').localeCompare(String(a.items[a.items.length-1]?.at||a.c.submitted_at||'')));
  host.innerHTML=cases.length?cases.map(({c,items})=>{
   const p=(stage.properties||[]).find(x=>x.id===c.property_id)||{};
-  const content=items.map(m=>'<div class="msg r-'+esc(m.role||'contact')+'"><b>'+esc(m.author||'System')+'</b><span class="who">'+esc((m.to||[]).join(', '))+' · '+esc(fmtDate(m.at))+'</span><div>'+esc(m.text)+'</div></div>').join('');
+  const content=items.map(m=>'<div class="msg r-'+esc(m.role||'contact')+'"><b>'+esc(m.author||'System')+'</b><span class="who">'+(m.channel==='email'?'Email → '+esc(m.email_to||''):(m.to||[]).join(', '))+' · '+esc(fmtDate(m.at))+'</span><div>'+esc(m.text)+'</div></div>').join('');
   return '<div class="card" id="comm-case-'+esc(c.id)+'"><div class="cardtop"><h3>'+esc(c.name||'Contact')+' · case #'+esc(c.id)+'</h3><span class="badge '+esc(c.status)+'">'+esc(c.status)+'</span></div><div class="meta">'+esc(c.email||'No email on record')+' · '+esc(p.title||'No property linked')+(p.area?' · '+esc(p.area):'')+' · '+(items.length)+' message'+(items.length===1?'':'s')+'</div><div class="msgs">'+content+'</div>'+
-  '<div class="actions"><button class="btn" onclick="goDeskResult(\'cases\',\'case-'+esc(c.id)+'\')">Open case</button>'+(c.status!=='closed'?'<input id="comm-reply-'+esc(c.id)+'" placeholder="Reply to contact" autocomplete="off" onkeydown="if(event.key===\'Enter\')sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')"><label class="who"><input type="checkbox" id="comm-landlord-'+esc(c.id)+'" checked> landlord</label><label class="who"><input type="checkbox" id="comm-trades-'+esc(c.id)+'" checked> trades</label><button class="btn primary" onclick="sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Send</button>':'')+'</div></div>';
+  '<div class="actions"><button class="btn" onclick="goDeskResult(\'cases\',\'case-'+esc(c.id)+'\')">Open case</button>'+(c.status!=='closed'?'<input id="comm-reply-'+esc(c.id)+'" placeholder="Reply to contact" autocomplete="off" onkeydown="if(event.key===\'Enter\')sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')"><label class="who"><input type="checkbox" id="comm-landlord-'+esc(c.id)+'" checked> landlord</label><label class="who"><input type="checkbox" id="comm-trades-'+esc(c.id)+'" checked> trades</label><button class="btn primary" onclick="sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Portal reply</button><button class="btn" onclick="emailCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Email reply</button>':'')+'</div></div>';
  }).join(''):'<div class="empty">No conversations match these filters.</div>';
+}
+async function emailCommunicationReply(btn,id){
+ const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
+ if(!textValue){toast('Type a reply first.','bad');return;}
+ await busy(btn,async()=>{try{await post('/api/email-reply',{id,text:textValue});input.value='';window.commQuery='';toast('Email sent and recorded on the case timeline.');load();}catch(e){}});
 }
 async function sendCommunicationReply(btn,id){
  const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
