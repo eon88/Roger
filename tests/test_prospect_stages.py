@@ -120,12 +120,13 @@ class ProspectStageTests(unittest.TestCase):
 
     def test_tenancy_creation_requires_and_links_party_ids(self):
         self.stage["properties"] = [{"id": "home-1", "title": "Home"}]
+        self.stage["cases"] = [{"id": 490, "type": "enquiry", "role": "renter", "name": "Prospect"}]
         self.stage["parties"] = [
             {"id": "party-1", "roles": ["landlord"], "status": "active"},
             {"id": "party-2", "roles": ["tenant"], "status": "active", "account_id": None},
         ]
         serve.H.handle_tenancy_action(self.handler, {
-            "action": "create", "property_id": "home-1",
+            "action": "create", "property_id": "home-1", "source_prospect_id": "490",
             "landlord_party_ids": ["party-1"], "tenant_party_ids": ["party-2"],
             "start_date": "2026-10-01", "rent_amount_pence": 125000,
             "deposit_amount_pence": 0, "rent_frequency": "monthly",
@@ -133,6 +134,7 @@ class ProspectStageTests(unittest.TestCase):
         tenancy = self.stage["tenancies"][0]
         self.assertEqual(tenancy["tenant_party_ids"], ["party-2"])
         self.assertEqual(tenancy["landlord_party_ids"], ["party-1"])
+        self.assertEqual(tenancy["source_prospect_id"], "490")
         self.assertEqual(tenancy["status"], "application")
         self.assertEqual(tenancy["agreement_status"], "draft")
         self.assertIsNone(self.stage["parties"][1]["account_id"])
