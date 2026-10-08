@@ -88,9 +88,6 @@ def atomic_json_write(path, data):
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
-def save_users(data):
-    atomic_json_write(USERS_FILE, data)
-
 def load_stage():
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") == "postgres":
         with postgres_connection() as connection:
