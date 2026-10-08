@@ -18,8 +18,10 @@ from datetime import datetime, timedelta, timezone
 import jev_client
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-STAGE_FILE = os.path.join(ROOT, "stage.json")
-USERS_FILE = os.path.join(ROOT, "users.json")
+DATA_DIR = os.environ.get("DATA_DIR", ROOT)
+os.makedirs(DATA_DIR, exist_ok=True)
+STAGE_FILE = os.path.join(DATA_DIR, "stage.json")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
 SESSION_TTL = timedelta(days=7)
 LOGIN_TRIES = {}  # ip -> [timestamps]; in-memory, resets on restart (acceptable for demo-scale)
 
@@ -1110,4 +1112,7 @@ class H(SimpleHTTPRequestHandler):
         pass
 
 if __name__ == "__main__":
-    HTTPServer(("127.0.0.1", 8901), H).serve_forever()
+    bind_host = os.environ.get("BIND_HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "8901"))
+    print(f"Roger portal listening on http://{bind_host}:{port}", flush=True)
+    HTTPServer((bind_host, port), H).serve_forever()

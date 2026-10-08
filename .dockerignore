@@ -1,0 +1,7 @@
+.git
+.gitignore
+README.md
+DEPLOY.md
+**/__pycache__/
+**/*.pyc
+stage-clone/users.json

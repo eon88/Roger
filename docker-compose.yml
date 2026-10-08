@@ -1,0 +1,35 @@
+services:
+  roger:
+    build:
+      context: .
+    container_name: roger
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      BIND_HOST: 0.0.0.0
+      PORT: 8901
+      HERMES_ENV_FILE: /data/.env
+    volumes:
+      - roger_data:/data
+    ports:
+      - "127.0.0.1:8901:8901"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8901/api/public', timeout=5).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.roger.rule=Host(`${ROGER_HOST:-agency.lifecompass.shop}`)"
+      - "traefik.http.routers.roger.entrypoints=websecure"
+      - "traefik.http.routers.roger.tls=true"
+      - "traefik.http.routers.roger.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.services.roger.loadbalancer.server.port=8901"
+
+volumes:
+  roger_data:

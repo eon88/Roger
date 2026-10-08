@@ -105,3 +105,9 @@ http://127.0.0.1:8901
 ```
 
 No third-party Python package is required for the core server.
+
+## Docker deployment
+
+The repository includes `Dockerfile`, `docker-compose.yml` and `DEPLOY.md`.
+
+Runtime state is stored in the persistent Docker volume `roger_data`, so application updates do not overwrite live agency data.

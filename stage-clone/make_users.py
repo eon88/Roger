@@ -4,7 +4,9 @@ users.json itself only ever stores scrypt hashes + sessions stay in it too."""
 import hashlib, json, os, secrets, string
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-FP = os.path.join(ROOT, "users.json")
+DATA_DIR = os.environ.get("DATA_DIR", ROOT)
+os.makedirs(DATA_DIR, exist_ok=True)
+FP = os.path.join(DATA_DIR, "users.json")
 
 def hash_pw(pw, salt=None):
     salt = salt or secrets.token_hex(16)
