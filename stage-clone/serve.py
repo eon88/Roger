@@ -32,6 +32,8 @@ DATA_DIR = os.environ.get("DATA_DIR", ROOT)
 os.makedirs(DATA_DIR, exist_ok=True)
 STAGE_FILE = os.path.join(DATA_DIR, "stage.json")
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
+FILES_DIR = os.environ.get("ROGER_FILES_DIR", os.path.join(DATA_DIR, "files"))
+os.makedirs(FILES_DIR, mode=0o700, exist_ok=True)
 SESSION_TTL = timedelta(days=7)
 LOGIN_TRIES = {}  # ip -> [timestamps]; in-memory, resets on restart (acceptable for demo-scale)
 
@@ -1987,9 +1989,34 @@ class H(SimpleHTTPRequestHandler):
             return [self.safe_document(d) for d in docs]
         return [self.safe_document(d) for d in docs if self.can_view_document(u, d)]
 
+    def document_path(self, doc):
+        key = str(doc.get("storage_key", ""))
+        if not re.fullmatch(r"[a-f0-9]{64}", key):
+            return None
+        return os.path.join(FILES_DIR, key[:2], key)
+
+    def store_document_body(self, raw):
+        key = hashlib.sha256(raw).hexdigest()
+        folder = os.path.join(FILES_DIR, key[:2])
+        os.makedirs(folder, mode=0o700, exist_ok=True)
+        path = os.path.join(folder, key)
+        if not os.path.exists(path):
+            fd, temp_path = tempfile.mkstemp(prefix=".roger-file-", dir=folder)
+            try:
+                with os.fdopen(fd, "wb") as target:
+                    target.write(raw)
+                    target.flush()
+                    os.fsync(target.fileno())
+                os.chmod(temp_path, 0o600)
+                os.replace(temp_path, path)
+            finally:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+        return key
+
     def safe_document(self, d):
         out = {k: v for k, v in d.items() if k != "data_b64"}
-        out["has_file"] = bool(d.get("data_b64"))
+        out["has_file"] = bool(d.get("storage_key") or d.get("data_b64"))
         return out
 
     def handle_document(self, data):
@@ -2016,6 +2043,7 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "content_b64 must be valid base64"}, 400)
         if len(raw) > 5 * 1024 * 1024:
             return self._json({"error": "file too large (max 5 MB)"}, 400)
+        storage_key = self.store_document_body(raw)
         fname = os.path.basename(str(data.get("file_name", "document"))[:120]) or "document"
         fname = re.sub(r"[^A-Za-z0-9._ -]", "_", fname)
         doc_id = f"doc-{len(stage.get('documents', [])) + 1}"
@@ -2030,13 +2058,13 @@ class H(SimpleHTTPRequestHandler):
             "file_name": fname,
             "content_type": str(data.get("content_type", "application/octet-stream"))[:80],
             "file_size": len(raw),
+            "storage_key": storage_key,
             "uploaded_by": (self.user or {}).get("display_name", "Agent"),
             "uploaded_at": now(),
             "verified_by": None,
             "verified_at": None,
             "status": "pending",
             "notes": "",
-            "data_b64": b64,
         }
         flist.append(doc)
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
@@ -2068,7 +2096,17 @@ class H(SimpleHTTPRequestHandler):
 
     def serve_document_file(self, doc):
         import base64
-        body = base64.b64decode(doc.get("data_b64", "")) if doc.get("data_b64") else b""
+        path = self.document_path(doc)
+        try:
+            if path and os.path.isfile(path):
+                with open(path, "rb") as handle:
+                    body = handle.read()
+            elif doc.get("data_b64"):
+                body = base64.b64decode(doc["data_b64"])
+            else:
+                return self._json({"error": "document file is missing"}, 404)
+        except (OSError, ValueError):
+            return self._json({"error": "document file could not be read"}, 404)
         self.send_response(200)
         self.send_header("Content-Type", doc.get("content_type", "application/octet-stream"))
         self.send_header("Content-Length", str(len(body)))
