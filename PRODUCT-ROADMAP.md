@@ -994,11 +994,13 @@ We will tackle these in order unless a real operational need changes the priorit
 
 ## Priority 8 — Technical migration
 
-- [ ] PostgreSQL
-- [ ] Proper file storage
-- [ ] Security hardening
-- [ ] Test suite
-- [ ] Backups
+- [ ] PostgreSQL — production store cutover and relational migration
+- [ ] Proper file storage — extract document bodies from JSON and use persistent object storage
+- [x] Security hardening — atomic JSON replacement and mode 0600 for stage/user snapshots
+- [x] Test suite — GitHub Actions workflow plus endpoint, storage and backup tests
+- [x] Backups — validated private archive, SHA-256 manifest and restore runbook
+
+**Priority 8 progress:** file-backed writes are now atomic, snapshot files are restricted to owner access, and CI runs the regression suite. The backup utility archives validated stage/user snapshots outside the live data directory. PostgreSQL and object storage remain open because no production database or object-store endpoint has been provisioned for cutover on this branch. The JSON runtime remains the default until that migration can be verified against a real target.
 
 ---
 
@@ -1032,4 +1034,6 @@ For each roadmap item:
 
 **Priority 7 complete:** property compliance records, replacement history, expiry states and manual reminders are available in the Agent Desk.
 
-Next: **Priority 8 — Technical migration**, starting with reliability and backup procedures before replacing the JSON store.
+**Priority 8 progress:** CI, atomic local persistence and operator-run backups are in place. PostgreSQL migration and persistent document storage are the remaining technical foundation work.
+
+Next: **PostgreSQL migration**, with the JSON data preserved and IDs/relationships validated before cutover.
