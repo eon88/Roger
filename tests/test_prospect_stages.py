@@ -251,6 +251,47 @@ class ProspectStageTests(unittest.TestCase):
         self.assertEqual(payment["management_fee_bps"], 1000)
         self.assertEqual(payment["management_agreement_id"], "management-1")
 
+    def test_compliance_record_derives_expiry_and_reminder_states(self):
+        today = serve.datetime.now(serve.timezone.utc).date()
+        expired = {"expiry_date": (today - serve.timedelta(days=1)).isoformat(),
+                   "reminder_date": today.isoformat()}
+        due = {"expiry_date": (today + serve.timedelta(days=10)).isoformat()}
+        current = {"expiry_date": (today + serve.timedelta(days=90)).isoformat()}
+        self.assertEqual(serve.H.safe_compliance_record(self.handler, expired)["status"], "expired")
+        self.assertTrue(serve.H.safe_compliance_record(self.handler, expired)["reminder_due"])
+        self.assertEqual(serve.H.safe_compliance_record(self.handler, due)["status"], "expiring_soon")
+        self.assertEqual(serve.H.safe_compliance_record(self.handler, current)["status"], "current")
+
+    def test_compliance_replacement_supersedes_previous_record(self):
+        self.stage["properties"] = [{"id": "home-1"}]
+        self.stage["documents"] = [{"id": "doc-1", "title": "Gas certificate"}]
+        self.stage["compliance_records"] = [{
+            "id": "compliance-1", "property_id": "home-1",
+            "requirement_type": "gas_safety", "record_status": "recorded",
+        }]
+        serve.H.handle_compliance_action(self.handler, {
+            "action": "record", "property_id": "home-1", "requirement_type": "gas_safety",
+            "issue_date": serve.datetime.now(serve.timezone.utc).date().isoformat(),
+            "expiry_date": (serve.datetime.now(serve.timezone.utc).date() + serve.timedelta(days=365)).isoformat(),
+            "document_id": "doc-1",
+        })
+        old, new = self.stage["compliance_records"]
+        self.assertEqual(old["superseded_by"], new["id"])
+        self.assertEqual(serve.H.safe_compliance_record(self.handler, old)["status"], "superseded")
+        self.assertEqual(new["document_id"], "doc-1")
+        self.assertEqual(self.responses[-1][1], 200)
+
+    def test_compliance_record_rejects_expiry_before_issue(self):
+        self.stage["properties"] = [{"id": "home-1"}]
+        self.stage["compliance_records"] = []
+        serve.H.handle_compliance_action(self.handler, {
+            "action": "record", "property_id": "home-1", "requirement_type": "epc",
+            "issue_date": "2026-10-10", "expiry_date": "2026-10-09",
+        })
+        self.assertEqual(self.responses[-1][1], 400)
+        self.assertEqual(self.stage["compliance_records"], [])
+        self.saved.assert_not_called()
+
     def test_landlord_statement_snapshots_rent_fees_and_paid_maintenance(self):
         self.stage["parties"] = [{
             "id": "party-1", "display_name": "Landlord", "roles": ["landlord"], "status": "active",
