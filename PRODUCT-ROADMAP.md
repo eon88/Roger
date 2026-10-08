@@ -977,10 +977,12 @@ We will tackle these in order unless a real operational need changes the priorit
 
 ## Priority 6 — Money
 
-- [ ] Rent ledger
-- [ ] Agency fees
-- [ ] Landlord statements
-- [ ] Invoice/payment states
+- [x] Rent ledger — scheduled charges, partial receipts, adjustments and derived arrears
+- [x] Agency fees — percentage snapshots on rent received under active full-management terms
+- [x] Landlord statements — immutable period snapshots of rent, fees and paid maintenance
+- [x] Invoice/payment states — existing maintenance approval and paid transitions remain linked to jobs
+
+**Priority 6 implementation:** signed tenancies can generate an idempotent schedule (up to 36 periods) using the rent frequency. Receipts cannot exceed the outstanding balance; adjustments require reasons and cannot reduce charges below receipts. Active management agreements snapshot fees on receipts. Period statements capture recorded rent, fees and paid maintenance, and prevent duplicate generation for the same landlord/period. This is manual recordkeeping; Roger does not verify bank receipts or transfer funds. Statements and fee calculations require an active management agreement linked to the property.
 
 ## Priority 7 — Compliance
 
