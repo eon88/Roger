@@ -573,6 +573,14 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "each tenant must be an active tenant Party"}, 400)
             if any(pid not in parties or "landlord" not in parties[pid].get("roles", []) for pid in landlord_ids):
                 return self._json({"error": "each landlord must be an active landlord Party"}, 400)
+            source_prospect_id = str(data.get("source_prospect_id", ""))[:100] or None
+            if source_prospect_id:
+                source_prospect = next((c for c in stage.get("cases", [])
+                                        if str(c.get("id")) == source_prospect_id
+                                        and c.get("type") == "enquiry"
+                                        and c.get("role") in ("renter", "tenant")), None)
+                if not source_prospect:
+                    return self._json({"error": "source tenant enquiry not found"}, 404)
             try:
                 rent = int(data.get("rent_amount_pence"))
                 deposit = int(data.get("deposit_amount_pence", 0))
@@ -587,6 +595,7 @@ class H(SimpleHTTPRequestHandler):
             at = now()
             tenancy = {
                 "id": tid, "property_id": prop["id"],
+                "source_prospect_id": source_prospect_id,
                 "tenant_party_ids": tenant_ids, "landlord_party_ids": landlord_ids,
                 "start_date": start_date.isoformat(), "end_date": None,
                 "rent_amount_pence": rent, "rent_frequency": frequency,
