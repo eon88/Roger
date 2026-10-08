@@ -14,6 +14,7 @@
       <a href="#" class="tab" data-view="cases">Cases</a>
       <a href="#" class="tab" data-view="jobs">Jobs</a>
       <a href="#" class="tab" data-view="registrations">Registrations</a>
+      <a href="#" class="tab" data-view="prospects">Prospects</a>
       <a href="#" class="tab" data-view="properties">Properties</a>
       <a href="#" class="tab" data-view="history">History</a>
       <a href="/" class="tab out">Lettings site</a><a href="/logout" class="tab out">Log out</a>
@@ -25,6 +26,7 @@
     <section id="view-cases" style="display:none"></section>
     <section id="view-jobs" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
+    <section id="view-prospects" style="display:none"></section>
     <section id="view-properties" style="display:none"></section>
     <section id="view-history" style="display:none"></section>
   </main>
@@ -114,7 +116,7 @@ async function load(manual){
 function renderAll(){
   const y=window.scrollY, searchFocused=document.activeElement?.id==='desk-search';
   const searchPos=searchFocused?document.activeElement.selectionStart:null;
-  markFlips(); renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProps(); renderHistory();
+  markFlips(); renderOverview(); renderCases(); renderJobs(); renderRegs(); renderProspects(); renderProps(); renderHistory();
   if(searchFocused){const input=document.getElementById('desk-search');input?.focus();if(searchPos!==null)input?.setSelectionRange(searchPos,searchPos);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -293,6 +295,41 @@ async function jobAct(btn,id,action,tradesperson){ await busy(btn,async()=>{ try
   toast(say); load(); }catch(e){} }); }
 function quoteAct(btn,id,action){ const reason=action==='decline_quote'?prompt('Reason for the trade (kept on record):')||'price not right':undefined;
   busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote approved — work is green-lit.':'Quote declined and sent back.'); load(); }catch(e){} }); }
+
+const PROSPECT_STAGES={
+ tenant:['enquiry','viewing','application','referencing','approved','offer','converted','closed'],
+ landlord:['lead','conversation','valuation','proposal','terms','signed','onboarding','active','closed'],
+ trades:['applicant','credentials_submitted','checked','approved','available','suspended','rejected']
+};
+function prospectCard(kind,x){
+ const opts=PROSPECT_STAGES[kind];
+ let current=x.prospect_stage;
+ if(!current)current=kind==='tenant'?'enquiry':kind==='landlord'?(x.status==='approved'?'onboarding':x.status==='rejected'?'closed':'lead'):(x.status==='approved'?'approved':x.status==='rejected'?'rejected':'applicant');
+ if(!opts.includes(current))current=opts[0];
+ const name=x.name||'Unnamed prospect',email=x.email||'',detail=x.message||x.details||'';
+ const subline=kind==='tenant'?propLine(x.property_id):((x.status==='pending'?'Approval pending':'Registration '+(x.status||'unknown'))+(x.phone?' · '+x.phone:''));
+ return '<div class="card"><div class="cardtop"><h3>'+esc(name)+'</h3><span class="badge '+esc(x.status||current)+'">'+esc(current.replace(/_/g,' '))+'</span></div>'+
+ '<div class="meta">'+esc(email)+(subline?' · '+subline:'')+(x.submitted_at?' · '+when(x.submitted_at):'')+'</div>'+
+ (detail?'<div class="details">'+esc(detail)+'</div>':'')+
+ (kind==='trades'&&x.trades?'<div class="meta">Trades: '+esc(x.trades.join(', '))+'</div>':'')+
+ '<div class="actions"><label class="field"><span>Pipeline stage</span><select>'+opts.map(s=>'<option value="'+esc(s)+'"'+(s===current?' selected':'')+'>'+esc(s.replace(/_/g,' '))+'</option>').join('')+'</select></label>'+
+ '<button class="btn primary" data-kind="'+kind+'" data-id="'+esc(x.id)+'" onclick="saveProspectStage(this)">Save stage</button></div></div>';
+}
+function renderProspectGroup(kind,title,rows){
+ return '<section><h2>'+title+' <span class="badge">'+rows.length+'</span></h2><div class="grid2">'+
+ (rows.length?rows.map(x=>prospectCard(kind,x)).join(''):'<div class="empty">No '+title.toLowerCase()+' yet.</div>')+'</div></section>';
+}
+function renderProspects(){
+ const tenants=(stage.cases||[]).filter(c=>c.type==='enquiry'&&['renter','tenant'].includes(c.role));
+ const landlords=(stage.registrations||[]).filter(r=>r.role==='landlord');
+ const trades=(stage.registrations||[]).filter(r=>r.role==='trades');
+ document.getElementById('view-prospects').innerHTML='<div class="move">acquisition pipelines</div><p class="fineprint">Record progress as people move from first contact toward a tenancy, management agreement or approved trade. Registration approval remains a separate decision.</p>'+
+ renderProspectGroup('tenant','Tenant prospects',tenants)+renderProspectGroup('landlord','Landlord prospects',landlords)+renderProspectGroup('trades','Trades applicants',trades);
+}
+async function saveProspectStage(btn){
+ const select=btn.closest('.card')?.querySelector('select');if(!select)return;
+ await busy(btn,async()=>{try{await post('/api/prospect-action',{kind:btn.dataset.kind,id:btn.dataset.id,stage:select.value});toast('Prospect stage updated and recorded in the audit history.');load();}catch(e){}});
+}
 
 function renderRegs(){
   const all=stage.registrations||[]; const pend=all.filter(r=>r.status==='pending');
