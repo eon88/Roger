@@ -930,7 +930,7 @@ We will tackle these in order unless a real operational need changes the priorit
 
 ## Priority 1 — Core data model
 
-- [ ] **1A. Design People model**
+- [x] **1A. Design People model** — [design](docs/people-model-1a.md)
 - [ ] **1B. Design Property model**
 - [ ] **1C. Design Tenancy model**
 - [ ] **1D. Define relationships between them**
@@ -1008,14 +1008,6 @@ For each roadmap item:
 
 ## 1A — People model
 
-The first task is to design one canonical model for:
+**Design complete:** [Canonical People model](docs/people-model-1a.md). The design separates Parties (individuals and organisations), role assignments, login accounts, and prospect/application records. It uses stable IDs for relationships and prevents email matches from granting access or silently merging identities.
 
-- tenant
-- landlord
-- tradesperson
-- agent
-- prospect
-
-without creating separate disconnected identity records for every workflow.
-
-This is the starting point for the next development session.
+Next: **1B — Property model**, including how Parties own, occupy, manage and work at properties.
