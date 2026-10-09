@@ -16,6 +16,7 @@
       <a href="#" class="tab" data-view="communications">Communications</a>
       <a href="#" class="tab" data-view="money">Money</a>
       <a href="#" class="tab" data-view="compliance">Compliance</a>
+      <a href="#" class="tab" data-view="documents">Documents</a>
       <a href="#" class="tab" data-view="registrations">Registrations</a>
       <a href="#" class="tab" data-view="prospects">Prospects</a>
       <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
@@ -32,6 +33,7 @@
     <section id="view-communications" style="display:none"></section>
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
+    <section id="view-documents" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
     <section id="view-people" style="display:none"></section>
@@ -126,7 +128,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderCompliance(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderCompliance(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -629,6 +631,50 @@ function renderCompliance(){
 async function saveComplianceRecord(btn){
  const action=document.getElementById('compliance-action').value;
  await busy(btn,async()=>{try{await post('/api/compliance-action',{action,property_id:document.getElementById('compliance-property').value,requirement_type:document.getElementById('compliance-type').value,document_id:document.getElementById('compliance-document').value,issue_date:document.getElementById('compliance-issue').value,expiry_date:document.getElementById('compliance-expiry').value,reminder_date:document.getElementById('compliance-reminder').value,notes:document.getElementById('compliance-notes').value});toast('Compliance record saved to the property history.');load();}catch(e){}});
+}
+function documentExpiryBadge(d){
+ if(d.status==='superseded')return '<span class="badge superseded">superseded</span>';
+ if(d.status==='rejected')return '<span class="badge rejected">rejected</span>';
+ if(!d.expiry_date)return '<span class="badge">no expiry</span>';
+ const diff=Math.ceil((Date.parse(d.expiry_date)-Date.now())/86400000);
+ if(diff<0)return '<span class="badge overdue">expired</span>';
+ if(diff<=30)return '<span class="badge pending">expires soon</span>';
+ return '<span class="badge completed">current</span>';
+}
+function renderDocuments(){
+ const docs=window._docs||[],props=stage.properties||[],parties=stage.parties||[],tenancies=stage.tenancies||[],jobs=stage.jobs||[];
+ const q=String(window.documentQuery||'').trim().toLowerCase();
+ const typeFilter=window.documentType||'',statusFilter=window.documentStatus||'',propertyFilter=window.documentProperty||'';
+ const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
+ const partyOptions=parties.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.display_name||p.id)+' · '+esc((p.roles||[]).join(', '))+'</option>').join('');
+ const tenancyOptions=tenancies.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc((props.find(p=>p.id===t.property_id)||{}).title||t.property_id)+'</option>').join('');
+ const jobOptions=jobs.map(j=>'<option value="'+esc(j.id)+'">'+esc(j.id)+' · case #'+esc(j.case_id||'')+'</option>').join('');
+ const docOptions=docs.filter(d=>d.status!=='superseded').map(d=>'<option value="'+esc(d.id)+'">'+esc(d.id)+' · '+esc(d.title||d.file_name||'Document')+'</option>').join('');
+ const typeOptions=['property_document','tenancy_agreement','deposit_receipt','inspection_report','id_proof','landlord_document','trades_document','job_document','maintenance_evidence','compliance_certificate','other'].map(t=>'<option value="'+esc(t)+'">'+esc(capType(t))+'</option>').join('');
+ const visible=docs.filter(d=>{
+   const text=[d.id,d.title,d.description,d.file_name,d.document_type,d.status,d.property_id,d.party_id,d.tenancy_id,d.job_id,(props.find(p=>p.id===d.property_id)||{}).title].filter(Boolean).join(' ').toLowerCase();
+   return (!q||text.includes(q))&&(!typeFilter||d.document_type===typeFilter)&&(!statusFilter||d.status===statusFilter)&&(!propertyFilter||d.property_id===propertyFilter);
+ });
+ const cards=visible.slice().reverse().map(d=>{const p=props.find(x=>x.id===d.property_id)||{},party=parties.find(x=>x.id===d.party_id)||{};return '<div class="card" id="document-'+esc(d.id)+'"><div class="cardtop"><h3>'+esc(d.title||d.file_name||d.id)+'</h3><span class="badge '+esc(d.status||'pending')+'">'+esc(d.status||'pending')+'</span></div>'+
+   '<div class="meta">'+esc(capType(d.document_type))+' · '+esc(d.file_name||'file')+' · v'+esc(d.version||1)+(d.expiry_date?' · expires '+esc(d.expiry_date):'')+'</div>'+
+   '<div class="meta">'+[p.title,party.display_name,d.tenancy_id,d.job_id,d.case_id?'case #'+d.case_id:''].filter(Boolean).map(esc).join(' · ')+'</div>'+
+   '<div class="meta">Access: '+esc((d.access_roles||['agent']).join(', '))+' · '+esc(d.file_size||0)+' bytes</div>'+
+   (d.supersedes_id?'<div class="thread">Replaces '+esc(d.supersedes_id)+'</div>':'')+(d.replaced_by_id?'<div class="thread">Replaced by '+esc(d.replaced_by_id)+'</div>':'')+
+   '<div class="actions"><a class="btn" href="/api/document/'+esc(d.id)+'/file" target="_blank" rel="noopener">Download</a>'+(d.status==='pending'?'<button class="btn primary" onclick="docVerify(this,\''+esc(d.id)+'\',\'verify\')">Verify</button><button class="btn danger" onclick="docReject(this,\''+esc(d.id)+'\')">Reject</button>':'')+'<button class="btn" onclick="prepareDocumentReplacement(\''+esc(d.id)+'\')">Replace</button></div>'+documentExpiryBadge(d)+'</div>';}).join('');
+ document.getElementById('view-documents').innerHTML='<div class="move">document library</div><p class="fineprint">Attach documents to properties, tenancies, people, jobs, cases or compliance records. Access is role-based and downloads use the private file store.</p>'+
+ '<div class="stats"><div class="stat"><div class="value">'+docs.length+'</div><div class="label">documents</div></div><div class="stat"><div class="value">'+docs.filter(d=>d.status==='pending').length+'</div><div class="label">to verify</div></div><div class="stat hot"><div class="value">'+docs.filter(d=>documentExpiryBadge(d).includes('expired')).length+'</div><div class="label">expired</div></div></div>'+
+ '<div class="card"><h2>Upload document</h2><div class="grid2"><label class="field"><span>File</span><input id="document-file" type="file"></label><label class="field"><span>Document type</span><select id="document-type">'+typeOptions+'</select></label><label class="field"><span>Title</span><input id="document-title" maxlength="120"></label><label class="field"><span>Expiry date</span><input id="document-expiry" type="date"></label><label class="field"><span>Property</span><select id="document-property"><option value="">No direct property</option>'+propOptions+'</select></label><label class="field"><span>Person / organisation</span><select id="document-party"><option value="">No linked person</option>'+partyOptions+'</select></label><label class="field"><span>Tenancy</span><select id="document-tenancy"><option value="">No linked tenancy</option>'+tenancyOptions+'</select></label><label class="field"><span>Job</span><select id="document-job"><option value="">No linked job</option>'+jobOptions+'</select></label><label class="field"><span>Case ID</span><input id="document-case" placeholder="Optional case number"></label><label class="field"><span>Replaces document</span><select id="document-supersedes"><option value="">New document</option>'+docOptions+'</select></label></div><div class="field"><span>Portal access</span><label><input type="checkbox" name="document-access" value="tenant"> Tenant</label> <label><input type="checkbox" name="document-access" value="landlord"> Landlord</label> <label><input type="checkbox" name="document-access" value="trades"> Trades</label></div><label class="field"><span>Description</span><textarea id="document-description" rows="2" maxlength="500"></textarea></label><button class="btn primary" onclick="uploadDocument(this)">Upload document</button></div>'+
+ '<div class="card"><div class="grid2"><label class="field"><span>Search</span><input id="document-search" value="'+esc(window.documentQuery||'')+'" placeholder="Title, file, entity, reference" onchange="window.documentQuery=this.value;renderDocuments()"></label><label class="field"><span>Type</span><select id="document-type-filter" onchange="window.documentType=this.value;renderDocuments()"><option value="">All types</option>'+typeOptions+'</select></label><label class="field"><span>Status</span><select id="document-status-filter" onchange="window.documentStatus=this.value;renderDocuments()"><option value="">All statuses</option><option value="pending">Pending</option><option value="verified">Verified</option><option value="rejected">Rejected</option><option value="superseded">Superseded</option></select></label><label class="field"><span>Property</span><select id="document-property-filter" onchange="window.documentProperty=this.value;renderDocuments()"><option value="">All properties</option>'+propOptions+'</select></label></div></div>'+
+ '<div class="move">records</div>'+(cards||'<div class="empty">No documents match those filters.</div>');
+ const tf=document.getElementById('document-type-filter'),sf=document.getElementById('document-status-filter'),pf=document.getElementById('document-property-filter');
+ if(tf)tf.value=typeFilter;if(sf)sf.value=statusFilter;if(pf)pf.value=propertyFilter;
+}
+function prepareDocumentReplacement(id){show('documents');setTimeout(()=>{const s=document.getElementById('document-supersedes');if(s)s.value=id;document.getElementById('document-file')?.focus();},40);}
+async function readFileAsB64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||'').split(',')[1]||'');r.onerror=reject;r.readAsDataURL(file);});}
+async function uploadDocument(btn){
+ const file=document.getElementById('document-file').files[0];if(!file){toast('Choose a file first.','bad');return;}
+ const access=Array.from(document.querySelectorAll('input[name="document-access"]:checked')).map(x=>x.value);
+ await busy(btn,async()=>{try{const content_b64=await readFileAsB64(file);await post('/api/document',{file_name:file.name,content_type:file.type||'application/octet-stream',content_b64,document_type:document.getElementById('document-type').value,title:document.getElementById('document-title').value,description:document.getElementById('document-description').value,expiry_date:document.getElementById('document-expiry').value,property_id:document.getElementById('document-property').value,party_id:document.getElementById('document-party').value,tenancy_id:document.getElementById('document-tenancy').value,job_id:document.getElementById('document-job').value,case_id:document.getElementById('document-case').value,supersedes_id:document.getElementById('document-supersedes').value,access_roles:access.length?access:['agent']});toast('Document uploaded to the library.');load();}catch(e){}});
 }
 function renderHistory(){
   const propOptions=(stage.properties||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
