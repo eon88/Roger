@@ -181,6 +181,38 @@ class AtomicStorageTests(unittest.TestCase):
         self.assertEqual(task["status"], "completed")
         self.assertTrue(task["completed_at"])
 
+    def test_notification_action_creates_in_app_and_email_outbox_item(self):
+        handler = serve.H.__new__(serve.H)
+        handler.user = {"username": "agent", "role": "agent", "display_name": "Agent"}
+        response = []
+        handler._json = lambda payload, status=200: response.append((payload, status))
+        stage = {"notifications": [], "audit_log": []}
+        with patch.object(serve, "load_stage", return_value=stage), patch.object(serve, "save_stage"):
+            serve.H.handle_notification_action(handler, {
+                "action": "create",
+                "notification_type": "landlord_approval_request",
+                "title": "Approval needed",
+                "message": "Please approve the boiler quote.",
+                "recipient_role": "landlord",
+                "recipient_name": "Landlord",
+                "channels": ["in_app", "email"],
+                "email_to": "landlord@example.test",
+                "property_id": "home-1",
+                "case_id": 42,
+                "job_id": "job-7",
+                "due_at": "2027-02-01T09:00:00Z",
+            })
+            note = stage["notifications"][0]
+            serve.H.handle_notification_action(handler, {"id": note["id"], "action": "sent"})
+        self.assertEqual(response[0][1], 200)
+        self.assertEqual(note["notification_type"], "landlord_approval_request")
+        self.assertEqual(note["recipient_role"], "landlord")
+        self.assertEqual(note["channels"], ["in_app", "email"])
+        self.assertEqual(note["email_to"], "landlord@example.test")
+        self.assertEqual(note["email_status"], "sent")
+        self.assertEqual(note["property_id"], "home-1")
+        self.assertEqual(note["job_id"], "job-7")
+
     def test_atomic_write_roundtrips_and_restricts_file_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "stage.json"
