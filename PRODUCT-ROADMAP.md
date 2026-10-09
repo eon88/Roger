@@ -708,28 +708,30 @@ Eventually move document files out of the JSON database into proper file/object 
 
 # 16. Appointments / diary
 
-- [ ] Viewing
-- [ ] Inspection
-- [ ] Contractor visit
-- [ ] Valuation
-- [ ] Check-in
-- [ ] Check-out
-- [ ] Key handover
-- [ ] Compliance visit
-- [ ] Agent appointment
+- [x] Viewing
+- [x] Inspection
+- [x] Contractor visit
+- [x] Valuation
+- [x] Check-in
+- [x] Check-out
+- [x] Key handover
+- [x] Compliance visit
+- [x] Agent appointment
 
 Needs:
 
-- [ ] Calendar view
-- [ ] Agenda view
-- [ ] Participants
-- [ ] Confirmation
-- [ ] Decline / reschedule
-- [ ] Reminders
-- [ ] Outcome
-- [ ] Link to property
-- [ ] Link to case / job
+- [x] Calendar view
+- [x] Agenda view
+- [x] Participants
+- [x] Confirmation
+- [x] Decline / reschedule
+- [x] Reminders
+- [x] Outcome
+- [x] Link to property
+- [x] Link to case / job
 - [ ] External calendar integration later
+
+**Priority 16 implementation:** appointments now have explicit diary types, participant roles and linked people, reminder times, confirmation/reschedule/cancel/missed/completed states, outcomes, and property/case/job relationships. The Agent Desk includes a dedicated Appointments tab with booking, a seven-day calendar and searchable agenda. External calendar sync remains a future integration item.
 
 ---
 
@@ -1064,4 +1066,6 @@ For each roadmap item:
 
 **Priority 15 progress:** the document library now supports property, tenancy, person/organisation, job and case links; role access rules; verification status; expiry dates; private downloads; searchable Agent Desk records; and replace/supersede version history. Files remain in the private content-addressed store.
 
-Next: **Priority 16 — Appointments / diary**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 16 progress:** the appointments diary now supports all planned appointment types, participant roles and linked people, confirmations, decline/reschedule flow, reminder times, outcomes, property links and case/job links. The Agent Desk has a dedicated calendar-plus-agenda view. External calendar sync remains open for a later integration pass.
+
+Next: **Priority 17 — Offers**, with PostgreSQL cutover parked until a database is provisioned.
