@@ -768,20 +768,22 @@ Examples:
 
 Roger needs real outbound notification capability.
 
-- [ ] In-app notifications
-- [ ] Email
-- [ ] Reminder emails
-- [ ] Agent alerts
-- [ ] Landlord approval request
-- [ ] Tenant appointment notification
-- [ ] Trades job notification
-- [ ] Compliance reminder
-- [ ] Rent / arrears reminder
+- [x] In-app notifications
+- [x] Email
+- [x] Reminder emails
+- [x] Agent alerts
+- [x] Landlord approval request
+- [x] Tenant appointment notification
+- [x] Trades job notification
+- [x] Compliance reminder
+- [x] Rent / arrears reminder
 
 Later:
 
 - [ ] SMS
 - [ ] WhatsApp where appropriate
+
+**Priority 18 implementation:** Roger now has typed notifications for agent alerts, landlord approval requests, tenant appointments, trades jobs, compliance reminders, rent/arrears reminders and general reminder emails. Notifications support in-app delivery, an email outbox state, recipient role/name, related property/case/job/task context, due times and read/sent state. SMS and WhatsApp remain later-channel integrations.
 
 ---
 
@@ -1072,4 +1074,6 @@ For each roadmap item:
 
 **Priority 17 progress:** task records now cover owners, due dates, priority, reminders, recurrence, status and related property/person/tenancy/case/job links, with an Agent Desk task board and common follow-up templates.
 
-Next: **Priority 18 — Notifications**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 18 progress:** in-app notifications and email outbox items now cover the planned alert/reminder categories, with recipient scoping, related-record links, read state and sent-state tracking. SMS and WhatsApp remain open.
+
+Next: **Priority 19 — AI layer**, with PostgreSQL cutover parked until a database is provisioned.
