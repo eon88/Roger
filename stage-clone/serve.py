@@ -186,7 +186,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -293,6 +293,10 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"appointments": self.scoped_appointments(u)})
+        if path == "/api/tasks":
+            if not self.require({"agent"}):
+                return
+            return self._json({"tasks": load_stage().get("tasks", [])})
         if path == "/api/public":
             return self.serve_public_listings()
         if path == "/api/whoami":
@@ -443,6 +447,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/rent-ledger-action": self.handle_rent_ledger_action,
             "/api/landlord-statement-action": self.handle_landlord_statement_action,
             "/api/compliance-action": self.handle_compliance_action,
+            "/api/task-action": self.handle_task_action,
         }
         if path in handlers:
             return handlers[path](data)
@@ -2284,6 +2289,62 @@ class H(SimpleHTTPRequestHandler):
         self.send_header("Content-Disposition", f'inline; filename="{doc.get("file_name", "document")}"')
         self.end_headers()
         self.wfile.write(body)
+
+    # ---------- tasks ----------
+    def handle_task_action(self, data):
+        stage = load_stage()
+        action = data.get("action") or "create"
+        tasks = stage.setdefault("tasks", [])
+        actor = (self.user or {}).get("display_name", "Agent")
+        if action == "create":
+            title = str(data.get("title", ""))[:160].strip()
+            if not title:
+                return self._json({"error": "title is required"}, 400)
+            nums = [int(t["id"].split("-")[1]) for t in tasks if re.fullmatch(r"task-\d+", t.get("id", ""))]
+            task = {
+                "id": f"task-{(max(nums) + 1) if nums else 1}",
+                "title": title,
+                "description": str(data.get("description", ""))[:1000],
+                "owner": str(data.get("owner") or actor)[:120],
+                "priority": data.get("priority") if data.get("priority") in ("low", "normal", "high", "urgent") else "normal",
+                "status": "open",
+                "due_date": str(data.get("due_date", ""))[:40] or None,
+                "reminder_at": str(data.get("reminder_at", ""))[:40] or None,
+                "recurrence": data.get("recurrence") if data.get("recurrence") in ("none", "daily", "weekly", "monthly", "yearly") else "none",
+                "property_id": data.get("property_id") or None,
+                "party_id": data.get("party_id") or None,
+                "tenancy_id": data.get("tenancy_id") or None,
+                "case_id": data.get("case_id") or None,
+                "job_id": data.get("job_id") or None,
+                "created_by": actor,
+                "created_at": now(),
+                "updated_at": now(),
+            }
+            tasks.append(task)
+            self.audit(stage, {"actor": actor, "action": "task_created", "target": task["id"], "note": task["title"]})
+            save_stage(stage)
+            return self._json({"success": True, "task": task})
+        task = next((t for t in tasks if t.get("id") == data.get("id")), None)
+        if not task:
+            return self._json({"error": "task not found"}, 404)
+        if action == "update":
+            for field in ("title", "description", "owner", "due_date", "reminder_at", "property_id", "party_id", "tenancy_id", "case_id", "job_id"):
+                if field in data:
+                    task[field] = str(data.get(field, ""))[:1000] or None
+            if data.get("priority") in ("low", "normal", "high", "urgent"):
+                task["priority"] = data["priority"]
+            if data.get("recurrence") in ("none", "daily", "weekly", "monthly", "yearly"):
+                task["recurrence"] = data["recurrence"]
+        elif action in ("complete", "reopen", "cancel"):
+            task["status"] = {"complete": "completed", "reopen": "open", "cancel": "cancelled"}[action]
+            if action == "complete":
+                task["completed_at"] = now()
+        else:
+            return self._json({"error": "unsupported task action"}, 400)
+        task["updated_at"] = now()
+        self.audit(stage, {"actor": actor, "action": f"task_{action}", "target": task["id"], "note": task.get("title", "")})
+        save_stage(stage)
+        return self._json({"success": True, "task": task})
 
     # ---------- appointments ----------
     def scoped_appointments(self, u):
