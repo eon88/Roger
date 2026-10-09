@@ -363,35 +363,37 @@ The public site should become three acquisition funnels.
 
 ## 9.1 Tenant acquisition
 
-- [ ] Property search
-- [ ] Property detail page
-- [ ] Photos / gallery
-- [ ] Rent / deposit information
-- [ ] Availability
-- [ ] Enquire
-- [ ] Request viewing
-- [ ] Application
-- [ ] Progress into tenant pipeline
+- [x] Property search
+- [x] Property detail page
+- [x] Photos / gallery
+- [x] Rent / deposit information
+- [x] Availability
+- [x] Enquire
+- [x] Request viewing
+- [x] Application
+- [x] Progress into tenant pipeline
 
 ## 9.2 Landlord acquisition
 
-- [ ] Clear landlord value proposition
-- [ ] Management services
-- [ ] Let-only / management offer
+- [x] Clear landlord value proposition
+- [x] Management services
+- [x] Let-only / management offer
 - [ ] Pricing
-- [ ] Landlord enquiry
-- [ ] Valuation request
-- [ ] Registration
-- [ ] Progress into landlord CRM pipeline
+- [x] Landlord enquiry
+- [x] Valuation request
+- [x] Registration
+- [x] Progress into landlord CRM pipeline
 
 ## 9.3 Trades acquisition
 
-- [ ] Contractor value proposition
-- [ ] Trade categories wanted
-- [ ] Coverage expectations
-- [ ] Registration
+- [x] Contractor value proposition
+- [x] Trade categories wanted
+- [x] Coverage expectations
+- [x] Registration
 - [ ] Credential upload
-- [ ] Progress into contractor approval pipeline
+- [x] Progress into contractor approval pipeline
+
+**Priority 9 implementation:** the public front end is now a three-funnel acquisition screen. Tenant visitors can search available homes, open a property detail modal, see rent/deposit/availability, and submit enquiry, viewing or application requests into `/api/enquiry` with property context preserved. Landlords can send valuation and management enquiries into the landlord CRM pipeline or open the full registration form. Trades can submit contractor interest with categories, coverage and credential notes, or open the full registration form. Real pricing tables and credential document upload remain open.
 
 ---
 
@@ -1036,4 +1038,6 @@ For each roadmap item:
 
 **Priority 8 progress:** CI, atomic local persistence, private document files, migration tooling and operator-run backups are in place. PostgreSQL is the remaining technical foundation item; cutover needs a provisioned database and a verified restore path.
 
-Next: **PostgreSQL migration**, with the JSON data preserved and IDs/relationships validated before cutover.
+**Priority 9 progress:** the public advertising page now works as three acquisition funnels. Tenants can search homes, view property details and submit enquiry, viewing or application requests with property context. Landlords and trades can send funnel-specific enquiries into the existing CRM/approval pipelines and still reach the full registration forms. Pricing tables and credential document upload remain open.
+
+Next: **Priority 10 — Agent Desk cockpit expansion**, with PostgreSQL cutover parked until a database is provisioned.
