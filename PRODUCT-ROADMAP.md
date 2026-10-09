@@ -739,26 +739,28 @@ Needs:
 
 Roger should gradually move from passive storage to proactive operation.
 
-- [ ] Task object
-- [ ] Owner
-- [ ] Due date
-- [ ] Priority
-- [ ] Related property/person/tenancy/case/job
-- [ ] Status
-- [ ] Reminder
-- [ ] Recurring task
+- [x] Task object
+- [x] Owner
+- [x] Due date
+- [x] Priority
+- [x] Related property/person/tenancy/case/job
+- [x] Status
+- [x] Reminder
+- [x] Recurring task
 
 Examples:
 
-- [ ] Chase landlord approval
-- [ ] Chase contractor quote
-- [ ] Check tenant after repair
-- [ ] Renew EPC
-- [ ] Arrange gas inspection
-- [ ] Follow up landlord prospect
-- [ ] Follow up tenant application
-- [ ] Tenancy renewal reminder
-- [ ] Rent arrears follow-up
+- [x] Chase landlord approval
+- [x] Chase contractor quote
+- [x] Check tenant after repair
+- [x] Renew EPC
+- [x] Arrange gas inspection
+- [x] Follow up landlord prospect
+- [x] Follow up tenant application
+- [x] Tenancy renewal reminder
+- [x] Rent arrears follow-up
+
+**Priority 17 implementation:** Roger now has agent-owned tasks with title, owner, priority, due date, reminder time, recurrence, status, description and links to property, person/organisation, tenancy, case and job records. The Agent Desk includes a Tasks tab, quick templates for the common operational follow-ups, search/filtering and dashboard surfacing for urgent, due-soon and overdue tasks.
 
 ---
 
@@ -1068,4 +1070,6 @@ For each roadmap item:
 
 **Priority 16 progress:** the appointments diary now supports all planned appointment types, participant roles and linked people, confirmations, decline/reschedule flow, reminder times, outcomes, property links and case/job links. The Agent Desk has a dedicated calendar-plus-agenda view. External calendar sync remains open for a later integration pass.
 
-Next: **Priority 17 — Offers**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 17 progress:** task records now cover owners, due dates, priority, reminders, recurrence, status and related property/person/tenancy/case/job links, with an Agent Desk task board and common follow-up templates.
+
+Next: **Priority 18 — Notifications**, with PostgreSQL cutover parked until a database is provisioned.
