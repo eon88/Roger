@@ -506,6 +506,29 @@ class ProspectStageTests(unittest.TestCase):
         self.saved.assert_called_once_with(self.stage)
         self.assertEqual(self.responses[-1][1], 200)
 
+    def test_case_action_accepts_string_ids_for_communication_controls(self):
+        self.handler.user = {"username": "agent", "display_name": "Agent", "role": "agent"}
+        serve.H.handle_case_action(self.handler, {"id": "490", "action": "mark_read"})
+        self.assertIn("agent_read_at", self.stage["cases"][0])
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "case_marked_read")
+        self.saved.assert_called_once_with(self.stage)
+        self.assertEqual(self.responses[-1][1], 200)
+
+    def test_case_internal_note_and_follow_up_are_agent_only_and_audited(self):
+        self.handler.user = {"username": "agent", "display_name": "Agent", "role": "agent"}
+        serve.H.handle_case_action(self.handler, {"id": 490, "action": "note", "text": "Call after lunch"})
+        self.assertEqual(self.stage["cases"][0]["internal_notes"][0]["text"], "Call after lunch")
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "case_internal_note")
+        self.saved.reset_mock()
+        serve.H.handle_case_action(self.handler, {
+            "id": 490, "action": "follow_up", "follow_up_at": "2026-10-12",
+            "note": "Chase viewing slots",
+        })
+        self.assertEqual(self.stage["cases"][0]["follow_up_at"], "2026-10-12")
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "case_follow_up_set")
+        self.saved.assert_called_once_with(self.stage)
+        self.assertEqual(self.responses[-1][1], 200)
+
     def test_approved_landlord_registration_links_to_party_without_merging(self):
         self.stage["registrations"] = [{"id": "land-1", "role": "landlord", "status": "approved"}]
         serve.H.handle_party_action(self.handler, {
