@@ -188,6 +188,7 @@ function renderAttentionBoard(){
   const rentArrears=(ledgerEntries||[]).filter(x=>x.status==='overdue'&&(x.balance_pence||0)>0);
   const tenanciesEnding=(stage.tenancies||[]).filter(t=>['notice_given','checkout'].includes(t.status)||(t.end_date&&Number.isFinite(Date.parse(t.end_date))&&Date.parse(t.end_date)>=now&&Date.parse(t.end_date)<=soon));
   const complianceSoon=(window.complianceRecords||[]).filter(x=>['expiring_soon','expired','missing'].includes(x.status)||x.reminder_due);
+  const unreadConversations=(stage.cases||[]).filter(caseUnread);
   const cockpit='<div class="card"><div class="cardtop"><h3>Today cockpit</h3><span class="badge">'+new Date().toLocaleDateString('en-GB')+'</span></div><div class="stats compact">'+
     bucket('urgent maintenance',urgentCases,'cases',true)+
     bucket('safety critical',safetyCases,'cases',true)+
@@ -201,7 +202,8 @@ function renderAttentionBoard(){
     bucket('rent arrears',rentArrears,'money',true)+
     bucket('tenancies ending soon',tenanciesEnding,'people',false)+
     bucket('compliance due',complianceSoon,'compliance',true)+
-    '</div><div class="fineprint">Unread conversation counts need a message-read state before Roger can report them honestly.</div></div>';
+    bucket('unread conversations',unreadConversations,'communications',true)+
+    '</div></div>';
   const panel=(title,items,empty)=>'<div class="card"><div class="cardtop"><h3>'+title+'</h3><span class="badge '+(items.length?'pending':'completed')+'">'+items.length+'</span></div>'+(items.length?items.slice(0,6).map(x=>deskLink(x.label,x.detail,x.view,x.id,x.tag)).join('')+(items.length>6?'<div class="meta">Showing 6 of '+items.length+' matching items.</div>':''):'<div class="meta">'+empty+'</div>')+'</div>';
   return '<div class="move">daily command centre</div>'+cockpit+'<div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
 }
@@ -253,14 +255,23 @@ function caseMessages(c){
  (c.thread||[]).forEach(m=>items.push(m));
  return items.filter(m=>m.text).sort((a,b)=>String(a.at||'').localeCompare(String(b.at||'')));
 }
+function latestInboundAt(c){
+ const inbound=caseMessages(c).filter(m=>m.initial||m.role==='contact'||m.role==='tenant'||m.channel==='email'&&m.email_from);
+ return inbound.length?inbound[inbound.length-1].at||c.submitted_at||'':c.submitted_at||'';
+}
+function caseUnread(c){
+ const latest=latestInboundAt(c),read=c.agent_read_at||'';
+ return activeRecord(c)&&latest&&(!read||String(latest)>String(read));
+}
 function renderCommunications(){
  const cases=(stage.cases||[]).slice();
  const propOptions=(stage.properties||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
  const openCount=cases.filter(c=>!['closed','resolved','declined'].includes(c.status)).length;
+ const unreadCount=cases.filter(caseUnread).length;
  const messageCount=cases.reduce((n,c)=>n+caseMessages(c).length,0);
  document.getElementById('view-communications').innerHTML='<div class="move">communications inbox</div>'+
- '<p class="fineprint">Case conversations are grouped with their contact snapshot and property. Use the case book to view the full operational record. External email is not connected.</p>'+
- '<div class="stats"><div class="stat"><div class="value">'+openCount+'</div><div class="label">open conversations</div></div><div class="stat"><div class="value">'+messageCount+'</div><div class="label">recorded messages</div></div></div>'+
+ '<p class="fineprint">Case conversations are grouped with their contact snapshot and property. Portal replies, internal notes, follow-ups and email actions write to the case timeline.</p>'+
+ '<div class="stats"><div class="stat '+(unreadCount?'hot':'')+'"><div class="value">'+unreadCount+'</div><div class="label">unread conversations</div></div><div class="stat"><div class="value">'+openCount+'</div><div class="label">open conversations</div></div><div class="stat"><div class="value">'+messageCount+'</div><div class="label">recorded messages</div></div></div>'+
  '<div class="card"><div class="grid2"><label class="field"><span>Search conversations</span><input id="comm-search" value="'+esc(window.commQuery||'')+'" placeholder="Person, email, message or case reference" oninput="window.commQuery=this.value;renderCommunicationItems()"></label>'+
  '<label class="field"><span>Property</span><select id="comm-property" onchange="window.commProperty=this.value;renderCommunicationItems()"><option value="">All properties</option>'+propOptions+'</select></label></div></div>'+
  '<div class="actions"><button class="btn primary" onclick="syncEmailInbox(this)">Sync email inbox</button></div><div id="communication-list"></div>';
@@ -276,9 +287,22 @@ function renderCommunicationItems(){
  host.innerHTML=cases.length?cases.map(({c,items})=>{
   const p=(stage.properties||[]).find(x=>x.id===c.property_id)||{};
   const content=items.map(m=>'<div class="msg r-'+esc(m.role||'contact')+'"><b>'+esc(m.author||'System')+'</b><span class="who">'+(m.channel==='email'?'Email → '+esc(m.email_to||''):(m.to||[]).join(', '))+' · '+esc(fmtDate(m.at))+'</span><div>'+esc(m.text)+'</div></div>').join('');
-  return '<div class="card" id="comm-case-'+esc(c.id)+'"><div class="cardtop"><h3>'+esc(c.name||'Contact')+' · case #'+esc(c.id)+'</h3><span class="badge '+esc(c.status)+'">'+esc(c.status)+'</span></div><div class="meta">'+esc(c.email||'No email on record')+' · '+esc(p.title||'No property linked')+(p.area?' · '+esc(p.area):'')+' · '+(items.length)+' message'+(items.length===1?'':'s')+'</div><div class="msgs">'+content+'</div>'+
-  '<div class="actions"><button class="btn" onclick="goDeskResult(\'cases\',\'case-'+esc(c.id)+'\')">Open case</button>'+(c.status!=='closed'?'<input id="comm-reply-'+esc(c.id)+'" placeholder="Reply to contact" autocomplete="off" onkeydown="if(event.key===\'Enter\')sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')"><label class="who"><input type="checkbox" id="comm-landlord-'+esc(c.id)+'" checked> landlord</label><label class="who"><input type="checkbox" id="comm-trades-'+esc(c.id)+'" checked> trades</label><button class="btn primary" onclick="sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Portal reply</button><button class="btn" onclick="emailCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Email reply</button>':'')+'</div></div>';
+  const unread=caseUnread(c),notes=(c.internal_notes||[]).slice(-3).map(n=>'<div class="thread">Internal note · '+esc(fmtDate(n.at))+' · '+esc(n.text)+'</div>').join('');
+  return '<div class="card" id="comm-case-'+esc(c.id)+'"><div class="cardtop"><h3>'+esc(c.name||'Contact')+' · case #'+esc(c.id)+'</h3><span class="badge '+(unread?'pending':esc(c.status))+'">'+(unread?'unread':esc(c.status))+'</span></div><div class="meta">'+esc(c.email||'No email on record')+' · '+esc(p.title||'No property linked')+(p.area?' · '+esc(p.area):'')+' · '+(items.length)+' message'+(items.length===1?'':'s')+(c.follow_up_at?' · follow up '+esc(c.follow_up_at):'')+'</div><div class="msgs">'+content+'</div>'+notes+
+  '<div class="actions"><button class="btn" onclick="goDeskResult(\'cases\',\'case-'+esc(c.id)+'\')">Open case</button><button class="btn" onclick="markCaseRead(this,'+JSON.stringify(String(c.id))+','+(unread?'true':'false')+')">'+(unread?'Mark read':'Mark unread')+'</button>'+(c.status!=='closed'?'<input id="comm-reply-'+esc(c.id)+'" placeholder="Reply to contact" autocomplete="off" onkeydown="if(event.key===\'Enter\')sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')"><label class="who"><input type="checkbox" id="comm-landlord-'+esc(c.id)+'" checked> landlord</label><label class="who"><input type="checkbox" id="comm-trades-'+esc(c.id)+'" checked> trades</label><button class="btn primary" onclick="sendCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Portal reply</button><button class="btn" onclick="emailCommunicationReply(this,'+JSON.stringify(String(c.id))+')">Email reply</button><button class="btn" onclick="addCaseNote(this,'+JSON.stringify(String(c.id))+')">Internal note</button><button class="btn" onclick="setCaseFollowUp(this,'+JSON.stringify(String(c.id))+')">Follow up</button>':'')+'</div></div>';
  }).join(''):'<div class="empty">No conversations match these filters.</div>';
+}
+async function markCaseRead(btn,id,unread){
+ await busy(btn,async()=>{try{await post('/api/case-action',{id,action:unread?'mark_read':'mark_unread'});toast(unread?'Conversation marked read.':'Conversation marked unread.');load();}catch(e){}});
+}
+async function addCaseNote(btn,id){
+ const text=prompt('Internal note for the agency record')||'';if(!text.trim()){toast('Write the note first.','bad');return;}
+ await busy(btn,async()=>{try{await post('/api/case-action',{id,action:'note',text});toast('Internal note saved.');load();}catch(e){}});
+}
+async function setCaseFollowUp(btn,id){
+ const follow_up_at=prompt('Follow-up date (YYYY-MM-DD)')||'';if(!follow_up_at.trim()){toast('A follow-up date is required.','bad');return;}
+ const note=prompt('Follow-up note (optional)')||'';
+ await busy(btn,async()=>{try{await post('/api/case-action',{id,action:'follow_up',follow_up_at,note});toast('Follow-up saved.');load();}catch(e){}});
 }
 async function syncEmailInbox(btn){
  await busy(btn,async()=>{try{const result=await post('/api/email-sync',{});toast('Imported '+result.count+' email'+(result.count===1?'':'s')+'.');load();}catch(e){}});
