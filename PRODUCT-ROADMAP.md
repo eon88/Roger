@@ -684,23 +684,25 @@ Legal requirements must be reviewed against current jurisdiction before producti
 
 Documents should become proper objects attached to the right entity.
 
-- [ ] Property documents
-- [ ] Tenancy documents
-- [ ] Tenant documents
-- [ ] Landlord documents
-- [ ] Trades documents
-- [ ] Job documents
-- [ ] Compliance documents
-- [ ] Version history
-- [ ] Verification status
-- [ ] Expiry date
-- [ ] Access rules
-- [ ] Search
-- [ ] Download
-- [ ] Replace / supersede
-- [ ] Audit trail
+- [x] Property documents
+- [x] Tenancy documents
+- [x] Tenant documents
+- [x] Landlord documents
+- [x] Trades documents
+- [x] Job documents
+- [x] Compliance documents
+- [x] Version history
+- [x] Verification status
+- [x] Expiry date
+- [x] Access rules
+- [x] Search
+- [x] Download
+- [x] Replace / supersede
+- [x] Audit trail
 
 Eventually move document files out of the JSON database into proper file/object storage.
+
+**Priority 15 implementation:** documents now support property, tenancy, party, job and case links; role-based access lists; expiry dates; verification state; private downloads; searchable Agent Desk library; and replacement/supersede metadata with version increments and audit history. Uploaded file bodies remain outside JSON in the private content-addressed store.
 
 ---
 
@@ -1060,4 +1062,6 @@ For each roadmap item:
 
 **Priority 14 progress:** compliance records now cover common requirement types, linked documents, issue/expiry/reminder dates, missing evidence, replacement history, derived statuses and Agent Desk reminders. Required-by-property rules and renewal appointment automation remain open.
 
-Next: **Priority 15 — Documents**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 15 progress:** the document library now supports property, tenancy, person/organisation, job and case links; role access rules; verification status; expiry dates; private downloads; searchable Agent Desk records; and replace/supersede version history. Files remain in the private content-addressed store.
+
+Next: **Priority 16 — Appointments / diary**, with PostgreSQL cutover parked until a database is provisioned.
