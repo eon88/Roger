@@ -38,6 +38,46 @@ class AtomicStorageTests(unittest.TestCase):
                 self.assertNotIn("data_b64", doc)
                 self.assertFalse("data_b64" in response[0][0]["document"])
 
+    def test_document_upload_links_entities_and_supersedes_prior_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(serve, "FILES_DIR", tmp):
+                handler = serve.H.__new__(serve.H)
+                handler.user = {"username": "agent", "display_name": "Agent"}
+                response = []
+                handler._json = lambda payload, status=200: response.append((payload, status))
+                stage = {
+                    "properties": [{"id": "home-1", "title": "Home"}],
+                    "cases": [{"id": 490, "property_id": "home-1"}],
+                    "tenancies": [{"id": "tenancy-1", "property_id": "home-1", "document_ids": []}],
+                    "jobs": [{"id": "job-1", "property_id": "home-1", "document_ids": []}],
+                    "parties": [{"id": "party-1", "display_name": "Landlord", "roles": ["landlord"]}],
+                    "documents": [{"id": "doc-old", "version": 1, "status": "verified"}],
+                    "audit_log": [],
+                }
+                with patch.object(serve, "load_stage", return_value=stage), patch.object(serve, "save_stage"):
+                    serve.H.handle_document(handler, {
+                        "case_id": "490", "property_id": "home-1", "party_id": "party-1",
+                        "tenancy_id": "tenancy-1", "job_id": "job-1",
+                        "document_type": "compliance_certificate",
+                        "file_name": "new-cert.pdf", "content_type": "application/pdf",
+                        "content_b64": base64.b64encode(b"new version").decode("ascii"),
+                        "expiry_date": "2027-10-09",
+                        "access_roles": ["landlord", "tenant"],
+                        "supersedes_id": "doc-old",
+                    })
+                doc = stage["documents"][-1]
+                self.assertEqual(doc["version"], 2)
+                self.assertEqual(doc["party_id"], "party-1")
+                self.assertEqual(doc["tenancy_id"], "tenancy-1")
+                self.assertEqual(doc["job_id"], "job-1")
+                self.assertEqual(doc["expiry_date"], "2027-10-09")
+                self.assertEqual(doc["access_roles"], ["agent", "landlord", "tenant"])
+                self.assertEqual(stage["documents"][0]["status"], "superseded")
+                self.assertEqual(stage["documents"][0]["replaced_by_id"], doc["id"])
+                self.assertEqual(stage["tenancies"][0]["document_ids"], [doc["id"]])
+                self.assertEqual(stage["jobs"][0]["document_ids"], [doc["id"]])
+                self.assertEqual(response[-1][1], 200)
+
     def test_legacy_document_extraction_preserves_body_and_removes_base64(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
