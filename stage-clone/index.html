@@ -91,7 +91,7 @@
       <div class="dialog-grid">
         <div class="dialog-photo"><img id="modalImage" alt="Property image" src="/sample-home.jpg" /></div>
         <div class="dialog-body">
-          <button class="close" id="closeModal" type="button" aria-label="Close">×</button>
+          <button class="close" id="closeButton" type="button" aria-label="Close">×</button>
           <p class="eyebrow" id="modalArea"></p>
           <h2 id="modalTitle"></h2>
           <p class="price" id="modalRent"></p>
@@ -113,6 +113,17 @@
     const empty=document.getElementById('empty');
     const count=document.getElementById('propertyCount');
     const statHomes=document.getElementById('statHomes');
+    const detailModal=document.getElementById('detailModal');
+    const closeButton=document.getElementById('closeButton');
+    const modalArea=document.getElementById('modalArea');
+    const modalTitle=document.getElementById('modalTitle');
+    const modalRent=document.getElementById('modalRent');
+    const modalImage=document.getElementById('modalImage');
+    const modalMeta=document.getElementById('modalMeta');
+    const modalDescription=document.getElementById('modalDescription');
+    const searchBox=document.getElementById('searchBox');
+    const bedsFilter=document.getElementById('bedsFilter');
+    const rentFilter=document.getElementById('rentFilter');
     const money=pence=>'£'+Math.round((Number(pence)||0)/100).toLocaleString('en-GB')+' pcm';
     const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const fallback=[
@@ -125,15 +136,15 @@
       catch(e){state.properties=fallback.map(p=>({...p,photo:'/sample-home.jpg'}));}
       renderHomes();
     }
-    function filtered(){const q=document.getElementById('searchBox').value.toLowerCase().trim();const beds=Number(document.getElementById('bedsFilter').value||0);const max=Number(document.getElementById('rentFilter').value||0);return state.properties.filter(p=>(!q||[p.title,p.area,p.description].join(' ').toLowerCase().includes(q))&&(!beds||Number(p.beds)>=beds)&&(!max||Number(p.rent)<=max));}
+    function filtered(){const q=searchBox.value.toLowerCase().trim();const beds=Number(bedsFilter.value||0);const max=Number(rentFilter.value||0);return state.properties.filter(p=>(!q||[p.title,p.area,p.description].join(' ').toLowerCase().includes(q))&&(!beds||Number(p.beds)>=beds)&&(!max||Number(p.rent)<=max));}
     function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo"><img src="${esc(p.photo)}" alt="${esc(p.title)}"><span class="badge">${p.sample?'Sample':'Available'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="muted">${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span></div><p>${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View details</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'property':'properties'}`;statHomes.textContent=items.length;}
     document.querySelectorAll('#searchBox,#bedsFilter,#rentFilter').forEach(el=>el.addEventListener('input',renderHomes));
     document.getElementById('clearFilters').addEventListener('click',()=>{searchBox.value='';bedsFilter.value='';rentFilter.value='';renderHomes();});
     cards.addEventListener('click',e=>{const id=e.target.dataset.open||e.target.dataset.quick;if(!id)return;openProperty(id,e.target.dataset.quick?'enquiry':null);});
     function openProperty(id,form){const p=state.properties.find(x=>x.id===id);if(!p)return;state.selected=p;modalArea.textContent=p.area||'';modalTitle.textContent=p.title||'Property';modalRent.textContent=money(p.rent);modalImage.src=p.photo||'/sample-home.jpg';modalMeta.innerHTML=`<span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span>`;modalDescription.textContent=p.description||'';detailModal.classList.add('open');detailModal.setAttribute('aria-hidden','false');activateForm(form||'enquiry');}
-    function closeModal(){detailModal.classList.remove('open');detailModal.setAttribute('aria-hidden','true');}
-    closeModal.addEventListener('click',closeModal);detailModal.addEventListener('click',e=>{if(e.target===detailModal)closeModal();});
-    document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+    function closeDetailModal(){detailModal.classList.remove('open');detailModal.setAttribute('aria-hidden','true');}
+    closeButton.addEventListener('click',closeDetailModal);detailModal.addEventListener('click',e=>{if(e.target===detailModal)closeDetailModal();});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetailModal();});
     document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>activateForm(btn.dataset.form)));
     function activateForm(name){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.form===name));document.querySelectorAll('.form-panel').forEach(f=>f.classList.toggle('active',f.dataset.action===name));}
     async function postJson(url,payload){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});let data={};try{data=await res.json();}catch(e){}if(!res.ok||data.error)throw new Error(data.error||'Request failed');return data;}
