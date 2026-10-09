@@ -419,7 +419,7 @@ The opening question is:
 - [x] Rent arrears
 - [x] Tenancies ending soon
 - [x] Compliance expiring soon
-- [ ] Unread conversations
+- [x] Unread conversations
 
 Suggested structure:
 
@@ -453,7 +453,7 @@ Recently resolved
 - [x] Filter by case
 - [x] Filter by event type
 
-**Priority 10 implementation:** the Agent Desk overview now includes a Today cockpit with explicit counts for urgent maintenance, safety-critical cases, new tenant enquiries, landlord enquiries, trades applications, approvals, quotes, today's appointments, overdue actions, rent arrears, tenancies ending soon and compliance deadlines. Global search covers people, properties, cases, jobs, communications, registrations, appointments, documents, compliance records and contact references. The activity log is filterable by property, person, case/reference and event type. Unread conversation counts remain open until Roger stores message read state.
+**Priority 10 implementation:** the Agent Desk overview now includes a Today cockpit with explicit counts for urgent maintenance, safety-critical cases, new tenant enquiries, landlord enquiries, trades applications, approvals, quotes, today's appointments, overdue actions, rent arrears, tenancies ending soon, compliance deadlines and unread conversations. Global search covers people, properties, cases, jobs, communications, registrations, appointments, documents, compliance records and contact references. The activity log is filterable by property, person, case/reference and event type.
 
 ---
 
@@ -477,22 +477,24 @@ PROPERTY / PERSON / TENANCY / CASE
 ONE TIMELINE
 ```
 
-- [ ] Unified inbox
+- [x] Unified inbox
 - [ ] Attach communication to person
-- [ ] Attach communication to property
+- [x] Attach communication to property
 - [ ] Attach communication to tenancy
-- [ ] Attach communication to case
-- [ ] Agent reply from one place
+- [x] Attach communication to case
+- [x] Agent reply from one place
 - [ ] Draft assistance
 - [ ] Templates
-- [ ] Message status
-- [ ] Read / unread
-- [ ] Follow-up reminders
-- [ ] Internal notes
-- [ ] Email integration
+- [x] Message status
+- [x] Read / unread
+- [x] Follow-up reminders
+- [x] Internal notes
+- [x] Email integration
 - [ ] SMS integration
 - [ ] WhatsApp integration if appropriate
 - [ ] Telephone call notes
+
+**Priority 11 implementation:** the Communications hub groups cases as conversations with property and contact context, supports portal replies and SMTP replies from one screen, and stores agent-only internal notes. Cases now have an agent read marker, mark-read/mark-unread controls, unread counts in the inbox and Today cockpit, and follow-up dates that flow into overdue attention. Manual IMAP sync remains the email bridge. Party/tenancy attachment, draft assistance, templates, SMS, WhatsApp and phone-call notes remain open.
 
 Principle:
 
@@ -1042,6 +1044,8 @@ For each roadmap item:
 
 **Priority 9 progress:** the public advertising page now works as three acquisition funnels. Tenants can search homes, view property details and submit enquiry, viewing or application requests with property context. Landlords and trades can send funnel-specific enquiries into the existing CRM/approval pipelines and still reach the full registration forms. Pricing tables and credential document upload remain open.
 
-**Priority 10 progress:** the Agent Desk now has a Today cockpit for urgent work, safety risk, new enquiries/applications, waiting approvals, quotes, appointments, arrears, ending tenancies and compliance deadlines. Global search is live across the main operational objects, and the activity log can be filtered by property, person, case/reference and event type. Unread conversation counts need message read-state before they can be added honestly.
+**Priority 10 progress:** the Agent Desk now has a Today cockpit for urgent work, safety risk, new enquiries/applications, waiting approvals, quotes, appointments, arrears, ending tenancies, compliance deadlines and unread conversations. Global search is live across the main operational objects, and the activity log can be filtered by property, person, case/reference and event type.
 
-Next: **Priority 11 — Communications hub**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 11 progress:** the Communications hub now has unread/read state, one-place portal/email replies, internal notes and follow-up dates on case conversations. Messages remain tied to cases and properties; direct Party/tenancy threading, draft help, templates, SMS, WhatsApp and telephone notes remain open.
+
+Next: **Priority 12 — Maintenance engine**, with PostgreSQL cutover parked until a database is provisioned.
