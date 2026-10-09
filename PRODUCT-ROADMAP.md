@@ -646,35 +646,37 @@ Landlord authority      ✅
 
 Build:
 
-- [ ] Compliance requirement types
+- [x] Compliance requirement types
 - [ ] Required-by-property rules
-- [ ] Document link
-- [ ] Issue date
-- [ ] Expiry date
-- [ ] Status
-- [ ] Expiring soon
-- [ ] Expired
-- [ ] Missing
-- [ ] Reminder schedule
-- [ ] Agent action
+- [x] Document link
+- [x] Issue date
+- [x] Expiry date
+- [x] Status
+- [x] Expiring soon
+- [x] Expired
+- [x] Missing
+- [x] Reminder schedule
+- [x] Agent action
 - [ ] Renewal appointment
-- [ ] Replacement document
-- [ ] Audit history
+- [x] Replacement document
+- [x] Audit history
 
 Potential compliance records:
 
-- [ ] Gas Safety
-- [ ] EICR
-- [ ] EPC
-- [ ] Smoke / CO alarms
-- [ ] Deposit protection
-- [ ] Right to Rent
-- [ ] Tenancy agreement
-- [ ] Inventory
-- [ ] Landlord authority / management agreement
-- [ ] Trades credentials / insurance
+- [x] Gas Safety
+- [x] EICR
+- [x] EPC
+- [x] Smoke / CO alarms
+- [x] Deposit protection
+- [x] Right to Rent
+- [x] Tenancy agreement
+- [x] Inventory
+- [x] Landlord authority / management agreement
+- [x] Trades credentials / insurance
 
 Legal requirements must be reviewed against current jurisdiction before production use.
+
+**Priority 14 implementation:** the Compliance tab records requirement types, issue/expiry/reminder dates, missing evidence, document links, replacement/superseded history, derived status and due reminders in the Agent Desk. Requirement applicability rules and renewal appointment automation remain open.
 
 ---
 
@@ -1056,4 +1058,6 @@ For each roadmap item:
 
 **Priority 13 progress:** the existing Money tab already covers rent schedules, receipts, arrears, partial payments, adjustments, management-fee snapshots, maintenance quote/invoice/payment states, landlord approval above standing authority and statement snapshots. Downloadable statements, payout/payment status, letting fees, renewal fees and VAT remain open.
 
-Next: **Priority 14 — Compliance engine**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 14 progress:** compliance records now cover common requirement types, linked documents, issue/expiry/reminder dates, missing evidence, replacement history, derived statuses and Agent Desk reminders. Required-by-property rules and renewal appointment automation remain open.
+
+Next: **Priority 15 — Documents**, with PostgreSQL cutover parked until a database is provisioned.
