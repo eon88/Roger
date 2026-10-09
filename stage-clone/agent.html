@@ -16,6 +16,7 @@
       <a href="#" class="tab" data-view="communications">Communications</a>
       <a href="#" class="tab" data-view="money">Money</a>
       <a href="#" class="tab" data-view="compliance">Compliance</a>
+      <a href="#" class="tab" data-view="appointments">Appointments</a>
       <a href="#" class="tab" data-view="documents">Documents</a>
       <a href="#" class="tab" data-view="registrations">Registrations</a>
       <a href="#" class="tab" data-view="prospects">Prospects</a>
@@ -33,6 +34,7 @@
     <section id="view-communications" style="display:none"></section>
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
+    <section id="view-appointments" style="display:none"></section>
     <section id="view-documents" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
@@ -128,7 +130,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-  markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderCompliance(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -632,6 +634,54 @@ async function saveComplianceRecord(btn){
  const action=document.getElementById('compliance-action').value;
  await busy(btn,async()=>{try{await post('/api/compliance-action',{action,property_id:document.getElementById('compliance-property').value,requirement_type:document.getElementById('compliance-type').value,document_id:document.getElementById('compliance-document').value,issue_date:document.getElementById('compliance-issue').value,expiry_date:document.getElementById('compliance-expiry').value,reminder_date:document.getElementById('compliance-reminder').value,notes:document.getElementById('compliance-notes').value});toast('Compliance record saved to the property history.');load();}catch(e){}});
 }
+const APPOINTMENT_TYPES={viewing:'Viewing',inspection:'Inspection',contractor_visit:'Contractor visit',valuation:'Valuation',check_in:'Check-in',check_out:'Check-out',key_handover:'Key handover',compliance_visit:'Compliance visit',agent_appointment:'Agent appointment'};
+function apptTypeLabel(t){return APPOINTMENT_TYPES[t]||capType(t||'appointment');}
+function apptEntityLine(a){
+ const p=(stage.properties||[]).find(x=>x.id===a.property_id)||{},c=a.case_id?'case #'+a.case_id:'',j=a.job_id?'job '+a.job_id:'';
+ return [p.title||a.property_id,c,j,a.location].filter(Boolean).join(' · ');
+}
+function apptParticipants(a){
+ const names=(a.participant_party_ids||[]).map(id=>(stage.parties||[]).find(p=>p.id===id)?.display_name||id);
+ return [ ...(a.participant_roles||[a.invitee_role||'tenant']).map(r=>r.replace(/_/g,' ')), ...names ].filter(Boolean).join(', ');
+}
+function renderAppointments(){
+ const appts=window._appts||[],props=stage.properties||[],cases=stage.cases||[],jobs=stage.jobs||[],parties=stage.parties||[];
+ const typeFilter=window.apptType||'',statusFilter=window.apptStatus||'',propertyFilter=window.apptProperty||'';
+ const q=String(window.apptQuery||'').trim().toLowerCase();
+ const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
+ const caseOptions=cases.map(c=>'<option value="'+esc(c.id)+'">Case #'+esc(c.id)+' · '+esc((props.find(p=>p.id===c.property_id)||{}).title||c.property_id||'')+'</option>').join('');
+ const jobOptions=jobs.map(j=>'<option value="'+esc(j.id)+'">'+esc(j.id)+' · case #'+esc(j.case_id||'')+'</option>').join('');
+ const partyOptions=parties.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.display_name||p.id)+' · '+esc((p.roles||[]).join(', '))+'</option>').join('');
+ const typeOptions=Object.entries(APPOINTMENT_TYPES).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
+ const now=Date.now(),week=now+7*86400000;
+ const visible=appts.filter(a=>{
+   const text=[a.id,a.title,a.description,a.status,a.appointment_type,a.property_id,a.case_id,a.job_id,a.location,apptEntityLine(a),apptParticipants(a),a.outcome,a.notes].filter(Boolean).join(' ').toLowerCase();
+   return (!q||text.includes(q))&&(!typeFilter||a.appointment_type===typeFilter)&&(!statusFilter||a.status===statusFilter)&&(!propertyFilter||a.property_id===propertyFilter);
+ }).sort((a,b)=>String(a.start_time||'').localeCompare(String(b.start_time||'')));
+ const start=new Date();start.setHours(0,0,0,0);
+ const days=Array.from({length:7},(_,i)=>{const d=new Date(start.getTime()+i*86400000),dayStart=d.getTime(),dayEnd=dayStart+86400000,items=appts.filter(a=>{const t=Date.parse(a.start_time);return Number.isFinite(t)&&t>=dayStart&&t<dayEnd;}).sort((a,b)=>String(a.start_time).localeCompare(String(b.start_time)));return '<div class="day"><b>'+d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})+'</b>'+(items.length?items.map(a=>'<button class="mini-appt" onclick="document.getElementById(\'appointment-'+esc(a.id)+'\')?.scrollIntoView({behavior:\'smooth\',block:\'center\'})"><span>'+esc(new Date(a.start_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}))+'</span>'+esc(a.title||apptTypeLabel(a.appointment_type))+'</button>').join(''):'<div class="meta">Free</div>')+'</div>';}).join('');
+ const rows=visible.map(a=>'<div class="card" id="appointment-'+esc(a.id)+'"><div class="cardtop"><h3>'+esc(a.title||apptTypeLabel(a.appointment_type))+'</h3><span class="badge '+esc(a.status||'proposed')+'">'+esc(a.status||'proposed')+'</span></div>'+
+   '<div class="meta">'+esc(apptTypeLabel(a.appointment_type))+' · '+fmtDate(a.start_time)+(a.end_time?' to '+fmtDate(a.end_time):'')+(a.reminder_at?' · reminder '+fmtDate(a.reminder_at):'')+'</div>'+
+   '<div class="meta">'+esc(apptEntityLine(a))+'</div><div class="meta">Participants: '+esc(apptParticipants(a)||'agent')+'</div>'+
+   (a.description?'<div class="details">'+esc(a.description)+'</div>':'')+(a.outcome?'<div class="triage-line">Outcome: '+esc(a.outcome)+'</div>':'')+(a.previous_start_time?'<div class="thread">Previously '+esc(fmtDate(a.previous_start_time))+'</div>':'')+
+   '<div class="actions">'+(a.status==='proposed'?'<button class="btn primary" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'confirm\')">Confirm</button>':'')+'<button class="btn" onclick="apptReschedule(this,\''+esc(a.id)+'\')">Reschedule</button><button class="btn" onclick="apptOutcome(this,\''+esc(a.id)+'\')">Record outcome</button><button class="btn ghost" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'miss\')">Missed</button><button class="btn danger" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'cancel\')">Cancel</button></div></div>').join('');
+ document.getElementById('view-appointments').innerHTML='<div class="move">appointments diary</div><p class="fineprint">Book viewings, inspections, contractor visits, valuations, check-ins, check-outs, key handovers, compliance visits and agent appointments. Diary records link back to property, case and job context.</p>'+
+ '<div class="stats"><div class="stat"><div class="value">'+appts.filter(a=>a.status==='confirmed'&&Date.parse(a.start_time)>=now&&Date.parse(a.start_time)<=week).length+'</div><div class="label">confirmed this week</div></div><div class="stat '+(appts.some(a=>a.status==='proposed')?'hot':'')+'"><div class="value">'+appts.filter(a=>a.status==='proposed').length+'</div><div class="label">awaiting confirmation</div></div><div class="stat '+(appts.some(a=>a.status==='confirmed'&&Date.parse(a.start_time)<now)?'hot':'')+'"><div class="value">'+appts.filter(a=>a.status==='confirmed'&&Date.parse(a.start_time)<now).length+'</div><div class="label">need an outcome</div></div></div>'+
+ '<div class="card"><h2>Book appointment</h2><div class="grid2"><label class="field"><span>Property</span><select id="appt-property">'+propOptions+'</select></label><label class="field"><span>Type</span><select id="appt-type">'+typeOptions+'</select></label><label class="field"><span>Title</span><input id="appt-title" maxlength="120"></label><label class="field"><span>Start</span><input id="appt-start" type="datetime-local"></label><label class="field"><span>End</span><input id="appt-end" type="datetime-local"></label><label class="field"><span>Reminder time</span><input id="appt-reminder" type="datetime-local"></label><label class="field"><span>Case</span><select id="appt-case"><option value="">No linked case</option>'+caseOptions+'</select></label><label class="field"><span>Job</span><select id="appt-job"><option value="">No linked job</option>'+jobOptions+'</select></label><label class="field"><span>Participant person</span><select id="appt-party" multiple size="4">'+partyOptions+'</select></label><label class="field"><span>Location</span><input id="appt-location" value="At the property" maxlength="200"></label></div><div class="field"><span>Participant roles</span><label><input type="checkbox" name="appt-role" value="tenant" checked> Tenant</label> <label><input type="checkbox" name="appt-role" value="landlord"> Landlord</label> <label><input type="checkbox" name="appt-role" value="trades"> Trades</label></div><label class="field"><span>Description</span><textarea id="appt-description" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="createAppointment(this)">Book appointment</button></div>'+
+ '<div class="card diary-grid">'+days+'</div>'+
+ '<div class="card"><div class="grid2"><label class="field"><span>Search</span><input value="'+esc(window.apptQuery||'')+'" placeholder="Title, participant, case, job or notes" onchange="window.apptQuery=this.value;renderAppointments()"></label><label class="field"><span>Type</span><select id="appt-type-filter" onchange="window.apptType=this.value;renderAppointments()"><option value="">All types</option>'+typeOptions+'</select></label><label class="field"><span>Status</span><select id="appt-status-filter" onchange="window.apptStatus=this.value;renderAppointments()"><option value="">All statuses</option><option value="proposed">Proposed</option><option value="confirmed">Confirmed</option><option value="declined">Declined</option><option value="completed">Completed</option><option value="missed">Missed</option><option value="cancelled">Cancelled</option></select></label><label class="field"><span>Property</span><select id="appt-property-filter" onchange="window.apptProperty=this.value;renderAppointments()"><option value="">All properties</option>'+propOptions+'</select></label></div></div>'+
+ '<div class="move">agenda</div>'+(rows||'<div class="empty">No appointments match those filters.</div>');
+ const tf=document.getElementById('appt-type-filter'),sf=document.getElementById('appt-status-filter'),pf=document.getElementById('appt-property-filter');if(tf)tf.value=typeFilter;if(sf)sf.value=statusFilter;if(pf)pf.value=propertyFilter;
+}
+function localDateTimeValue(id){const v=document.getElementById(id)?.value||'';return v?v+':00Z':'';}
+async function createAppointment(btn){
+ const roles=Array.from(document.querySelectorAll('input[name="appt-role"]:checked')).map(x=>x.value);
+ const partyIds=Array.from(document.getElementById('appt-party')?.selectedOptions||[]).map(x=>x.value);
+ await busy(btn,async()=>{try{await post('/api/appointment',{property_id:document.getElementById('appt-property').value,appointment_type:document.getElementById('appt-type').value,title:document.getElementById('appt-title').value,start_time:localDateTimeValue('appt-start'),end_time:localDateTimeValue('appt-end'),reminder_at:localDateTimeValue('appt-reminder'),case_id:document.getElementById('appt-case').value,job_id:document.getElementById('appt-job').value,participant_roles:roles,participant_party_ids:partyIds,location:document.getElementById('appt-location').value,description:document.getElementById('appt-description').value});toast('Appointment added to the diary.');load();}catch(e){}});
+}
+async function apptAgentAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action});toast('Appointment updated.');load();}catch(e){}});}
+async function apptReschedule(btn,id){const start=prompt('New start time (YYYY-MM-DDTHH:MM)');if(!start)return;const end=prompt('New end time (optional, YYYY-MM-DDTHH:MM)')||'';const note=prompt('Reason / note for reschedule')||'';await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action:'reschedule',start_time:start.replace(' ','T')+':00Z',end_time:end?end.replace(' ','T')+':00Z':'',note});toast('Appointment rescheduled and marked proposed.');load();}catch(e){}});}
+async function apptOutcome(btn,id){const outcome=prompt('Outcome to record');if(!outcome)return;await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action:'complete',outcome});toast('Outcome recorded.');load();}catch(e){}});}
 function documentExpiryBadge(d){
  if(d.status==='superseded')return '<span class="badge superseded">superseded</span>';
  if(d.status==='rejected')return '<span class="badge rejected">rejected</span>';
