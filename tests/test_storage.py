@@ -97,6 +97,57 @@ class AtomicStorageTests(unittest.TestCase):
             if os.name == "posix":
                 self.assertEqual(stored.stat().st_mode & 0o777, 0o600)
 
+    def test_appointment_links_case_job_and_supports_reschedule_outcome(self):
+        handler = serve.H.__new__(serve.H)
+        handler.user = {"username": "agent", "role": "agent", "display_name": "Agent"}
+        response = []
+        handler._json = lambda payload, status=200: response.append((payload, status))
+        stage = {
+            "properties": [{"id": "home-1", "title": "Home"}],
+            "cases": [{"id": 10, "property_id": "home-1", "appointment_ids": []}],
+            "jobs": [{"id": "job-1", "case_id": 10, "property_id": "home-1", "appointment_ids": []}],
+            "parties": [{"id": "party-1", "display_name": "Tenant", "roles": ["tenant"]}],
+            "appointments": [],
+            "audit_log": [],
+        }
+        with patch.object(serve, "load_stage", return_value=stage), patch.object(serve, "save_stage"):
+            serve.H.handle_appointment(handler, {
+                "property_id": "home-1",
+                "case_id": "10",
+                "job_id": "job-1",
+                "appointment_type": "contractor_visit",
+                "title": "Boiler visit",
+                "start_time": "2027-01-12T10:00:00Z",
+                "end_time": "2027-01-12T11:00:00Z",
+                "participant_roles": ["tenant", "trades"],
+                "participant_party_ids": ["party-1"],
+                "reminder_at": "2027-01-11T10:00:00Z",
+            })
+            appt = stage["appointments"][0]
+            serve.H.handle_appointment_action(handler, {
+                "id": appt["id"],
+                "action": "reschedule",
+                "start_time": "2027-01-13T12:00:00Z",
+                "note": "Tenant asked for lunchtime",
+            })
+            serve.H.handle_appointment_action(handler, {
+                "id": appt["id"],
+                "action": "complete",
+                "outcome": "Boiler serviced and certificate requested",
+            })
+        self.assertEqual(response[0][1], 200)
+        self.assertEqual(appt["appointment_type"], "contractor_visit")
+        self.assertEqual(appt["case_id"], 10)
+        self.assertEqual(appt["job_id"], "job-1")
+        self.assertEqual(appt["participant_roles"], ["agent", "tenant", "trades"])
+        self.assertEqual(appt["participant_party_ids"], ["party-1"])
+        self.assertEqual(stage["cases"][0]["appointment_ids"], [appt["id"]])
+        self.assertEqual(stage["jobs"][0]["appointment_ids"], [appt["id"]])
+        self.assertEqual(appt["previous_start_time"], "2027-01-12T10:00:00Z")
+        self.assertEqual(appt["start_time"], "2027-01-13T12:00:00Z")
+        self.assertEqual(appt["status"], "completed")
+        self.assertEqual(appt["outcome"], "Boiler serviced and certificate requested")
+
     def test_atomic_write_roundtrips_and_restricts_file_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "stage.json"
