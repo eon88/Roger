@@ -191,6 +191,11 @@ class H(SimpleHTTPRequestHandler):
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
                 "/api/document": {"agent"}, "/api/document-action": {"agent"}}
+    DOCUMENT_TYPES = (
+        "property_document", "tenancy_agreement", "deposit_receipt", "inspection_report",
+        "id_proof", "landlord_document", "trades_document", "job_document",
+        "maintenance_evidence", "compliance_certificate", "other",
+    )
 
     def require(self, roles=None):
         """Returns user or None (response already sent)."""
@@ -503,10 +508,13 @@ class H(SimpleHTTPRequestHandler):
             doc_id = f"doc-{len(stage.get('documents', [])) + len(created) + 1}"
             created.append({
                 "id": doc_id, "case_id": case["id"], "property_id": case.get("property_id"),
+                "party_id": None, "tenancy_id": None, "job_id": None,
                 "document_type": "maintenance_evidence", "title": "Maintenance evidence",
                 "description": "Uploaded with tenant maintenance report",
                 "file_name": fname, "content_type": content_type, "file_size": len(raw),
                 "storage_key": self.store_document_body(raw),
+                "expiry_date": None, "access_roles": ["agent", "tenant"],
+                "version": 1, "supersedes_id": None, "replaced_by_id": None,
                 "uploaded_by": uploaded_by, "uploaded_at": now(),
                 "verified_by": None, "verified_at": None, "status": "pending", "notes": "",
             })
@@ -2065,10 +2073,19 @@ class H(SimpleHTTPRequestHandler):
     def can_view_document(self, u, doc):
         if u["role"] == "agent":
             return True
+        access_roles = doc.get("access_roles")
+        if access_roles and u["role"] not in access_roles:
+            return False
         stage = load_stage()
         me = u["display_name"]
-        c = next((c for c in stage.get("cases", []) if c["id"] == doc.get("case_id")), None)
+        c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(doc.get("case_id"))), None)
         prop = self.find_prop(stage, doc.get("property_id") or (c or {}).get("property_id")) or {}
+        if not prop and doc.get("tenancy_id"):
+            tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == doc.get("tenancy_id")), None)
+            prop = self.find_prop(stage, (tenancy or {}).get("property_id")) or {}
+        if not prop and doc.get("job_id"):
+            job = next((j for j in stage.get("jobs", []) if j.get("id") == doc.get("job_id")), None)
+            prop = self.find_prop(stage, (job or {}).get("property_id")) or {}
         if u["role"] == "tenant":
             return prop.get("tenant") == me or (c or {}).get("name") == me
         if u["role"] == "landlord" and prop.get("landlord") == me:
@@ -2121,17 +2138,52 @@ class H(SimpleHTTPRequestHandler):
         Content received as base64 in JSON (stdlib server has no multipart parser)."""
         stage = load_stage()
         case_id = data.get("case_id")
-        c = next((c for c in stage.get("cases", []) if c["id"] == case_id), None)
+        c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
         property_id = data.get("property_id")
         if not property_id and c:
             property_id = c.get("property_id")
+        tenancy_id = str(data.get("tenancy_id", ""))[:100] or None
+        tenancy = None
+        if tenancy_id:
+            tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == tenancy_id), None)
+            if not tenancy:
+                return self._json({"error": "tenancy not found"}, 404)
+            property_id = property_id or tenancy.get("property_id")
+        job_id = str(data.get("job_id", ""))[:100] or None
+        job = None
+        if job_id:
+            job = next((j for j in stage.get("jobs", []) if j.get("id") == job_id), None)
+            if not job:
+                return self._json({"error": "job not found"}, 404)
+            property_id = property_id or job.get("property_id")
+        party_id = str(data.get("party_id", ""))[:100] or None
+        if party_id and not any(p.get("id") == party_id for p in stage.get("parties", [])):
+            return self._json({"error": "party not found"}, 404)
         prop = self.find_prop(stage, property_id)
-        if not prop:
-            return self._json({"error": "property not found (pass property_id or a valid case_id)"}, 404)
+        if not prop and not party_id:
+            return self._json({"error": "property not found (pass property_id, tenancy_id, job_id, party_id or a valid case_id)"}, 404)
         dtype = str(data.get("document_type", "other"))[:40]
-        allowed = ("tenancy_agreement", "deposit_receipt", "inspection_report", "id_proof", "maintenance_evidence", "other")
-        if dtype not in allowed:
-            return self._json({"error": f"document_type must be one of {', '.join(allowed)}"}, 400)
+        if dtype not in self.DOCUMENT_TYPES:
+            return self._json({"error": f"document_type must be one of {', '.join(self.DOCUMENT_TYPES)}"}, 400)
+        access_roles = data.get("access_roles", ["agent"])
+        allowed_roles = {"agent", "tenant", "landlord", "trades"}
+        if isinstance(access_roles, str):
+            access_roles = [x.strip() for x in access_roles.split(",") if x.strip()]
+        if not isinstance(access_roles, list) or any(r not in allowed_roles for r in access_roles):
+            return self._json({"error": "access_roles must contain supported portal roles"}, 400)
+        access_roles = sorted(set(access_roles) | {"agent"})
+        expiry_date = str(data.get("expiry_date", "")).strip()[:30] or None
+        if expiry_date:
+            try:
+                datetime.strptime(expiry_date, "%Y-%m-%d")
+            except ValueError:
+                return self._json({"error": "expiry_date must be YYYY-MM-DD"}, 400)
+        supersedes_id = str(data.get("supersedes_id", "")).strip()[:100] or None
+        superseded = None
+        if supersedes_id:
+            superseded = next((d for d in stage.get("documents", []) if d.get("id") == supersedes_id), None)
+            if not superseded:
+                return self._json({"error": "superseded document not found"}, 404)
         b64 = str(data.get("content_b64", ""))
         import base64
         try:
@@ -2148,7 +2200,10 @@ class H(SimpleHTTPRequestHandler):
         doc = {
             "id": doc_id,
             "case_id": case_id if c else None,
-            "property_id": prop["id"],
+            "property_id": prop["id"] if prop else None,
+            "party_id": party_id,
+            "tenancy_id": tenancy_id,
+            "job_id": job_id,
             "document_type": dtype,
             "title": str(data.get("title", ""))[:120],
             "description": str(data.get("description", ""))[:500],
@@ -2156,6 +2211,11 @@ class H(SimpleHTTPRequestHandler):
             "content_type": str(data.get("content_type", "application/octet-stream"))[:80],
             "file_size": len(raw),
             "storage_key": storage_key,
+            "expiry_date": expiry_date,
+            "access_roles": access_roles,
+            "version": int((superseded or {}).get("version", 0)) + 1 if superseded else 1,
+            "supersedes_id": supersedes_id,
+            "replaced_by_id": None,
             "uploaded_by": (self.user or {}).get("display_name", "Agent"),
             "uploaded_at": now(),
             "verified_by": None,
@@ -2163,10 +2223,20 @@ class H(SimpleHTTPRequestHandler):
             "status": "pending",
             "notes": "",
         }
+        if superseded:
+            superseded["status"] = "superseded"
+            superseded["replaced_by_id"] = doc_id
+            superseded["superseded_at"] = now()
         flist.append(doc)
+        if c:
+            c.setdefault("document_ids", []).append(doc_id)
+        if tenancy:
+            tenancy.setdefault("document_ids", []).append(doc_id)
+        if job:
+            job.setdefault("document_ids", []).append(doc_id)
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
                            "action": "document_uploaded", "target": doc_id,
-                           "note": f"{dtype} / {fname} / {len(raw)}B for {prop['id']}"})
+                           "note": f"{dtype} / {fname} / {len(raw)}B"})
         save_stage(stage)
         return self._json({"success": True, "document": self.safe_document(doc)})
 
