@@ -1829,12 +1829,12 @@ class H(SimpleHTTPRequestHandler):
 
     def handle_case_action(self, data):
         stage = load_stage()
-        c = next((c for c in stage.get("cases", []) if c["id"] == data.get("id")), None)
+        c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(data.get("id"))), None)
         if not c:
             return self._json({"error": "case not found"}, 404)
         action = data.get("action")
         u = getattr(self, "user", None) or {}
-        if action in ("close", "reopen", "add_tradesperson") and u.get("role") != "agent":
+        if action in ("close", "reopen", "add_tradesperson", "mark_read", "mark_unread", "note", "follow_up") and u.get("role") != "agent":
             return self._json({"error": "agent-only move"}, 403)
         if action in ("reply", "inform") and u.get("role") == "tenant" and c.get("name") != u.get("display_name"):
             return self._json({"error": "not your case"}, 403)
@@ -1878,6 +1878,36 @@ class H(SimpleHTTPRequestHandler):
             c["status"] = "new"
             self.post_msg(stage, c["id"], "Case reopened by the agency.", to=("tenant",))
             self.audit(stage, {"actor": "agent", "action": "case_reopened", "target": c["id"]})
+        elif action == "mark_read":
+            c["agent_read_at"] = now()
+            self.audit(stage, {"actor": "agent", "action": "case_marked_read", "target": c["id"]})
+        elif action == "mark_unread":
+            c["agent_read_at"] = None
+            self.audit(stage, {"actor": "agent", "action": "case_marked_unread", "target": c["id"]})
+        elif action == "note":
+            text = str(data.get("text", "")).strip()[:1000]
+            if not text:
+                return self._json({"error": "internal note text is required"}, 400)
+            c.setdefault("internal_notes", []).append({
+                "text": text, "at": now(), "by": u.get("display_name", "agent"),
+            })
+            self.audit(stage, {"actor": u.get("display_name", "agent"), "action": "case_internal_note",
+                               "target": c["id"], "note": text[:120]})
+        elif action == "follow_up":
+            follow_up_at = str(data.get("follow_up_at", "")).strip()[:30]
+            try:
+                datetime.strptime(follow_up_at, "%Y-%m-%d")
+            except ValueError:
+                return self._json({"error": "follow_up_at must be a YYYY-MM-DD date"}, 400)
+            c["follow_up_at"] = follow_up_at
+            note = str(data.get("note", "")).strip()[:500]
+            if note:
+                c.setdefault("internal_notes", []).append({
+                    "text": "Follow-up: " + note, "at": now(), "by": u.get("display_name", "agent"),
+                    "follow_up_at": follow_up_at,
+                })
+            self.audit(stage, {"actor": u.get("display_name", "agent"), "action": "case_follow_up_set",
+                               "target": c["id"], "note": follow_up_at})
         else:
             return self._json({"error": f"unknown action {action}"}, 400)
         save_stage(stage)
