@@ -188,13 +188,17 @@ class H(SimpleHTTPRequestHandler):
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
                 "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
-                "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord"},
+                "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
                 "/api/document": {"agent"}, "/api/document-action": {"agent"}}
     DOCUMENT_TYPES = (
         "property_document", "tenancy_agreement", "deposit_receipt", "inspection_report",
         "id_proof", "landlord_document", "trades_document", "job_document",
         "maintenance_evidence", "compliance_certificate", "other",
+    )
+    APPOINTMENT_TYPES = (
+        "viewing", "inspection", "contractor_visit", "valuation", "check_in",
+        "check_out", "key_handover", "compliance_visit", "agent_appointment",
     )
 
     def require(self, roles=None):
@@ -285,7 +289,7 @@ class H(SimpleHTTPRequestHandler):
             stage = load_stage()
             return self._json({"entries": [self.safe_rent_entry(x) for x in stage.get("rent_ledger_entries", [])]})
         if path == "/api/appointments":
-            u = self.require({"agent", "tenant", "landlord"})
+            u = self.require({"agent", "tenant", "landlord", "trades"})
             if not u:
                 return
             return self._json({"appointments": self.scoped_appointments(u)})
@@ -2290,36 +2294,75 @@ class H(SimpleHTTPRequestHandler):
         me = u["display_name"]
         if u["role"] == "tenant":
             mine = {p["id"] for p in stage.get("properties", []) if p.get("tenant") == me}
-            return [a for a in appts if a["property_id"] in mine]
-        mine = {p["id"] for p in stage.get("properties", []) if p.get("landlord") == me}
-        return [a for a in appts if a["property_id"] in mine]
+            return [a for a in appts if a.get("property_id") in mine]
+        if u["role"] == "landlord":
+            mine = {p["id"] for p in stage.get("properties", []) if p.get("landlord") == me}
+            return [a for a in appts if a.get("property_id") in mine]
+        jobs = [j for j in stage.get("jobs", []) if j.get("assigned_to") == me]
+        job_ids = {j.get("id") for j in jobs}
+        return [a for a in appts if a.get("job_id") in job_ids]
 
     def handle_appointment(self, data):
-        """Agent schedules a viewing/inspection/key handover. Roles: agent only."""
+        """Agent schedules a diary item. Roles: agent only."""
         stage = load_stage()
         prop = self.find_prop(stage, data.get("property_id"))
         if not prop:
             return self._json({"error": "property not found"}, 404)
+        case_id = data.get("case_id") or None
+        job_id = data.get("job_id") or None
+        case = None
+        job = None
+        if case_id:
+            case = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
+            if not case:
+                return self._json({"error": "case not found"}, 404)
+            case_id = case.get("id")
+        if job_id:
+            job = next((j for j in stage.get("jobs", []) if str(j.get("id")) == str(job_id)), None)
+            if not job:
+                return self._json({"error": "job not found"}, 404)
+            job_id = job.get("id")
         start = str(data.get("start_time", ""))[:40]
         end = str(data.get("end_time", ""))[:40]
         if not start:
             return self._json({"error": "start_time is required"}, 400)
         if end and end < start:
             return self._json({"error": "end_time must be after start_time"}, 400)
+        appt_type = data.get("appointment_type") or data.get("type") or "viewing"
+        if appt_type not in self.APPOINTMENT_TYPES:
+            return self._json({"error": "unsupported appointment_type"}, 400)
+        roles = data.get("participant_roles")
+        if not isinstance(roles, list):
+            invitee = data.get("invitee_role")
+            roles = [invitee] if invitee in ("tenant", "landlord", "trades") else ["tenant"]
+        roles = sorted({r for r in roles if r in ("tenant", "landlord", "trades", "agent")})
+        if "agent" not in roles:
+            roles.insert(0, "agent")
+        party_ids = data.get("participant_party_ids") if isinstance(data.get("participant_party_ids"), list) else []
+        party_ids = [str(x)[:80] for x in party_ids if any(str(p.get("id")) == str(x) for p in stage.get("parties", []))]
+        try:
+            reminder_minutes = int(data.get("reminder_minutes_before") or 0)
+        except (TypeError, ValueError):
+            reminder_minutes = 0
         appts = stage.setdefault("appointments", [])
         nums = [int(a["id"].split("-")[1]) for a in appts if re.fullmatch(r"appt-\d+", a["id"])]
         appt = {
             "id": f"appt-{(max(nums) + 1) if nums else 1}",
             "property_id": prop["id"],
-            "case_id": data.get("case_id") or None,
-            "title": str(data.get("title", "Viewing"))[:120] or "Viewing",
+            "case_id": case_id,
+            "job_id": job_id,
+            "appointment_type": appt_type,
+            "title": str(data.get("title") or appt_type.replace("_", " ").title())[:120],
             "description": str(data.get("description", ""))[:1000],
             "start_time": start,
             "end_time": end or None,
             "location": str(data.get("location", "At the property"))[:200],
             "status": "proposed",
-            "invitee_role": str(data.get("invitee_role", "tenant"))[:20]
-                         if data.get("invitee_role") in ("tenant", "landlord", "trades") else "tenant",
+            "participant_roles": roles,
+            "participant_party_ids": party_ids,
+            "invitee_role": next((r for r in roles if r != "agent"), "tenant"),
+            "reminder_at": str(data.get("reminder_at", ""))[:40] or None,
+            "reminder_minutes_before": reminder_minutes,
             "created_by": (self.user or {}).get("display_name", "Agent"),
             "created_at": now(),
             "updated_at": now(),
@@ -2327,6 +2370,14 @@ class H(SimpleHTTPRequestHandler):
             "outcome": None,
         }
         appts.append(appt)
+        if case is not None:
+            case.setdefault("appointment_ids", [])
+            if appt["id"] not in case["appointment_ids"]:
+                case["appointment_ids"].append(appt["id"])
+        if job is not None:
+            job.setdefault("appointment_ids", [])
+            if appt["id"] not in job["appointment_ids"]:
+                job["appointment_ids"].append(appt["id"])
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
                            "action": "appointment_created", "target": appt["id"],
                            "note": f"{appt['title']} @ {appt['start_time']}"})
@@ -2334,32 +2385,49 @@ class H(SimpleHTTPRequestHandler):
         return self._json({"success": True, "appointment": appt})
 
     def handle_appointment_action(self, data):
-        """Confirm/decline/complete/miss/cancel an appointment. Roles: agent (any),
-        tenant/landlord on their own property."""
+        """Confirm/decline/reschedule/complete/miss/cancel an appointment. Roles: agent
+        (any), tenant/landlord/trades on their own linked appointment."""
         stage = load_stage()
         appt = next((a for a in stage.get("appointments", []) if a["id"] == data.get("id")), None)
         if not appt:
             return self._json({"error": "appointment not found"}, 404)
         action = data.get("action")
-        allowed = ("confirm", "decline", "complete", "miss", "cancel")
+        allowed = ("confirm", "decline", "reschedule", "complete", "miss", "cancel")
         if action not in allowed:
             return self._json({"error": f"action must be one of {', '.join(allowed)}"}, 400)
         u = self.user or {}
         if u["role"] == "agent":
             pass  # agent may take any action
         else:
-            prop = self.find_prop(stage, appt["property_id"]) or {}
+            prop = self.find_prop(stage, appt.get("property_id")) or {}
             if u["role"] == "tenant" and prop.get("tenant") != u["display_name"]:
                 return self._json({"error": "not your property"}, 403)
             if u["role"] == "landlord" and prop.get("landlord") != u["display_name"]:
                 return self._json({"error": "not your property"}, 403)
+            if u["role"] == "trades":
+                job = next((j for j in stage.get("jobs", []) if j.get("id") == appt.get("job_id")), {})
+                if job.get("assigned_to") != u["display_name"]:
+                    return self._json({"error": "not your appointment"}, 403)
             # parties may not cancel an agency-set appointment; agent must
             if action == "cancel":
                 return self._json({"error": "only the agency can cancel"}, 403)
-        status_map = {"confirm": "confirmed", "decline": "declined",
+        if action == "reschedule":
+            start = str(data.get("start_time", ""))[:40]
+            end = str(data.get("end_time", ""))[:40]
+            if not start:
+                return self._json({"error": "start_time is required"}, 400)
+            if end and end < start:
+                return self._json({"error": "end_time must be after start_time"}, 400)
+            appt["previous_start_time"] = appt.get("start_time")
+            appt["previous_end_time"] = appt.get("end_time")
+            appt["start_time"] = start
+            appt["end_time"] = end or None
+        status_map = {"confirm": "confirmed", "decline": "declined", "reschedule": "proposed",
                       "complete": "completed", "miss": "missed", "cancel": "cancelled"}
         appt["status"] = status_map[action]
         appt["updated_at"] = now()
+        if data.get("reminder_at") is not None:
+            appt["reminder_at"] = str(data.get("reminder_at") or "")[:40] or None
         if data.get("note"):
             appt["notes"] = str(data["note"])[:500]
         if data.get("outcome"):
