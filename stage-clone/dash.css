@@ -155,6 +155,10 @@ select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .badge.declined,.badge.missed,.badge.rejected{background:var(--danger-soft);color:var(--danger)}
 .badge.cancelled{background:var(--warn-soft);color:var(--warn)}
 .badge.completed{background:var(--accent-soft);color:var(--accent-deep)}
+.badge.urgent{background:var(--danger-soft);color:var(--danger)}
+.badge.high{background:var(--warn-soft);color:var(--warn)}
+.badge.normal{background:var(--blue-soft);color:var(--blue)}
+.badge.low{background:var(--line-soft);color:var(--muted)}
 .docrow{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)}
 .docrow:first-child{border-top:none}
 .docrow .docname{font-weight:600;color:var(--ink)}
