@@ -563,42 +563,42 @@ This is one of the biggest missing areas.
 
 ## 13.1 Rent ledger
 
-- [ ] Rent due schedule
-- [ ] Amount due
-- [ ] Amount received
-- [ ] Date received
-- [ ] Balance
-- [ ] Arrears
-- [ ] Partial payments
-- [ ] Adjustments
-- [ ] Notes
+- [x] Rent due schedule
+- [x] Amount due
+- [x] Amount received
+- [x] Date received
+- [x] Balance
+- [x] Arrears
+- [x] Partial payments
+- [x] Adjustments
+- [x] Notes
 
 ## 13.2 Agency fees
 
-- [ ] Management fee
+- [x] Management fee
 - [ ] Letting fee
 - [ ] Renewal fee if applicable
-- [ ] Other charges
+- [x] Other charges
 - [ ] VAT handling if applicable
 
 ## 13.3 Maintenance money flow
 
-- [ ] Quote
-- [ ] Standing authority limit
-- [ ] Landlord approval
-- [ ] Invoice
-- [ ] Payment status
-- [ ] Cost attached to property
-- [ ] Cost attached to landlord statement
+- [x] Quote
+- [x] Standing authority limit
+- [x] Landlord approval
+- [x] Invoice
+- [x] Payment status
+- [x] Cost attached to property
+- [x] Cost attached to landlord statement
 
 ## 13.4 Landlord statements
 
-- [ ] Rent received
-- [ ] Agency fees
-- [ ] Maintenance deductions
-- [ ] Other deductions
-- [ ] Net landlord amount
-- [ ] Statement period
+- [x] Rent received
+- [x] Agency fees
+- [x] Maintenance deductions
+- [x] Other deductions
+- [x] Net landlord amount
+- [x] Statement period
 - [ ] Downloadable statement
 - [ ] Payment status
 
@@ -617,6 +617,8 @@ LANDLORD STATEMENT
     ↓
 LANDLORD PAYOUT
 ```
+
+**Priority 13 implementation:** the Money tab has rent schedules, receipts, partial payments, adjustments, arrears, management-fee snapshots, quote/invoice/payment states, landlord approval above standing authority and landlord statement snapshots with rent, fees, maintenance and net payout totals. Letting fees, renewal fees, VAT, downloadable statements and landlord payout/payment status remain open.
 
 ---
 
@@ -1052,4 +1054,6 @@ For each roadmap item:
 
 **Priority 12 progress:** tenant maintenance reports can now carry private image/PDF evidence files into the case, document store and job record. Tenants can confirm a resolved repair or send it back as unresolved, with both decisions audited. SLA timers, automatic reminders, contractor arrival/completion updates, before/after completion evidence and performance history remain open.
 
-Next: **Priority 13 — Money / financial engine**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 13 progress:** the existing Money tab already covers rent schedules, receipts, arrears, partial payments, adjustments, management-fee snapshots, maintenance quote/invoice/payment states, landlord approval above standing authority and statement snapshots. Downloadable statements, payout/payment status, letting fees, renewal fees and VAT remain open.
+
+Next: **Priority 14 — Compliance engine**, with PostgreSQL cutover parked until a database is provisioned.
