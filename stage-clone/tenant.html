@@ -32,6 +32,10 @@
         <input id="issue-email" type="email" autocomplete="email" placeholder="you@example.com">
         <div class="hint" id="email-hint">We need a working email so the office can reply to you.</div>
       </div>
+      <div class="field"><label for="issue-files">Photos or PDFs (optional)</label>
+        <input id="issue-files" type="file" accept="image/*,application/pdf" multiple>
+        <div class="hint">Attach up to four photos or PDFs, 5 MB each. These are kept with the case as maintenance evidence.</div>
+      </div>
       <div class="actions">
         <button class="btn primary" id="report-btn" onclick="report()">Send report</button>
         <span class="who" id="report-note" aria-live="polite"></span>
@@ -116,10 +120,11 @@ function render(){
     const th=(c.thread||[]).map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> · ${ago(t.at)}</span><div>${esc(t.text)}</div></div>`).join('');
     const thread=th?`<details class="msgs" open><summary>Conversation · ${(c.thread||[]).length}</summary>${th}</details>`:(['closed','resolved','declined'].includes(c.status)?'':'<div class="fineprint">No messages yet — you can add one below.</div>');
     const reply=c.status==='closed'?'':`<div class="actions"><input placeholder="ask something or add detail…" id="trp-${c.id}" autocomplete="off" onkeydown="if(event.key==='Enter')tenantReply(${c.id},this)"><button class="btn" onclick="tenantReply(${c.id},this)">Send to office</button></div>`;
+    const resolution=c.status==='resolved'?`<div class="actions"><button class="btn primary" onclick="confirmResolution(this,${c.id})">This is fixed</button><button class="btn danger" onclick="reopenUnresolved(this,${c.id})">Still not fixed</button></div>`:'';
     return `<div class="card ${flips[c.id]?'flash-once':''}"><h3>#${c.id}</h3>
       <div class="meta">${when(c.status_at||c.submitted_at)} · <span class="badge ${esc(c.status)}">${esc(STATUS_LABEL[c.status]||c.status)}</span></div>
       <div class="details">${esc(c.message)}</div>
-      ${plainTriage(c)}${who}${thread}${reply}</div>`;}).join('')
+      ${plainTriage(c)}${who}${thread}${resolution}${reply}</div>`;}).join('')
     :`<div class="empty">Nothing reported yet. If something needs attention — a drip, a dead socket, a door that sticks — describe it in the box above and you will get a case number straight away.</div>`;
   const myDocs=docs.filter(d=>d.status!=='rejected');
   document.getElementById('docs').innerHTML=prop?[
@@ -173,6 +178,23 @@ async function tenantReply(id,btn){ const el=document.getElementById('trp-'+id);
     el.value=''; toast('Sent to the office — they see it on the case.'); await load(); }
   catch(e){ toast('Could not send — try again or phone the office.','bad'); }
   finally{ if(btn)delete btn.dataset.busy; } }
+async function confirmResolution(btn,id){
+  if(btn&&btn.dataset.busy)return; if(btn)btn.dataset.busy='1';
+  try{ await post('/api/case-action',{id,action:'confirm_resolution'}); toast('Thanks — the repair is now closed on your record.'); await load(); }
+  catch(e){ toast(e.message||'Could not confirm yet.','bad'); }
+  finally{ if(btn)delete btn.dataset.busy; }
+}
+async function reopenUnresolved(btn,id){
+  const text=prompt('What is still wrong?')||''; if(!text.trim()){toast('Add a quick note so the office knows what to chase.','bad');return;}
+  if(btn&&btn.dataset.busy)return; if(btn)btn.dataset.busy='1';
+  try{ await post('/api/case-action',{id,action:'reopen_unresolved',text}); toast('Sent back to the office as unresolved.'); await load(); }
+  catch(e){ toast(e.message||'Could not reopen yet.','bad'); }
+  finally{ if(btn)delete btn.dataset.busy; }
+}
+async function fileAttachment(file){
+  const raw=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=reject;r.readAsDataURL(file);});
+  return {file_name:file.name,content_type:file.type||'application/octet-stream',content_b64:raw.split(',')[1]||''};
+}
 async function report(){
   const text=msg.value.trim();
   if(!text){ toast('Tell us what is going on first.','bad'); msg.focus();
@@ -182,9 +204,11 @@ async function report(){
   document.getElementById('report-note').textContent='Sending…';
   try{
     const prop=stage.properties.find(p=>p.tenant===ME);
-    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text});
-    msg.value='';
-    toast(`Logged as #${res.case_id}. ${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
+    const files=Array.from(document.getElementById('issue-files').files||[]).slice(0,4);
+    const attachments=await Promise.all(files.map(fileAttachment));
+    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments});
+    msg.value=''; document.getElementById('issue-files').value='';
+    toast(`Logged as #${res.case_id}. ${res.document_ids?.length?res.document_ids.length+' evidence file(s) saved. ':''}${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
     await load();
   }catch(e){ toast(e.message&&e.message!=='failed'?e.message:'Could not send — try again or ring the office.','bad'); }
   finally{ btn.disabled=false; btn.textContent='Send report'; document.getElementById('report-note').textContent=''; }
