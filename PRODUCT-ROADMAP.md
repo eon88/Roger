@@ -407,18 +407,18 @@ The opening question is:
 
 ## 10.1 Daily command centre
 
-- [ ] Urgent maintenance
-- [ ] Safety-critical items
-- [ ] New tenant enquiries
-- [ ] New landlord enquiries
-- [ ] New trades applications
-- [ ] Approvals waiting
-- [ ] Quotes waiting
-- [ ] Appointments today
-- [ ] Overdue actions
-- [ ] Rent arrears
-- [ ] Tenancies ending soon
-- [ ] Compliance expiring soon
+- [x] Urgent maintenance
+- [x] Safety-critical items
+- [x] New tenant enquiries
+- [x] New landlord enquiries
+- [x] New trades applications
+- [x] Approvals waiting
+- [x] Quotes waiting
+- [x] Appointments today
+- [x] Overdue actions
+- [x] Rent arrears
+- [x] Tenancies ending soon
+- [x] Compliance expiring soon
 - [ ] Unread conversations
 
 Suggested structure:
@@ -438,20 +438,22 @@ Recently resolved
 
 ## 10.2 Global search
 
-- [ ] Search people
-- [ ] Search properties
-- [ ] Search cases
-- [ ] Search jobs
-- [ ] Search documents
-- [ ] Search by email / phone / reference
+- [x] Search people
+- [x] Search properties
+- [x] Search cases
+- [x] Search jobs
+- [x] Search documents
+- [x] Search by email / phone / reference
 
 ## 10.3 Global timeline
 
-- [ ] See every important event chronologically
-- [ ] Filter by property
-- [ ] Filter by person
-- [ ] Filter by case
-- [ ] Filter by event type
+- [x] See every important event chronologically
+- [x] Filter by property
+- [x] Filter by person
+- [x] Filter by case
+- [x] Filter by event type
+
+**Priority 10 implementation:** the Agent Desk overview now includes a Today cockpit with explicit counts for urgent maintenance, safety-critical cases, new tenant enquiries, landlord enquiries, trades applications, approvals, quotes, today's appointments, overdue actions, rent arrears, tenancies ending soon and compliance deadlines. Global search covers people, properties, cases, jobs, communications, registrations, appointments, documents, compliance records and contact references. The activity log is filterable by property, person, case/reference and event type. Unread conversation counts remain open until Roger stores message read state.
 
 ---
 
@@ -1040,4 +1042,6 @@ For each roadmap item:
 
 **Priority 9 progress:** the public advertising page now works as three acquisition funnels. Tenants can search homes, view property details and submit enquiry, viewing or application requests with property context. Landlords and trades can send funnel-specific enquiries into the existing CRM/approval pipelines and still reach the full registration forms. Pricing tables and credential document upload remain open.
 
-Next: **Priority 10 — Agent Desk cockpit expansion**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 10 progress:** the Agent Desk now has a Today cockpit for urgent work, safety risk, new enquiries/applications, waiting approvals, quotes, appointments, arrears, ending tenancies and compliance deadlines. Global search is live across the main operational objects, and the activity log can be filtered by property, person, case/reference and event type. Unread conversation counts need message read-state before they can be added honestly.
+
+Next: **Priority 11 — Communications hub**, with PostgreSQL cutover parked until a database is provisioned.
