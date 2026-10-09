@@ -186,7 +186,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -297,6 +297,11 @@ class H(SimpleHTTPRequestHandler):
             if not self.require({"agent"}):
                 return
             return self._json({"tasks": load_stage().get("tasks", [])})
+        if path == "/api/notifications":
+            u = self.require({"agent", "tenant", "landlord", "trades"})
+            if not u:
+                return
+            return self._json({"notifications": self.scoped_notifications(u)})
         if path == "/api/public":
             return self.serve_public_listings()
         if path == "/api/whoami":
@@ -448,6 +453,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/landlord-statement-action": self.handle_landlord_statement_action,
             "/api/compliance-action": self.handle_compliance_action,
             "/api/task-action": self.handle_task_action,
+            "/api/notification-action": self.handle_notification_action,
         }
         if path in handlers:
             return handlers[path](data)
@@ -2345,6 +2351,86 @@ class H(SimpleHTTPRequestHandler):
         self.audit(stage, {"actor": actor, "action": f"task_{action}", "target": task["id"], "note": task.get("title", "")})
         save_stage(stage)
         return self._json({"success": True, "task": task})
+
+    # ---------- notifications ----------
+    NOTIFICATION_TYPES = (
+        "agent_alert", "landlord_approval_request", "tenant_appointment",
+        "trades_job", "compliance_reminder", "rent_arrears_reminder",
+        "reminder_email", "general",
+    )
+
+    def scoped_notifications(self, u):
+        stage = load_stage()
+        notes = stage.get("notifications", [])
+        if u["role"] == "agent":
+            return notes
+        return [n for n in notes if n.get("recipient_role") == u["role"]
+                and (not n.get("recipient_name") or n.get("recipient_name") == u.get("display_name"))]
+
+    def handle_notification_action(self, data):
+        stage = load_stage()
+        action = data.get("action") or "create"
+        notes = stage.setdefault("notifications", [])
+        actor = (self.user or {}).get("display_name", "Agent")
+        if action == "create":
+            if (self.user or {}).get("role") != "agent":
+                return self._json({"error": "only agents can create notifications"}, 403)
+            ntype = data.get("notification_type") if data.get("notification_type") in self.NOTIFICATION_TYPES else "general"
+            title = str(data.get("title", ""))[:160].strip()
+            message = str(data.get("message", ""))[:1200].strip()
+            role = data.get("recipient_role") if data.get("recipient_role") in ("agent", "tenant", "landlord", "trades") else "agent"
+            if not title or not message:
+                return self._json({"error": "title and message are required"}, 400)
+            nums = [int(n["id"].split("-")[1]) for n in notes if re.fullmatch(r"note-\d+", n.get("id", ""))]
+            channels = data.get("channels") if isinstance(data.get("channels"), list) else ["in_app"]
+            channels = [c for c in channels if c in ("in_app", "email")]
+            if not channels:
+                channels = ["in_app"]
+            note = {
+                "id": f"note-{(max(nums) + 1) if nums else 1}",
+                "notification_type": ntype,
+                "title": title,
+                "message": message,
+                "recipient_role": role,
+                "recipient_name": str(data.get("recipient_name", ""))[:120] or None,
+                "channels": channels,
+                "email_to": str(data.get("email_to", ""))[:254] or None,
+                "email_status": "queued" if "email" in channels else None,
+                "status": "unread",
+                "property_id": data.get("property_id") or None,
+                "case_id": data.get("case_id") or None,
+                "job_id": data.get("job_id") or None,
+                "task_id": data.get("task_id") or None,
+                "due_at": str(data.get("due_at", ""))[:40] or None,
+                "created_by": actor,
+                "created_at": now(),
+                "read_at": None,
+            }
+            notes.append(note)
+            self.audit(stage, {"actor": actor, "action": "notification_created", "target": note["id"], "note": title})
+            save_stage(stage)
+            return self._json({"success": True, "notification": note})
+        note = next((n for n in notes if n.get("id") == data.get("id")), None)
+        if not note:
+            return self._json({"error": "notification not found"}, 404)
+        if (self.user or {}).get("role") != "agent" and note not in self.scoped_notifications(self.user):
+            return self._json({"error": "not your notification"}, 403)
+        if action == "read":
+            note["status"] = "read"
+            note["read_at"] = now()
+        elif action == "unread":
+            note["status"] = "unread"
+            note["read_at"] = None
+        elif action == "sent":
+            if (self.user or {}).get("role") != "agent":
+                return self._json({"error": "only agents can mark email sent"}, 403)
+            note["email_status"] = "sent"
+            note["email_sent_at"] = now()
+        else:
+            return self._json({"error": "unsupported notification action"}, 400)
+        self.audit(stage, {"actor": actor, "action": f"notification_{action}", "target": note["id"], "note": note.get("title", "")})
+        save_stage(stage)
+        return self._json({"success": True, "notification": note})
 
     # ---------- appointments ----------
     def scoped_appointments(self, u):
