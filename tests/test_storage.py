@@ -148,6 +148,39 @@ class AtomicStorageTests(unittest.TestCase):
         self.assertEqual(appt["status"], "completed")
         self.assertEqual(appt["outcome"], "Boiler serviced and certificate requested")
 
+    def test_task_action_creates_and_completes_related_task(self):
+        handler = serve.H.__new__(serve.H)
+        handler.user = {"username": "agent", "role": "agent", "display_name": "Agent"}
+        response = []
+        handler._json = lambda payload, status=200: response.append((payload, status))
+        stage = {"tasks": [], "audit_log": []}
+        with patch.object(serve, "load_stage", return_value=stage), patch.object(serve, "save_stage"):
+            serve.H.handle_task_action(handler, {
+                "action": "create",
+                "title": "Chase contractor quote",
+                "owner": "Repairs desk",
+                "priority": "high",
+                "due_date": "2027-02-01",
+                "reminder_at": "2027-01-31T09:00:00Z",
+                "recurrence": "weekly",
+                "property_id": "home-1",
+                "case_id": 42,
+                "job_id": "job-7",
+            })
+            task = stage["tasks"][0]
+            serve.H.handle_task_action(handler, {"id": task["id"], "action": "complete"})
+        self.assertEqual(response[0][1], 200)
+        self.assertEqual(task["title"], "Chase contractor quote")
+        self.assertEqual(task["owner"], "Repairs desk")
+        self.assertEqual(task["priority"], "high")
+        self.assertEqual(task["reminder_at"], "2027-01-31T09:00:00Z")
+        self.assertEqual(task["recurrence"], "weekly")
+        self.assertEqual(task["property_id"], "home-1")
+        self.assertEqual(task["case_id"], 42)
+        self.assertEqual(task["job_id"], "job-7")
+        self.assertEqual(task["status"], "completed")
+        self.assertTrue(task["completed_at"])
+
     def test_atomic_write_roundtrips_and_restricts_file_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "stage.json"
