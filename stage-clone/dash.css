@@ -163,6 +163,10 @@ select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .appt:first-child{border-top:none}
 .appt .date{font-family:var(--font-display);font-size:20px;font-weight:600;color:var(--accent-deep);line-height:1.1}
 .appt .because{font-size:13px;color:var(--muted)}
+.diary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.day{border:1px solid var(--line-soft);border-radius:var(--r-sm);padding:10px;min-height:120px;background:var(--paper)}
+.mini-appt{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--card);color:var(--ink);padding:7px 8px;margin-top:8px;font:inherit;font-size:12px;cursor:pointer}
+.mini-appt span{display:block;color:var(--accent-deep);font-weight:700}
 .filechip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border:1px solid var(--line-strong);border-radius:999px;font-size:13px;color:var(--accent);background:var(--card)}
 .filechip:hover{border-color:var(--accent)}
 .divider{flex:1}
