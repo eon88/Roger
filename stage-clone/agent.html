@@ -174,8 +174,36 @@ function renderAttentionBoard(){
   const over=(rows,view,prefix,labelFn,detailFn)=>{(rows||[]).forEach(x=>{const d=deadline(x);if(activeRecord(x)&&d&&Number.isFinite(Date.parse(d))&&Date.parse(d)<now)add(overdue,labelFn(x),detailFn(x)+' · due '+fmtDate(d),view,prefix(x),'overdue');});};
   over(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id,x=>propertyName(x.property_id));over(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id,x=>propertyName(x.property_id));over(stage.registrations,'registrations',x=>'reg-'+x.id,x=>'Application · '+(x.name||x.id),x=>x.email||'');over(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>propertyName(x.property_id));
   (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)<now).forEach(a=>add(overdue,'Appointment outcome needs recording · '+(a.title||a.id),propertyName(a.property_id)+' · was '+fmtDate(a.start_time),'overview','appointment-'+a.id,'check'));
+  const dayStart=new Date();dayStart.setHours(0,0,0,0);const dayEnd=dayStart.getTime()+86400000;
+  const soon=now+60*86400000;
+  const bucket=(label,items,view,hot)=>`<a class="stat ${hot&&items.length?'hot':''}" href="#" onclick="show('${esc(view)}');return false"><div class="value">${items.length}</div><div class="label">${esc(label)}</div></a>`;
+  const urgentCases=(stage.cases||[]).filter(c=>activeRecord(c)&&c.triage?.category==='maintenance'&&Number(c.triage?.urgency)>=2);
+  const safetyCases=(stage.cases||[]).filter(c=>activeRecord(c)&&Number(c.triage?.safety)>=0.75);
+  const newTenantEnquiries=(stage.cases||[]).filter(c=>activeRecord(c)&&c.type==='enquiry'&&['renter','tenant'].includes(c.role)&&c.status==='new');
+  const newLandlordEnquiries=(stage.registrations||[]).filter(r=>r.role==='landlord'&&r.status==='pending');
+  const newTradesApplications=(stage.registrations||[]).filter(r=>r.role==='trades'&&r.status==='pending');
+  const approvalsWaiting=(stage.approvals||[]).filter(a=>a.status==='pending');
+  const quotesWaiting=(stage.jobs||[]).filter(j=>j.status==='quoted');
+  const appointmentsToday=(window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)>=dayStart.getTime()&&Date.parse(a.start_time)<dayEnd);
+  const rentArrears=(ledgerEntries||[]).filter(x=>x.status==='overdue'&&(x.balance_pence||0)>0);
+  const tenanciesEnding=(stage.tenancies||[]).filter(t=>['notice_given','checkout'].includes(t.status)||(t.end_date&&Number.isFinite(Date.parse(t.end_date))&&Date.parse(t.end_date)>=now&&Date.parse(t.end_date)<=soon));
+  const complianceSoon=(window.complianceRecords||[]).filter(x=>['expiring_soon','expired','missing'].includes(x.status)||x.reminder_due);
+  const cockpit='<div class="card"><div class="cardtop"><h3>Today cockpit</h3><span class="badge">'+new Date().toLocaleDateString('en-GB')+'</span></div><div class="stats compact">'+
+    bucket('urgent maintenance',urgentCases,'cases',true)+
+    bucket('safety critical',safetyCases,'cases',true)+
+    bucket('new tenant enquiries',newTenantEnquiries,'prospects',false)+
+    bucket('new landlord enquiries',newLandlordEnquiries,'prospects',false)+
+    bucket('new trades applications',newTradesApplications,'prospects',false)+
+    bucket('approvals waiting',approvalsWaiting,'jobs',true)+
+    bucket('quotes waiting',quotesWaiting,'jobs',true)+
+    bucket('appointments today',appointmentsToday,'overview',false)+
+    bucket('overdue actions',overdue,'overview',true)+
+    bucket('rent arrears',rentArrears,'money',true)+
+    bucket('tenancies ending soon',tenanciesEnding,'people',false)+
+    bucket('compliance due',complianceSoon,'compliance',true)+
+    '</div><div class="fineprint">Unread conversation counts need a message-read state before Roger can report them honestly.</div></div>';
   const panel=(title,items,empty)=>'<div class="card"><div class="cardtop"><h3>'+title+'</h3><span class="badge '+(items.length?'pending':'completed')+'">'+items.length+'</span></div>'+(items.length?items.slice(0,6).map(x=>deskLink(x.label,x.detail,x.view,x.id,x.tag)).join('')+(items.length>6?'<div class="meta">Showing 6 of '+items.length+' matching items.</div>':''):'<div class="meta">'+empty+'</div>')+'</div>';
-  return '<div class="move">daily command centre</div><div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
+  return '<div class="move">daily command centre</div>'+cockpit+'<div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
 }
 function renderOverview(){
   const cases=(stage.cases||[]).filter(c=>!['closed','resolved','declined'].includes(c.status));
@@ -579,9 +607,27 @@ async function saveComplianceRecord(btn){
  await busy(btn,async()=>{try{await post('/api/compliance-action',{action,property_id:document.getElementById('compliance-property').value,requirement_type:document.getElementById('compliance-type').value,document_id:document.getElementById('compliance-document').value,issue_date:document.getElementById('compliance-issue').value,expiry_date:document.getElementById('compliance-expiry').value,reminder_date:document.getElementById('compliance-reminder').value,notes:document.getElementById('compliance-notes').value});toast('Compliance record saved to the property history.');load();}catch(e){}});
 }
 function renderHistory(){
-  const log=(stage.audit_log||[]).slice().reverse();
-  document.getElementById('view-history').innerHTML=`<div class="move">activity log</div>`+
-    (log.length?`<div class="card"><table class="log">`+log.map(e=>`<tr><td><span class="when" title="${esc(new Date(e.at).toLocaleString('en-GB'))}">${new Date(e.at).toLocaleTimeString('en-GB')}</span></td><td>${esc(e.actor)}</td><td><b>${esc(e.action)}</b> ${esc(e.target||'')}</td><td>${esc(e.note||'')}</td></tr>`).join('')+`</table></div>`:'<div class="empty">Nothing logged yet. Every decision on this desk writes a line here.</div>');
+  const propOptions=(stage.properties||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
+  const propId=window.historyProperty||'',person=String(window.historyPerson||'').trim().toLowerCase(),caseRef=String(window.historyCase||'').trim().toLowerCase(),eventType=String(window.historyEventType||'').trim().toLowerCase();
+  const prop=(stage.properties||[]).find(p=>p.id===propId);
+  const hay=e=>[e.actor,e.action,e.target,e.note].filter(Boolean).join(' ').toLowerCase();
+  const log=(stage.audit_log||[]).slice().reverse().filter(e=>{
+    const text=hay(e);
+    if(propId&&!(text.includes(propId.toLowerCase())||text.includes(String(prop?.title||'').toLowerCase())))return false;
+    if(person&&!text.includes(person))return false;
+    if(caseRef&&!text.includes(caseRef.replace(/^case-?/,'').toLowerCase())&&!text.includes(caseRef))return false;
+    if(eventType&&!String(e.action||'').toLowerCase().includes(eventType))return false;
+    return true;
+  });
+  document.getElementById('view-history').innerHTML=`<div class="move">activity log</div>
+    <div class="card"><div class="grid2">
+      <label class="field"><span>Property</span><select id="history-property" onchange="window.historyProperty=this.value;renderHistory()"><option value="">All properties</option>${propOptions}</select></label>
+      <label class="field"><span>Person</span><input id="history-person" value="${esc(window.historyPerson||'')}" placeholder="Actor, tenant, landlord or trade" onchange="window.historyPerson=this.value;renderHistory()"></label>
+      <label class="field"><span>Case / reference</span><input id="history-case" value="${esc(window.historyCase||'')}" placeholder="Case, job, document or registration" onchange="window.historyCase=this.value;renderHistory()"></label>
+      <label class="field"><span>Event type</span><input id="history-event-type" value="${esc(window.historyEventType||'')}" placeholder="approved, created, changed..." onchange="window.historyEventType=this.value;renderHistory()"></label>
+    </div></div>`+
+    (log.length?`<div class="card"><table class="log">`+log.map(e=>`<tr><td><span class="when" title="${esc(new Date(e.at).toLocaleString('en-GB'))}">${new Date(e.at).toLocaleTimeString('en-GB')}</span></td><td>${esc(e.actor)}</td><td><b>${esc(e.action)}</b> ${esc(e.target||'')}</td><td>${esc(e.note||'')}</td></tr>`).join('')+`</table></div>`:'<div class="empty">No timeline events match those filters.</div>');
+  const selected=document.getElementById('history-property');if(selected)selected.value=propId;
 }
 
 function show(v){ document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
