@@ -1,5 +1,6 @@
 """Regression tests for the agent-managed acquisition pipeline."""
 from pathlib import Path
+import base64
 import sys
 import unittest
 from unittest.mock import patch
@@ -526,6 +527,45 @@ class ProspectStageTests(unittest.TestCase):
         })
         self.assertEqual(self.stage["cases"][0]["follow_up_at"], "2026-10-12")
         self.assertEqual(self.stage["audit_log"][-1]["action"], "case_follow_up_set")
+        self.saved.assert_called_once_with(self.stage)
+        self.assertEqual(self.responses[-1][1], 200)
+
+    def test_tenant_issue_can_store_maintenance_evidence_documents(self):
+        self.handler.user = {"username": "tenant", "display_name": "Prospect", "role": "tenant"}
+        self.stage["properties"] = [{"id": "home-1", "title": "Home", "tenant": "Prospect"}]
+        self.stage["jobs"] = []
+        self.handler.triage = lambda message: {
+            "category": "maintenance", "trade": "plumbing", "urgency": 1, "safety": 0.2,
+        }
+        self.handler.store_document_body = lambda raw: "a" * 64
+        serve.H.handle_tenant_issue(self.handler, {
+            "property_id": "home-1", "email": "tenant@example.test",
+            "message": "Leak under the sink",
+            "attachments": [{
+                "file_name": "leak.jpg", "content_type": "image/jpeg",
+                "content_b64": base64.b64encode(b"photo").decode("ascii"),
+            }],
+        })
+        created = self.stage["cases"][-1]
+        self.assertEqual(created["document_ids"], ["doc-1"])
+        self.assertEqual(self.stage["documents"][0]["document_type"], "maintenance_evidence")
+        self.assertEqual(self.stage["jobs"][0]["evidence_document_ids"], ["doc-1"])
+        self.assertEqual(self.responses[-1][0]["document_ids"], ["doc-1"])
+        self.assertEqual(self.responses[-1][1], 200)
+
+    def test_tenant_can_confirm_or_reopen_resolved_repair(self):
+        self.handler.user = {"username": "tenant", "display_name": "Prospect", "role": "tenant"}
+        self.stage["cases"][0]["status"] = "resolved"
+        serve.H.handle_case_action(self.handler, {"id": 490, "action": "confirm_resolution"})
+        self.assertEqual(self.stage["cases"][0]["status"], "closed")
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "tenant_confirmed_resolution")
+        self.saved.reset_mock()
+        self.stage["cases"][0]["status"] = "resolved"
+        serve.H.handle_case_action(self.handler, {
+            "id": 490, "action": "reopen_unresolved", "text": "Still dripping",
+        })
+        self.assertEqual(self.stage["cases"][0]["status"], "reported")
+        self.assertEqual(self.stage["audit_log"][-1]["action"], "tenant_reopened_unresolved")
         self.saved.assert_called_once_with(self.stage)
         self.assertEqual(self.responses[-1][1], 200)
 
