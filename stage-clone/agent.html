@@ -14,6 +14,7 @@
       <a href="#" class="tab" data-view="cases">Cases</a>
       <a href="#" class="tab" data-view="jobs">Jobs</a>
       <a href="#" class="tab" data-view="communications">Communications</a>
+      <a href="#" class="tab" data-view="notifications">Notifications</a>
       <a href="#" class="tab" data-view="tasks">Tasks</a>
       <a href="#" class="tab" data-view="money">Money</a>
       <a href="#" class="tab" data-view="compliance">Compliance</a>
@@ -33,6 +34,7 @@
     <section id="view-cases" style="display:none"></section>
     <section id="view-jobs" style="display:none"></section>
     <section id="view-communications" style="display:none"></section>
+    <section id="view-notifications" style="display:none"></section>
     <section id="view-tasks" style="display:none"></section>
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
@@ -120,6 +122,7 @@ async function load(manual){
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
     try{ const t=await api('/api/tasks'); window._tasks=t.tasks||[] }catch(e){ window._tasks=[] }
+    try{ const n=await api('/api/notifications'); window._notifications=n.notifications||[] }catch(e){ window._notifications=[] }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
     try{ window.landlordStatements=(await api('/api/landlord-statements')).statements||[] }catch(e){ window.landlordStatements=[] }
@@ -133,7 +136,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -149,7 +152,7 @@ function goDeskResult(view,id){show(view);if(id)setTimeout(()=>document.getEleme
 function deskSearchText(x){return Object.values(x||{}).filter(v=>typeof v==='string'||typeof v==='number').join(' ').toLowerCase();}
 function renderDeskSearch(q){
   deskSearch=String(q||'');const host=document.getElementById('desk-search-results');if(!host)return;
-  if(deskSearch.trim().length<2){host.innerHTML='<div class="meta">Search names and contacts, properties, cases, jobs, tasks, registrations, appointments and documents.</div>';return;}
+  if(deskSearch.trim().length<2){host.innerHTML='<div class="meta">Search names and contacts, properties, cases, jobs, tasks, notifications, registrations, appointments and documents.</div>';return;}
   const needle=deskSearch.trim().toLowerCase(),found=[];const prop=id=>(stage.properties||[]).find(p=>p.id===id);
   const add=(rows,view,idFn,labelFn,detailFn)=>{for(const x of rows||[]){const detail=detailFn?detailFn(x):'';if((deskSearchText(x)+' '+detail).toLowerCase().includes(needle))found.push({label:labelFn(x),detail,view,id:idFn? idFn(x):''});}};
   add(stage.properties,'properties',x=>'property-'+x.id,x=>x.title||x.id,x=>x.area||'');
@@ -162,6 +165,7 @@ function renderDeskSearch(q){
   add(stage.tenancies,'people',x=>x.id,x=>'Tenancy '+x.id,x=>[prop(x.property_id)?.title,(x.tenant_party_ids||[]).map(id=>(stage.parties||[]).find(p=>p.id===id)?.display_name||id).join(', '),x.status].filter(Boolean).join(' · '));
   add(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>[prop(x.property_id)?.title,x.status,x.start_time,x.description].filter(Boolean).join(' · '));
   add(window._tasks,'tasks',x=>'task-'+x.id,x=>x.title||'Task',x=>[prop(x.property_id)?.title,x.status,x.priority,x.due_date,x.owner,x.description].filter(Boolean).join(' · '));
+  add(window._notifications,'notifications',x=>'notification-'+x.id,x=>x.title||'Notification',x=>[prop(x.property_id)?.title,x.status,x.recipient_role,x.notification_type,x.message].filter(Boolean).join(' · '));
   add(window._docs,'overview',x=>'doc-'+x.id,x=>x.title||x.file_name||'Document',x=>[prop(x.property_id)?.title,x.document_type,x.status].filter(Boolean).join(' · '));
   host.innerHTML=found.length?found.slice(0,12).map(x=>deskLink(x.label,x.detail,x.view,x.id,'')).join(''):'<div class="empty">No matching records.</div>';
 }
@@ -199,6 +203,7 @@ function renderAttentionBoard(){
   const complianceSoon=(window.complianceRecords||[]).filter(x=>['expiring_soon','expired','missing'].includes(x.status)||x.reminder_due);
   const unreadConversations=(stage.cases||[]).filter(caseUnread);
   const tasksDue=(window._tasks||[]).filter(t=>activeRecord(t)&&t.due_date&&Number.isFinite(Date.parse(t.due_date))&&Date.parse(t.due_date)<=week);
+  const unreadNotes=(window._notifications||[]).filter(n=>n.status==='unread');
   const cockpit='<div class="card"><div class="cardtop"><h3>Today cockpit</h3><span class="badge">'+new Date().toLocaleDateString('en-GB')+'</span></div><div class="stats compact">'+
     bucket('urgent maintenance',urgentCases,'cases',true)+
     bucket('safety critical',safetyCases,'cases',true)+
@@ -214,6 +219,7 @@ function renderAttentionBoard(){
     bucket('compliance due',complianceSoon,'compliance',true)+
     bucket('unread conversations',unreadConversations,'communications',true)+
     bucket('tasks due',tasksDue,'tasks',tasksDue.some(t=>Date.parse(t.due_date)<now||t.priority==='urgent'))+
+    bucket('notifications',unreadNotes,'notifications',unreadNotes.length>0)+
     '</div></div>';
   const panel=(title,items,empty)=>'<div class="card"><div class="cardtop"><h3>'+title+'</h3><span class="badge '+(items.length?'pending':'completed')+'">'+items.length+'</span></div>'+(items.length?items.slice(0,6).map(x=>deskLink(x.label,x.detail,x.view,x.id,x.tag)).join('')+(items.length>6?'<div class="meta">Showing 6 of '+items.length+' matching items.</div>':''):'<div class="meta">'+empty+'</div>')+'</div>';
   return '<div class="move">daily command centre</div>'+cockpit+'<div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
@@ -232,7 +238,7 @@ function renderOverview(){
   const quiet=(urg+gated+unassigned+waiting.length+regs)===0;
   document.getElementById('view-overview').innerHTML=`
       ${renderAttentionBoard()}
-      <div class="card"><label class="field"><span>Search Roger</span><input id="desk-search" type="text" value="${esc(deskSearch)}" placeholder="Name, property, case, job or email" aria-label="Search Roger records"></label><div id="desk-search-results" aria-live="polite">${deskSearch?'<div class="meta">Updating search…</div>':'<div class="meta">Search names and contacts, properties, cases, jobs, tasks, registrations, appointments and documents.</div>'}</div></div>
+      <div class="card"><label class="field"><span>Search Roger</span><input id="desk-search" type="text" value="${esc(deskSearch)}" placeholder="Name, property, case, job or email" aria-label="Search Roger records"></label><div id="desk-search-results" aria-live="polite">${deskSearch?'<div class="meta">Updating search…</div>':'<div class="meta">Search names and contacts, properties, cases, jobs, tasks, notifications, registrations, appointments and documents.</div>'}</div></div>
       <div class="move">overview</div>
       ${quiet?'<div class="triage-line">All clear today. New reports land here as tenants send them.</div>':''}
       <div class="stats">
@@ -323,6 +329,27 @@ async function emailCommunicationReply(btn,id){
  if(!textValue){toast('Type a reply first.','bad');return;}
  await busy(btn,async()=>{try{await post('/api/email-reply',{id,text:textValue});input.value='';window.commQuery='';toast('Email sent and recorded on the case timeline.');load();}catch(e){}});
 }
+const NOTIFICATION_TYPES={agent_alert:'Agent alert',landlord_approval_request:'Landlord approval request',tenant_appointment:'Tenant appointment notification',trades_job:'Trades job notification',compliance_reminder:'Compliance reminder',rent_arrears_reminder:'Rent / arrears reminder',reminder_email:'Reminder email',general:'General'};
+function notificationEntityLine(n){
+ const p=(stage.properties||[]).find(x=>x.id===n.property_id)||{};
+ return [p.title||n.property_id,n.case_id?'case #'+n.case_id:'',n.job_id?'job '+n.job_id:'',n.task_id?'task '+n.task_id:''].filter(Boolean).join(' · ');
+}
+function renderNotifications(){
+ const notes=window._notifications||[],props=stage.properties||[],tasks=window._tasks||[];
+ const typeOptions=Object.entries(NOTIFICATION_TYPES).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
+ const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
+ const taskOptions=tasks.filter(activeRecord).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>').join('');
+ const rows=notes.slice().reverse().map(n=>'<div class="card" id="notification-'+esc(n.id)+'"><div class="cardtop"><h3>'+esc(n.title||n.id)+'</h3><span class="badge '+(n.status==='unread'?'pending':'completed')+'">'+esc(n.status||'unread')+'</span></div><div class="meta">'+esc(NOTIFICATION_TYPES[n.notification_type]||n.notification_type||'Notification')+' · to '+esc(n.recipient_role||'agent')+(n.recipient_name?' / '+esc(n.recipient_name):'')+(n.due_at?' · due '+esc(n.due_at):'')+'</div><div class="details">'+esc(n.message||'')+'</div><div class="meta">'+esc(notificationEntityLine(n)||'No related record')+' · channels: '+esc((n.channels||['in_app']).join(', '))+(n.email_status?' · email '+esc(n.email_status):'')+'</div><div class="actions"><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\''+(n.status==='unread'?'read':'unread')+'\')">Mark '+(n.status==='unread'?'read':'unread')+'</button>'+(n.email_status==='queued'?'<button class="btn primary" onclick="notificationAction(this,\''+esc(n.id)+'\',\'sent\')">Mark email sent</button>':'')+'</div></div>').join('');
+ document.getElementById('view-notifications').innerHTML='<div class="move">notification centre</div><p class="fineprint">Create in-app alerts and email outbox items for tenants, landlords, trades and agents. SMTP delivery for general notifications is tracked separately from case email replies.</p>'+
+ '<div class="stats"><div class="stat '+(notes.some(n=>n.status==='unread')?'hot':'')+'"><div class="value">'+notes.filter(n=>n.status==='unread').length+'</div><div class="label">unread</div></div><div class="stat"><div class="value">'+notes.filter(n=>(n.channels||[]).includes('email')).length+'</div><div class="label">email outbox</div></div><div class="stat"><div class="value">'+notes.filter(n=>n.email_status==='queued').length+'</div><div class="label">queued emails</div></div></div>'+
+ '<div class="card"><h2>Create notification</h2><div class="grid2"><label class="field"><span>Type</span><select id="note-type">'+typeOptions+'</select></label><label class="field"><span>Recipient role</span><select id="note-role"><option value="agent">Agent</option><option value="tenant">Tenant</option><option value="landlord">Landlord</option><option value="trades">Trades</option></select></label><label class="field"><span>Recipient name</span><input id="note-name" placeholder="Optional display name"></label><label class="field"><span>Email to</span><input id="note-email" type="email" placeholder="Optional email address"></label><label class="field"><span>Property</span><select id="note-property"><option value="">No property</option>'+propOptions+'</select></label><label class="field"><span>Case ID</span><input id="note-case"></label><label class="field"><span>Job ID</span><input id="note-job"></label><label class="field"><span>Related task</span><select id="note-task"><option value="">No task</option>'+taskOptions+'</select></label><label class="field"><span>Due / reminder time</span><input id="note-due" type="datetime-local"></label></div><div class="field"><span>Channels</span><label><input type="checkbox" name="note-channel" value="in_app" checked> In-app</label> <label><input type="checkbox" name="note-channel" value="email"> Email outbox</label></div><label class="field"><span>Title</span><input id="note-title" maxlength="160"></label><label class="field"><span>Message</span><textarea id="note-message" rows="3" maxlength="1200"></textarea></label><button class="btn primary" onclick="createNotification(this)">Create notification</button></div>'+
+ '<div class="move">notifications</div>'+(rows||'<div class="empty">No notifications yet.</div>');
+}
+async function createNotification(btn){
+ const channels=Array.from(document.querySelectorAll('input[name="note-channel"]:checked')).map(x=>x.value),due=document.getElementById('note-due').value;
+ await busy(btn,async()=>{try{await post('/api/notification-action',{action:'create',notification_type:document.getElementById('note-type').value,recipient_role:document.getElementById('note-role').value,recipient_name:document.getElementById('note-name').value,email_to:document.getElementById('note-email').value,property_id:document.getElementById('note-property').value,case_id:document.getElementById('note-case').value,job_id:document.getElementById('note-job').value,task_id:document.getElementById('note-task').value,due_at:due?due+':00Z':'',channels,title:document.getElementById('note-title').value,message:document.getElementById('note-message').value});toast('Notification created.');load();}catch(e){}});
+}
+async function notificationAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/notification-action',{id,action});toast('Notification updated.');load();}catch(e){}});}
 async function sendCommunicationReply(btn,id){
  const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
  if(!textValue){toast('Type a reply first.','bad');return;}
