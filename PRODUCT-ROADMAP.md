@@ -541,17 +541,19 @@ dispatch     landlord
 
 Remaining gaps:
 
-- [ ] Photos on maintenance reports
-- [ ] Attachments
+- [x] Photos on maintenance reports
+- [x] Attachments
 - [ ] SLA timers
-- [ ] Appointment scheduling linked to jobs
+- [x] Appointment scheduling linked to jobs
 - [ ] Automatic reminders
 - [ ] Contractor arrival / completion updates
-- [ ] Tenant confirmation
-- [ ] Reopen if unresolved
+- [x] Tenant confirmation
+- [x] Reopen if unresolved
 - [ ] Before / after evidence
 - [ ] Better job history
 - [ ] Contractor performance history
+
+**Priority 12 implementation:** tenants can now attach up to four image/PDF evidence files when reporting a maintenance issue; the files are stored as private document records and linked to the case and job. Resolved repairs show tenant controls to confirm the fix or reopen the case as unresolved, and both actions are audited. Appointment booking was already linked to cases. SLA timers, automatic reminders, contractor arrival/completion updates, before/after completion evidence, richer job history and contractor performance history remain open.
 
 ---
 
@@ -1048,4 +1050,6 @@ For each roadmap item:
 
 **Priority 11 progress:** the Communications hub now has unread/read state, one-place portal/email replies, internal notes and follow-up dates on case conversations. Messages remain tied to cases and properties; direct Party/tenancy threading, draft help, templates, SMS, WhatsApp and telephone notes remain open.
 
-Next: **Priority 12 — Maintenance engine**, with PostgreSQL cutover parked until a database is provisioned.
+**Priority 12 progress:** tenant maintenance reports can now carry private image/PDF evidence files into the case, document store and job record. Tenants can confirm a resolved repair or send it back as unresolved, with both decisions audited. SLA timers, automatic reminders, contractor arrival/completion updates, before/after completion evidence and performance history remain open.
+
+Next: **Priority 13 — Money / financial engine**, with PostgreSQL cutover parked until a database is provisioned.
