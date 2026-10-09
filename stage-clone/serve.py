@@ -475,6 +475,48 @@ class H(SimpleHTTPRequestHandler):
             "text": str(text)[:2000], "to": list(to), "at": now()})
         return c
 
+    def store_case_attachments(self, stage, case, attachments, uploaded_by):
+        """Store small issue evidence files as document records linked to the case."""
+        if not attachments:
+            return []
+        if not isinstance(attachments, list):
+            raise ValueError("attachments must be a list")
+        import base64
+        created = []
+        for item in attachments[:4]:
+            if not isinstance(item, dict):
+                continue
+            b64 = str(item.get("content_b64", ""))
+            try:
+                raw = base64.b64decode(b64, validate=True)
+            except Exception as exc:
+                raise ValueError("attachment content_b64 must be valid base64") from exc
+            if not raw:
+                continue
+            if len(raw) > 5 * 1024 * 1024:
+                raise ValueError("attachment file too large (max 5 MB)")
+            fname = os.path.basename(str(item.get("file_name", "evidence"))[:120]) or "evidence"
+            fname = re.sub(r"[^A-Za-z0-9._ -]", "_", fname)
+            content_type = str(item.get("content_type", "application/octet-stream"))[:80]
+            if not (content_type.startswith("image/") or content_type == "application/pdf"):
+                raise ValueError("attachments must be images or PDFs")
+            doc_id = f"doc-{len(stage.get('documents', [])) + len(created) + 1}"
+            created.append({
+                "id": doc_id, "case_id": case["id"], "property_id": case.get("property_id"),
+                "document_type": "maintenance_evidence", "title": "Maintenance evidence",
+                "description": "Uploaded with tenant maintenance report",
+                "file_name": fname, "content_type": content_type, "file_size": len(raw),
+                "storage_key": self.store_document_body(raw),
+                "uploaded_by": uploaded_by, "uploaded_at": now(),
+                "verified_by": None, "verified_at": None, "status": "pending", "notes": "",
+            })
+        if created:
+            stage.setdefault("documents", []).extend(created)
+            case.setdefault("document_ids", []).extend(d["id"] for d in created)
+            self.audit(stage, {"actor": uploaded_by, "action": "maintenance_evidence_uploaded",
+                               "target": case["id"], "note": str(len(created)) + " file(s)"})
+        return created
+
     def approved_trades(self, stage):
         """Companies an agent may put on a case: seeded profiles + approved registrations."""
         out = []
@@ -1133,6 +1175,10 @@ class H(SimpleHTTPRequestHandler):
         }
         stage["next_case_id"] = case["id"] + 1
         stage.setdefault("cases", []).append(case)
+        try:
+            docs = self.store_case_attachments(stage, case, data.get("attachments"), name or "Tenant")
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
         job = None
         if t["category"] == "maintenance":
             stage.setdefault("jobs", [])
@@ -1148,12 +1194,16 @@ class H(SimpleHTTPRequestHandler):
                 "invoice_pence": None,
                 "created_at": now(),
             }
+            if case.get("document_ids"):
+                job["evidence_document_ids"] = list(case["document_ids"])
             stage["jobs"].append(job)
             case["status"] = "dispatched"
         self.audit(stage, {"actor": "system", "action": "case_created", "target": case["id"],
                            "note": f"{t['category']}/{t.get('trade','-')} urgency {t['urgency']}"})
         save_stage(stage)
-        self._json({"success": True, "case_id": case["id"], "triage": t, "job_id": job["id"] if job else None})
+        self._json({"success": True, "case_id": case["id"], "triage": t,
+                    "job_id": job["id"] if job else None,
+                    "document_ids": [d["id"] for d in docs] if docs else []})
 
     # ---------- trades: BOOK → complete → settle or escalate ----------
     def credential_check(self, job, tradesperson):
@@ -1836,7 +1886,7 @@ class H(SimpleHTTPRequestHandler):
         u = getattr(self, "user", None) or {}
         if action in ("close", "reopen", "add_tradesperson", "mark_read", "mark_unread", "note", "follow_up") and u.get("role") != "agent":
             return self._json({"error": "agent-only move"}, 403)
-        if action in ("reply", "inform") and u.get("role") == "tenant" and c.get("name") != u.get("display_name"):
+        if action in ("reply", "inform", "confirm_resolution", "reopen_unresolved") and u.get("role") == "tenant" and c.get("name") != u.get("display_name"):
             return self._json({"error": "not your case"}, 403)
         if action in ("reply", "inform") and u.get("role") == "landlord" and not any(
                 p["id"] == c.get("property_id") and p.get("landlord") == u.get("display_name")
@@ -1908,6 +1958,23 @@ class H(SimpleHTTPRequestHandler):
                 })
             self.audit(stage, {"actor": u.get("display_name", "agent"), "action": "case_follow_up_set",
                                "target": c["id"], "note": follow_up_at})
+        elif action == "confirm_resolution":
+            if c.get("status") not in ("resolved", "awaiting_confirmation"):
+                return self._json({"error": "only resolved cases can be confirmed"}, 409)
+            c["status"] = "closed"
+            c["tenant_confirmed_at"] = now()
+            self.post_msg(stage, c["id"], "Tenant confirmed the repair is resolved.", to=("agent", "landlord", "trades"))
+            self.audit(stage, {"actor": u.get("display_name", "tenant"), "action": "tenant_confirmed_resolution",
+                               "target": c["id"]})
+        elif action == "reopen_unresolved":
+            reason = str(data.get("text", "")).strip()[:1000]
+            if not reason:
+                return self._json({"error": "explain what is still unresolved"}, 400)
+            c["status"] = "reported"
+            c["reopened_at"] = now()
+            self.post_msg(stage, c["id"], "This repair is still unresolved: " + reason, to=("agent", "landlord", "trades"))
+            self.audit(stage, {"actor": u.get("display_name", "tenant"), "action": "tenant_reopened_unresolved",
+                               "target": c["id"], "note": reason[:120]})
         else:
             return self._json({"error": f"unknown action {action}"}, 400)
         save_stage(stage)
@@ -2062,7 +2129,7 @@ class H(SimpleHTTPRequestHandler):
         if not prop:
             return self._json({"error": "property not found (pass property_id or a valid case_id)"}, 404)
         dtype = str(data.get("document_type", "other"))[:40]
-        allowed = ("tenancy_agreement", "deposit_receipt", "inspection_report", "id_proof", "other")
+        allowed = ("tenancy_agreement", "deposit_receipt", "inspection_report", "id_proof", "maintenance_evidence", "other")
         if dtype not in allowed:
             return self._json({"error": f"document_type must be one of {', '.join(allowed)}"}, 400)
         b64 = str(data.get("content_b64", ""))
