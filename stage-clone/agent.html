@@ -14,6 +14,7 @@
       <a href="#" class="tab" data-view="cases">Cases</a>
       <a href="#" class="tab" data-view="jobs">Jobs</a>
       <a href="#" class="tab" data-view="communications">Communications</a>
+      <a href="#" class="tab" data-view="tasks">Tasks</a>
       <a href="#" class="tab" data-view="money">Money</a>
       <a href="#" class="tab" data-view="compliance">Compliance</a>
       <a href="#" class="tab" data-view="appointments">Appointments</a>
@@ -32,6 +33,7 @@
     <section id="view-cases" style="display:none"></section>
     <section id="view-jobs" style="display:none"></section>
     <section id="view-communications" style="display:none"></section>
+    <section id="view-tasks" style="display:none"></section>
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
     <section id="view-appointments" style="display:none"></section>
@@ -117,6 +119,7 @@ const fl=k=>FL.flip[k]?'flash-once':'';
 async function load(manual){
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
+    try{ const t=await api('/api/tasks'); window._tasks=t.tasks||[] }catch(e){ window._tasks=[] }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
     try{ window.landlordStatements=(await api('/api/landlord-statements')).statements||[] }catch(e){ window.landlordStatements=[] }
@@ -130,7 +133,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -146,7 +149,7 @@ function goDeskResult(view,id){show(view);if(id)setTimeout(()=>document.getEleme
 function deskSearchText(x){return Object.values(x||{}).filter(v=>typeof v==='string'||typeof v==='number').join(' ').toLowerCase();}
 function renderDeskSearch(q){
   deskSearch=String(q||'');const host=document.getElementById('desk-search-results');if(!host)return;
-  if(deskSearch.trim().length<2){host.innerHTML='<div class="meta">Search names and contacts, properties, cases, jobs, registrations, appointments and documents.</div>';return;}
+  if(deskSearch.trim().length<2){host.innerHTML='<div class="meta">Search names and contacts, properties, cases, jobs, tasks, registrations, appointments and documents.</div>';return;}
   const needle=deskSearch.trim().toLowerCase(),found=[];const prop=id=>(stage.properties||[]).find(p=>p.id===id);
   const add=(rows,view,idFn,labelFn,detailFn)=>{for(const x of rows||[]){const detail=detailFn?detailFn(x):'';if((deskSearchText(x)+' '+detail).toLowerCase().includes(needle))found.push({label:labelFn(x),detail,view,id:idFn? idFn(x):''});}};
   add(stage.properties,'properties',x=>'property-'+x.id,x=>x.title||x.id,x=>x.area||'');
@@ -158,6 +161,7 @@ function renderDeskSearch(q){
   add(stage.parties,'people',x=>x.id,x=>x.display_name||x.id,x=>[x.kind,(x.roles||[]).join(', '),x.email,x.phone,x.status].filter(Boolean).join(' · '));
   add(stage.tenancies,'people',x=>x.id,x=>'Tenancy '+x.id,x=>[prop(x.property_id)?.title,(x.tenant_party_ids||[]).map(id=>(stage.parties||[]).find(p=>p.id===id)?.display_name||id).join(', '),x.status].filter(Boolean).join(' · '));
   add(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>[prop(x.property_id)?.title,x.status,x.start_time,x.description].filter(Boolean).join(' · '));
+  add(window._tasks,'tasks',x=>'task-'+x.id,x=>x.title||'Task',x=>[prop(x.property_id)?.title,x.status,x.priority,x.due_date,x.owner,x.description].filter(Boolean).join(' · '));
   add(window._docs,'overview',x=>'doc-'+x.id,x=>x.title||x.file_name||'Document',x=>[prop(x.property_id)?.title,x.document_type,x.status].filter(Boolean).join(' · '));
   host.innerHTML=found.length?found.slice(0,12).map(x=>deskLink(x.label,x.detail,x.view,x.id,'')).join(''):'<div class="empty">No matching records.</div>';
 }
@@ -173,10 +177,11 @@ function renderAttentionBoard(){
   (stage.approvals||[]).filter(x=>x.status==='pending').forEach(x=>add(waiting,'Landlord approval · '+(x.id||'request'),propertyName(x.property_id)+' · '+money(x.amount_pence),'jobs',x.job_id?'job-'+x.job_id:'','landlord'));
   (stage.jobs||[]).filter(j=>['quote_requested','assigned','in_progress'].includes(j.status)).forEach(j=>add(waiting,j.status==='quote_requested'?'Quote requested · '+j.id:'Work with trades · '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,'trades'));
   (window._appts||[]).filter(a=>a.status==='proposed').forEach(a=>add(waiting,'Appointment awaiting reply · '+(a.title||a.id),propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'invitee'));
+  (window._tasks||[]).filter(t=>activeRecord(t)&&t.due_date&&Number.isFinite(Date.parse(t.due_date))&&Date.parse(t.due_date)<=week).forEach(t=>add(t.priority==='urgent'||Date.parse(t.due_date)<now?needs:upcoming,'Task · '+(t.title||t.id),propertyName(t.property_id)+' · due '+fmtDate(t.due_date),'tasks','task-'+t.id,t.priority||'normal'));
   (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)>=now&&Date.parse(a.start_time)<=week).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time)).forEach(a=>add(upcoming,a.title||'Appointment',propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'confirmed'));
   const deadline=x=>x.due_at||x.next_action_at||x.follow_up_at||'';
   const over=(rows,view,prefix,labelFn,detailFn)=>{(rows||[]).forEach(x=>{const d=deadline(x);if(activeRecord(x)&&d&&Number.isFinite(Date.parse(d))&&Date.parse(d)<now)add(overdue,labelFn(x),detailFn(x)+' · due '+fmtDate(d),view,prefix(x),'overdue');});};
-  over(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id,x=>propertyName(x.property_id));over(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id,x=>propertyName(x.property_id));over(stage.registrations,'registrations',x=>'reg-'+x.id,x=>'Application · '+(x.name||x.id),x=>x.email||'');over(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>propertyName(x.property_id));
+  over(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id,x=>propertyName(x.property_id));over(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id,x=>propertyName(x.property_id));over(stage.registrations,'registrations',x=>'reg-'+x.id,x=>'Application · '+(x.name||x.id),x=>x.email||'');over(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>propertyName(x.property_id));over(window._tasks,'tasks',x=>'task-'+x.id,x=>x.title||'Task',x=>propertyName(x.property_id));
   (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)<now).forEach(a=>add(overdue,'Appointment outcome needs recording · '+(a.title||a.id),propertyName(a.property_id)+' · was '+fmtDate(a.start_time),'overview','appointment-'+a.id,'check'));
   const dayStart=new Date();dayStart.setHours(0,0,0,0);const dayEnd=dayStart.getTime()+86400000;
   const soon=now+60*86400000;
@@ -193,6 +198,7 @@ function renderAttentionBoard(){
   const tenanciesEnding=(stage.tenancies||[]).filter(t=>['notice_given','checkout'].includes(t.status)||(t.end_date&&Number.isFinite(Date.parse(t.end_date))&&Date.parse(t.end_date)>=now&&Date.parse(t.end_date)<=soon));
   const complianceSoon=(window.complianceRecords||[]).filter(x=>['expiring_soon','expired','missing'].includes(x.status)||x.reminder_due);
   const unreadConversations=(stage.cases||[]).filter(caseUnread);
+  const tasksDue=(window._tasks||[]).filter(t=>activeRecord(t)&&t.due_date&&Number.isFinite(Date.parse(t.due_date))&&Date.parse(t.due_date)<=week);
   const cockpit='<div class="card"><div class="cardtop"><h3>Today cockpit</h3><span class="badge">'+new Date().toLocaleDateString('en-GB')+'</span></div><div class="stats compact">'+
     bucket('urgent maintenance',urgentCases,'cases',true)+
     bucket('safety critical',safetyCases,'cases',true)+
@@ -207,6 +213,7 @@ function renderAttentionBoard(){
     bucket('tenancies ending soon',tenanciesEnding,'people',false)+
     bucket('compliance due',complianceSoon,'compliance',true)+
     bucket('unread conversations',unreadConversations,'communications',true)+
+    bucket('tasks due',tasksDue,'tasks',tasksDue.some(t=>Date.parse(t.due_date)<now||t.priority==='urgent'))+
     '</div></div>';
   const panel=(title,items,empty)=>'<div class="card"><div class="cardtop"><h3>'+title+'</h3><span class="badge '+(items.length?'pending':'completed')+'">'+items.length+'</span></div>'+(items.length?items.slice(0,6).map(x=>deskLink(x.label,x.detail,x.view,x.id,x.tag)).join('')+(items.length>6?'<div class="meta">Showing 6 of '+items.length+' matching items.</div>':''):'<div class="meta">'+empty+'</div>')+'</div>';
   return '<div class="move">daily command centre</div>'+cockpit+'<div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
@@ -225,7 +232,7 @@ function renderOverview(){
   const quiet=(urg+gated+unassigned+waiting.length+regs)===0;
   document.getElementById('view-overview').innerHTML=`
       ${renderAttentionBoard()}
-      <div class="card"><label class="field"><span>Search Roger</span><input id="desk-search" type="text" value="${esc(deskSearch)}" placeholder="Name, property, case, job or email" aria-label="Search Roger records"></label><div id="desk-search-results" aria-live="polite">${deskSearch?'<div class="meta">Updating search…</div>':'<div class="meta">Search names and contacts, properties, cases, jobs, registrations, appointments and documents.</div>'}</div></div>
+      <div class="card"><label class="field"><span>Search Roger</span><input id="desk-search" type="text" value="${esc(deskSearch)}" placeholder="Name, property, case, job or email" aria-label="Search Roger records"></label><div id="desk-search-results" aria-live="polite">${deskSearch?'<div class="meta">Updating search…</div>':'<div class="meta">Search names and contacts, properties, cases, jobs, tasks, registrations, appointments and documents.</div>'}</div></div>
       <div class="move">overview</div>
       ${quiet?'<div class="triage-line">All clear today. New reports land here as tenants send them.</div>':''}
       <div class="stats">
@@ -577,6 +584,44 @@ async function saveTenancyStage(btn){
  const card=btn.closest('.card'),status=card.querySelector('.tenancy-stage').value,date=card.querySelector('.tenancy-date').value;
  await busy(btn,async()=>{try{await post('/api/tenancy-action',{action:'transition',id:btn.dataset.tenancyId,status,effective_date:date});toast('Tenancy stage updated.');load();}catch(e){}});
 }
+
+function taskEntityLine(t){
+ const p=(stage.properties||[]).find(x=>x.id===t.property_id)||{},party=(stage.parties||[]).find(x=>x.id===t.party_id)||{},ten=t.tenancy_id?'tenancy '+t.tenancy_id:'',c=t.case_id?'case #'+t.case_id:'',j=t.job_id?'job '+t.job_id:'';
+ return [p.title||t.property_id,party.display_name,ten,c,j].filter(Boolean).join(' · ');
+}
+function taskDueBadge(t){
+ if(t.status==='completed')return '<span class="badge completed">completed</span>';
+ if(t.status==='cancelled')return '<span class="badge cancelled">cancelled</span>';
+ if(!t.due_date)return '<span class="badge">no due date</span>';
+ const diff=Math.ceil((Date.parse(t.due_date)-Date.now())/86400000);
+ if(diff<0)return '<span class="badge overdue">overdue</span>';
+ if(diff<=7)return '<span class="badge pending">due soon</span>';
+ return '<span class="badge open">scheduled</span>';
+}
+function renderTasks(){
+ const tasks=window._tasks||[],props=stage.properties||[],parties=stage.parties||[],tenancies=stage.tenancies||[],cases=stage.cases||[],jobs=stage.jobs||[];
+ const q=String(window.taskQuery||'').trim().toLowerCase(),statusFilter=window.taskStatus||'',priorityFilter=window.taskPriority||'';
+ const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
+ const partyOptions=parties.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.display_name||p.id)+' · '+esc((p.roles||[]).join(', '))+'</option>').join('');
+ const tenancyOptions=tenancies.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc((props.find(p=>p.id===t.property_id)||{}).title||t.property_id)+'</option>').join('');
+ const caseOptions=cases.map(c=>'<option value="'+esc(c.id)+'">Case #'+esc(c.id)+' · '+esc((props.find(p=>p.id===c.property_id)||{}).title||c.property_id||'')+'</option>').join('');
+ const jobOptions=jobs.map(j=>'<option value="'+esc(j.id)+'">'+esc(j.id)+' · case #'+esc(j.case_id||'')+'</option>').join('');
+ const active=tasks.filter(activeRecord),now=Date.now();
+ const visible=tasks.filter(t=>{const text=[t.id,t.title,t.description,t.owner,t.priority,t.status,t.due_date,t.reminder_at,t.recurrence,taskEntityLine(t)].filter(Boolean).join(' ').toLowerCase();return (!q||text.includes(q))&&(!statusFilter||t.status===statusFilter)&&(!priorityFilter||t.priority===priorityFilter);}).sort((a,b)=>String(a.due_date||'9999').localeCompare(String(b.due_date||'9999')));
+ const examples=['Chase landlord approval','Chase contractor quote','Check tenant after repair','Renew EPC','Arrange gas inspection','Follow up landlord prospect','Follow up tenant application','Tenancy renewal reminder','Rent arrears follow-up'];
+ const rows=visible.map(t=>'<div class="card" id="task-'+esc(t.id)+'"><div class="cardtop"><h3>'+esc(t.title||t.id)+'</h3><span class="badge '+esc(t.priority||'normal')+'">'+esc(t.priority||'normal')+'</span></div><div class="meta">Owner: '+esc(t.owner||'Agent')+(t.due_date?' · due '+esc(t.due_date):'')+(t.reminder_at?' · reminder '+esc(t.reminder_at):'')+(t.recurrence&&t.recurrence!=='none'?' · repeats '+esc(t.recurrence):'')+'</div><div class="meta">'+esc(taskEntityLine(t)||'No related record')+'</div>'+(t.description?'<div class="details">'+esc(t.description)+'</div>':'')+'<div class="actions">'+(t.status==='completed'?'<button class="btn" onclick="taskAction(this,\''+esc(t.id)+'\',\'reopen\')">Reopen</button>':'<button class="btn primary" onclick="taskAction(this,\''+esc(t.id)+'\',\'complete\')">Complete</button>')+'<button class="btn danger" onclick="taskAction(this,\''+esc(t.id)+'\',\'cancel\')">Cancel</button></div>'+taskDueBadge(t)+'</div>').join('');
+ document.getElementById('view-tasks').innerHTML='<div class="move">tasks and automation</div><p class="fineprint">Tasks capture owner, due date, priority, reminders, recurrence and related Roger records. For now reminders are recorded in-app; outbound notification automation comes later.</p>'+
+ '<div class="stats"><div class="stat '+(active.some(t=>t.priority==='urgent')?'hot':'')+'"><div class="value">'+active.filter(t=>t.priority==='urgent').length+'</div><div class="label">urgent tasks</div></div><div class="stat '+(active.some(t=>t.due_date&&Date.parse(t.due_date)<now)?'hot':'')+'"><div class="value">'+active.filter(t=>t.due_date&&Date.parse(t.due_date)<now).length+'</div><div class="label">overdue</div></div><div class="stat"><div class="value">'+active.filter(t=>t.reminder_at).length+'</div><div class="label">with reminders</div></div></div>'+
+ '<div class="card"><h2>Create task</h2><div class="grid2"><label class="field"><span>Title</span><input id="task-title" list="task-examples" maxlength="160"></label><label class="field"><span>Owner</span><input id="task-owner" value="Agent"></label><label class="field"><span>Priority</span><select id="task-priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option><option value="low">Low</option></select></label><label class="field"><span>Due date</span><input id="task-due" type="date"></label><label class="field"><span>Reminder</span><input id="task-reminder" type="datetime-local"></label><label class="field"><span>Repeat</span><select id="task-recurrence"><option value="none">No repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></label><label class="field"><span>Property</span><select id="task-property"><option value="">No property</option>'+propOptions+'</select></label><label class="field"><span>Person / organisation</span><select id="task-party"><option value="">No person</option>'+partyOptions+'</select></label><label class="field"><span>Tenancy</span><select id="task-tenancy"><option value="">No tenancy</option>'+tenancyOptions+'</select></label><label class="field"><span>Case</span><select id="task-case"><option value="">No case</option>'+caseOptions+'</select></label><label class="field"><span>Job</span><select id="task-job"><option value="">No job</option>'+jobOptions+'</select></label></div><label class="field"><span>Description</span><textarea id="task-description" rows="2" maxlength="1000"></textarea></label><datalist id="task-examples">'+examples.map(x=>'<option value="'+esc(x)+'"></option>').join('')+'</datalist><button class="btn primary" onclick="createTask(this)">Create task</button></div>'+
+ '<div class="card"><div class="grid2"><label class="field"><span>Search</span><input value="'+esc(window.taskQuery||'')+'" placeholder="Task, owner or related record" onchange="window.taskQuery=this.value;renderTasks()"></label><label class="field"><span>Status</span><select id="task-status-filter" onchange="window.taskStatus=this.value;renderTasks()"><option value="">All statuses</option><option value="open">Open</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label><label class="field"><span>Priority</span><select id="task-priority-filter" onchange="window.taskPriority=this.value;renderTasks()"><option value="">All priorities</option><option value="urgent">Urgent</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></label></div></div>'+
+ '<div class="move">task list</div>'+(rows||'<div class="empty">No tasks match those filters.</div>');
+ const sf=document.getElementById('task-status-filter'),pf=document.getElementById('task-priority-filter');if(sf)sf.value=statusFilter;if(pf)pf.value=priorityFilter;
+}
+async function createTask(btn){
+ const reminder=document.getElementById('task-reminder').value;
+ await busy(btn,async()=>{try{await post('/api/task-action',{action:'create',title:document.getElementById('task-title').value,description:document.getElementById('task-description').value,owner:document.getElementById('task-owner').value,priority:document.getElementById('task-priority').value,due_date:document.getElementById('task-due').value,reminder_at:reminder?reminder+':00Z':'',recurrence:document.getElementById('task-recurrence').value,property_id:document.getElementById('task-property').value,party_id:document.getElementById('task-party').value,tenancy_id:document.getElementById('task-tenancy').value,case_id:document.getElementById('task-case').value,job_id:document.getElementById('task-job').value});toast('Task created.');load();}catch(e){}});
+}
+async function taskAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/task-action',{id,action});toast('Task updated.');load();}catch(e){}});}
 
 function renderMoney(){
  const eligible=(stage.tenancies||[]).filter(t=>t.agreement_status==='signed'&&['move_in_scheduled','active','renewal','notice_given'].includes(t.status));
