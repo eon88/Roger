@@ -126,18 +126,23 @@
     const rentFilter=document.getElementById('rentFilter');
     const money=pence=>'£'+Math.round((Number(pence)||0)/100).toLocaleString('en-GB')+' pcm';
     const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const fallback=[
-      {id:'sample-kingston',title:'Three-bedroom garden home',area:'Kingston',beds:3,rent:265000,deposit:305000,availableFrom:'Available now',description:'A practical family home with a garden, good storage and quick access to town centre transport.',sample:true},
-      {id:'sample-richmond',title:'Bright one-bedroom flat',area:'Richmond',beds:1,rent:145000,deposit:167000,availableFrom:'Available this month',description:'A compact, clean flat suited to a single tenant or couple looking for a managed home.',sample:true},
-      {id:'sample-twickenham',title:'Two-bedroom maisonette',area:'Twickenham',beds:2,rent:195000,deposit:225000,availableFrom:'Ask agent',description:'Two bedrooms, separate living room and a simple enquiry route into the Agent Desk.',sample:true}
-    ];
+    let listingsUnavailable=false;
     async function loadHomes(){
-      try{const res=await fetch('/api/public');const data=await res.json();state.properties=(data.properties&&data.properties.length?data.properties:fallback).map(p=>({...p,deposit:p.deposit||Math.round((p.rent||0)*1.15),photo:p.photo||'/sample-home.jpg'}));}
-      catch(e){state.properties=fallback.map(p=>({...p,photo:'/sample-home.jpg'}));}
+      try{
+        const res=await fetch('/api/public',{cache:'no-store'});
+        if(!res.ok)throw new Error('listing request failed');
+        const data=await res.json();
+        if(!Array.isArray(data.properties))throw new Error('invalid listing response');
+        state.properties=data.properties.map(p=>({...p,deposit:p.deposit||Math.round((p.rent||0)*1.15),photo:p.photo||'/sample-home.jpg'}));
+        listingsUnavailable=false;
+      }catch(e){
+        state.properties=[];
+        listingsUnavailable=true;
+      }
       renderHomes();
     }
     function filtered(){const q=searchBox.value.toLowerCase().trim();const beds=Number(bedsFilter.value||0);const max=Number(rentFilter.value||0);return state.properties.filter(p=>(!q||[p.title,p.area,p.description].join(' ').toLowerCase().includes(q))&&(!beds||Number(p.beds)>=beds)&&(!max||Number(p.rent)<=max));}
-    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo"><img src="${esc(p.photo)}" alt="${esc(p.title)}"><span class="badge">${p.sample?'Sample':'Available'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="muted">${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span></div><p>${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View details</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'property':'properties'}`;statHomes.textContent=items.length;}
+    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo"><img src="${esc(p.photo)}" alt="${esc(p.title)}"><span class="badge">${p.sample?'Sample':'Available'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="muted">${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span></div><p>${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View details</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.textContent=listingsUnavailable?'Listings are temporarily unavailable. Please try again later.':(state.properties.length===0?'There are no homes advertised right now. Contact the agency about future availability.':'No homes match your filters. Clear the filters or send a general enquiry.');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'property':'properties'}`;statHomes.textContent=items.length;}
     document.querySelectorAll('#searchBox,#bedsFilter,#rentFilter').forEach(el=>el.addEventListener('input',renderHomes));
     document.getElementById('clearFilters').addEventListener('click',()=>{searchBox.value='';bedsFilter.value='';rentFilter.value='';renderHomes();});
     cards.addEventListener('click',e=>{const id=e.target.dataset.open||e.target.dataset.quick;if(!id)return;openProperty(id,e.target.dataset.quick?'enquiry':null);});
