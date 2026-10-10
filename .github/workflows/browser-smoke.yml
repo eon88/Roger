@@ -1,0 +1,177 @@
+name: Roger four-role browser smoke
+
+on:
+  push:
+    branches:
+      - security/roger-priority-zero-20261010
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install isolated Chromium test tooling
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Exercise four real browser portals with synthetic identities
+        env:
+          DATA_DIR: /tmp/roger-browser-data
+          BIND_HOST: 127.0.0.1
+          PORT: "8901"
+          ROGER_ENV: security-lab
+          ROGER_LAB_HTTP_COOKIES: "1"
+          ROGER_ALLOWED_ORIGINS: http://127.0.0.1:8901
+        run: |
+          mkdir -p "$DATA_DIR" browser-results
+          python - <<'PY'
+          import hashlib, json, secrets
+          from pathlib import Path
+
+          root = Path("/tmp/roger-browser-data")
+          stage = json.loads(Path("stage-clone/stage.json").read_text())
+          for collection in (
+              "properties", "cases", "registrations", "jobs", "approvals",
+              "audit_log", "appointments", "invitations", "documents",
+          ):
+              stage[collection] = []
+          stage["parties"] = []
+          stage["next_party_id"] = 1
+          stage["next_case_id"] = 1
+
+          users = {"users": [], "sessions": {}}
+          for role in ("agent", "tenant", "landlord", "trades"):
+              salt = secrets.token_hex(16)
+              account_id = "account-" + secrets.token_hex(16)
+              password = "ci-browser-test-password-only"
+              users["users"].append({
+                  "username": "lab-" + role,
+                  "display_name": "Lab " + role,
+                  "role": role,
+                  "account_id": account_id,
+                  "salt": salt,
+                  "hash": hashlib.scrypt(
+                      password.encode(), salt=bytes.fromhex(salt),
+                      n=2**14, r=8, p=1
+                  ).hex()
+              })
+              if role != "agent":
+                  stage["parties"].append({
+                      "id": "party-" + str(stage["next_party_id"]),
+                      "kind": "person",
+                      "display_name": "Lab " + role,
+                      "roles": [role],
+                      "status": "active",
+                      "account_id": account_id
+                  })
+                  stage["next_party_id"] += 1
+
+          (root / "stage.json").write_text(json.dumps(stage))
+          (root / "users.json").write_text(json.dumps(users))
+          print("Synthetic fixtures created: 4 accounts, 3 parties, 0 business records")
+          PY
+
+          python stage-clone/serve.py > "$RUNNER_TEMP/roger-browser-server.log" 2>&1 &
+          ROGER_PID=$!
+          trap 'kill "$ROGER_PID" 2>/dev/null || true' EXIT
+
+          python - <<'PY'
+          import time, urllib.request
+          for _ in range(60):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8901/api/public", timeout=2) as response:
+                      if response.status == 200:
+                          print("Isolated Roger server ready")
+                          break
+              except Exception:
+                  pass
+              time.sleep(0.25)
+          else:
+              raise SystemExit("Isolated Roger did not become ready")
+          PY
+
+          node <<'JS'
+          const { chromium } = require('playwright');
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const base = 'http://127.0.0.1:8901';
+          const password = 'ci-browser-test-password-only';
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            try {
+              for (const role of ['agent', 'tenant', 'landlord', 'trades']) {
+                const context = await browser.newContext();
+                const page = await context.newPage();
+                const errors = [];
+                page.on('pageerror', e => errors.push(e.message));
+                try {
+                  await page.goto(base + '/login');
+                  await page.locator('#u').fill('lab-' + role);
+                  await page.locator('#p').fill(password);
+                  await Promise.all([
+                    page.waitForURL(base + '/' + role, {timeout: 12000}),
+                    page.locator('#go').click()
+                  ]);
+                  await page.locator('#main[aria-busy="false"]').waitFor({timeout: 12000});
+                  const data = await page.evaluate(async () => {
+                    const response = await fetch('/api/stage');
+                    if (!response.ok) throw new Error('stage returned ' + response.status);
+                    return response.json();
+                  });
+                  assert.deepEqual(data.properties, []);
+                  assert.deepEqual(data.jobs, []);
+                  if (role !== 'agent') {
+                    assert.equal(data.role, role);
+                    assert.equal(Object.hasOwn(data, 'parties'), false);
+                  }
+                  if (role === 'agent') {
+                    const views = [
+                      'overview', 'cases', 'jobs', 'communications',
+                      'notifications', 'tasks', 'money', 'compliance',
+                      'appointments', 'documents', 'registrations',
+                      'prospects', 'people', 'properties', 'history'
+                    ];
+                    for (const view of views) {
+                      await page.locator('nav a[data-view="' + view + '"]').click();
+                    }
+                  }
+                  if (errors.length) throw new Error('Uncaught page errors: ' + errors.join(' | '));
+                  await page.getByRole('button', {name: 'Log out'}).click();
+                  await page.waitForURL(base + '/login', {timeout: 12000});
+                  const who = await page.evaluate(async () =>
+                    (await (await fetch('/api/whoami')).json()).authenticated
+                  );
+                  assert.equal(who, false);
+                  console.log('PASS ' + role + ': browser login, dashboard rendering, session isolation, logout');
+                } catch (e) {
+                  await page.screenshot({path: 'browser-results/' + role + '-failure.png', fullPage: true}).catch(() => {});
+                  throw new Error(role + ' browser smoke failed: ' + e.message);
+                } finally {
+                  await context.close();
+                }
+              }
+            } finally {
+              await browser.close();
+            }
+            console.log('FOUR-ROLE BROWSER SMOKE PASSED');
+          })().catch(err => { console.error(err.stack || err); process.exitCode = 1; });
+          JS
+      - name: Upload browser failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roger-browser-failures
+          path: browser-results/
+          if-no-files-found: ignore
