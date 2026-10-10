@@ -25,7 +25,7 @@
       <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
       <a href="#" class="tab" data-view="properties">Properties</a>
       <a href="#" class="tab" data-view="history">History</a>
-      <a href="/" class="tab out">Lettings site</a><a href="/logout" class="tab out">Log out</a>
+      <a href="/" class="tab out">Lettings site</a><form action="/logout" method="POST" style="display:contents"><input type="hidden" name="intent" value="logout"><button class="tab out" type="submit">Log out</button></form>
     </nav>
   </header>
   <div id="api-error" class="banner danger" style="display:none">Couldn't reach the portal. <button class="btn" onclick="load(true)">Try again</button></div>
@@ -334,6 +334,42 @@ function notificationEntityLine(n){
  const p=(stage.properties||[]).find(x=>x.id===n.property_id)||{};
  return [p.title||n.property_id,n.case_id?'case #'+n.case_id:'',n.job_id?'job '+n.job_id:'',n.task_id?'task '+n.task_id:''].filter(Boolean).join(' · ');
 }
+function refreshNotificationPartyOptions(){
+ const roleEl=document.getElementById('note-role');
+ const partyEl=document.getElementById('note-party');
+
+ if(!roleEl||!partyEl)return;
+
+ const role=roleEl.value;
+ const previous=partyEl.value;
+
+ if(role==='agent'){
+   partyEl.innerHTML='<option value="">Agent-only notification</option>';
+   partyEl.disabled=true;
+   return;
+ }
+
+ const choices=(stage.parties||[]).filter(p=>
+   p.status==='active' &&
+   !!p.account_id &&
+   Array.isArray(p.roles) &&
+   p.roles.includes(role)
+ );
+
+ partyEl.disabled=false;
+ partyEl.innerHTML=
+   '<option value="">Select verified recipient</option>'+
+   choices.map(p=>
+     '<option value="'+esc(p.id)+'">'+
+     esc(p.display_name||p.id)+' · '+esc(p.id)+
+     '</option>'
+   ).join('');
+
+ if(choices.some(p=>p.id===previous)){
+   partyEl.value=previous;
+ }
+}
+
 function renderNotifications(){
  const notes=window._notifications||[],props=stage.properties||[],tasks=window._tasks||[];
  const typeOptions=Object.entries(NOTIFICATION_TYPES).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
@@ -342,12 +378,63 @@ function renderNotifications(){
  const rows=notes.slice().reverse().map(n=>'<div class="card" id="notification-'+esc(n.id)+'"><div class="cardtop"><h3>'+esc(n.title||n.id)+'</h3><span class="badge '+(n.status==='unread'?'pending':'completed')+'">'+esc(n.status||'unread')+'</span></div><div class="meta">'+esc(NOTIFICATION_TYPES[n.notification_type]||n.notification_type||'Notification')+' · to '+esc(n.recipient_role||'agent')+(n.recipient_name?' / '+esc(n.recipient_name):'')+(n.due_at?' · due '+esc(n.due_at):'')+'</div><div class="details">'+esc(n.message||'')+'</div><div class="meta">'+esc(notificationEntityLine(n)||'No related record')+' · channels: '+esc((n.channels||['in_app']).join(', '))+(n.email_status?' · email '+esc(n.email_status):'')+'</div><div class="actions"><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\''+(n.status==='unread'?'read':'unread')+'\')">Mark '+(n.status==='unread'?'read':'unread')+'</button>'+(n.email_status==='queued'?'<button class="btn primary" onclick="notificationAction(this,\''+esc(n.id)+'\',\'sent\')">Mark email sent</button>':'')+'</div></div>').join('');
  document.getElementById('view-notifications').innerHTML='<div class="move">notification centre</div><p class="fineprint">Create in-app alerts and email outbox items for tenants, landlords, trades and agents. SMTP delivery for general notifications is tracked separately from case email replies.</p>'+
  '<div class="stats"><div class="stat '+(notes.some(n=>n.status==='unread')?'hot':'')+'"><div class="value">'+notes.filter(n=>n.status==='unread').length+'</div><div class="label">unread</div></div><div class="stat"><div class="value">'+notes.filter(n=>(n.channels||[]).includes('email')).length+'</div><div class="label">email outbox</div></div><div class="stat"><div class="value">'+notes.filter(n=>n.email_status==='queued').length+'</div><div class="label">queued emails</div></div></div>'+
- '<div class="card"><h2>Create notification</h2><div class="grid2"><label class="field"><span>Type</span><select id="note-type">'+typeOptions+'</select></label><label class="field"><span>Recipient role</span><select id="note-role"><option value="agent">Agent</option><option value="tenant">Tenant</option><option value="landlord">Landlord</option><option value="trades">Trades</option></select></label><label class="field"><span>Recipient name</span><input id="note-name" placeholder="Optional display name"></label><label class="field"><span>Email to</span><input id="note-email" type="email" placeholder="Optional email address"></label><label class="field"><span>Property</span><select id="note-property"><option value="">No property</option>'+propOptions+'</select></label><label class="field"><span>Case ID</span><input id="note-case"></label><label class="field"><span>Job ID</span><input id="note-job"></label><label class="field"><span>Related task</span><select id="note-task"><option value="">No task</option>'+taskOptions+'</select></label><label class="field"><span>Due / reminder time</span><input id="note-due" type="datetime-local"></label></div><div class="field"><span>Channels</span><label><input type="checkbox" name="note-channel" value="in_app" checked> In-app</label> <label><input type="checkbox" name="note-channel" value="email"> Email outbox</label></div><label class="field"><span>Title</span><input id="note-title" maxlength="160"></label><label class="field"><span>Message</span><textarea id="note-message" rows="3" maxlength="1200"></textarea></label><button class="btn primary" onclick="createNotification(this)">Create notification</button></div>'+
+ '<div class="card"><h2>Create notification</h2><div class="grid2"><label class="field"><span>Type</span><select id="note-type">'+typeOptions+'</select></label><label class="field"><span>Recipient role</span><select id="note-role" onchange="refreshNotificationPartyOptions()"><option value="agent">Agent</option><option value="tenant">Tenant</option><option value="landlord">Landlord</option><option value="trades">Trades</option></select></label><label class="field"><span>Recipient Party</span><select id="note-party"><option value="">Choose a verified recipient</option></select></label><label class="field"><span>Email to</span><input id="note-email" type="email" placeholder="Optional email address"></label><label class="field"><span>Property</span><select id="note-property"><option value="">No property</option>'+propOptions+'</select></label><label class="field"><span>Case ID</span><input id="note-case"></label><label class="field"><span>Job ID</span><input id="note-job"></label><label class="field"><span>Related task</span><select id="note-task"><option value="">No task</option>'+taskOptions+'</select></label><label class="field"><span>Due / reminder time</span><input id="note-due" type="datetime-local"></label></div><div class="field"><span>Channels</span><label><input type="checkbox" name="note-channel" value="in_app" checked> In-app</label> <label><input type="checkbox" name="note-channel" value="email"> Email outbox</label></div><label class="field"><span>Title</span><input id="note-title" maxlength="160"></label><label class="field"><span>Message</span><textarea id="note-message" rows="3" maxlength="1200"></textarea></label><button class="btn primary" onclick="createNotification(this)">Create notification</button></div>'+
  '<div class="move">notifications</div>'+(rows||'<div class="empty">No notifications yet.</div>');
+ refreshNotificationPartyOptions();
 }
 async function createNotification(btn){
- const channels=Array.from(document.querySelectorAll('input[name="note-channel"]:checked')).map(x=>x.value),due=document.getElementById('note-due').value;
- await busy(btn,async()=>{try{await post('/api/notification-action',{action:'create',notification_type:document.getElementById('note-type').value,recipient_role:document.getElementById('note-role').value,recipient_name:document.getElementById('note-name').value,email_to:document.getElementById('note-email').value,property_id:document.getElementById('note-property').value,case_id:document.getElementById('note-case').value,job_id:document.getElementById('note-job').value,task_id:document.getElementById('note-task').value,due_at:due?due+':00Z':'',channels,title:document.getElementById('note-title').value,message:document.getElementById('note-message').value});toast('Notification created.');load();}catch(e){}});
+ const role=document.getElementById('note-role').value;
+ const partyId=role==='agent'
+   ? null
+   : (document.getElementById('note-party').value||null);
+
+ if(role!=='agent'&&!partyId){
+   toast('Select a verified recipient Party.','bad');
+   return;
+ }
+
+ const party=partyId
+   ? (stage.parties||[]).find(p=>p.id===partyId)
+   : null;
+
+ if(partyId&&(
+   !party ||
+   party.status!=='active' ||
+   !party.account_id ||
+   !(party.roles||[]).includes(role)
+ )){
+   toast('Recipient is not an active linked Party.','bad');
+   return;
+ }
+
+ const channels=Array.from(
+   document.querySelectorAll('input[name="note-channel"]:checked')
+ ).map(x=>x.value);
+
+ const due=document.getElementById('note-due').value;
+
+ await busy(btn,async()=>{
+   try{
+     await post('/api/notification-action',{
+       action:'create',
+       notification_type:document.getElementById('note-type').value,
+       recipient_role:role,
+       recipient_party_id:partyId,
+       recipient_name:party?.display_name||null,
+       email_to:document.getElementById('note-email').value,
+       property_id:document.getElementById('note-property').value,
+       case_id:document.getElementById('note-case').value,
+       job_id:document.getElementById('note-job').value,
+       task_id:document.getElementById('note-task').value,
+       due_at:due?due+':00Z':'',
+       channels,
+       title:document.getElementById('note-title').value,
+       message:document.getElementById('note-message').value
+     });
+     toast('Notification created.');
+     load();
+   }catch(e){}
+ });
 }
 async function notificationAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/notification-action',{id,action});toast('Notification updated.');load();}catch(e){}});}
 async function sendCommunicationReply(btn,id){

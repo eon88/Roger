@@ -532,7 +532,19 @@ class ProspectStageTests(unittest.TestCase):
 
     def test_tenant_issue_can_store_maintenance_evidence_documents(self):
         self.handler.user = {"username": "tenant", "display_name": "Prospect", "role": "tenant"}
-        self.stage["properties"] = [{"id": "home-1", "title": "Home", "tenant": "Prospect"}]
+        self.handler.user["account_id"] = "account-fixture-tenant"
+        self.stage["parties"] = [{
+            "id": "party-fixture-tenant",
+            "account_id": "account-fixture-tenant",
+            "roles": ["tenant"],
+            "status": "active",
+        }]
+        self.stage["properties"] = [{
+            "id": "home-1",
+            "title": "Home",
+            "tenant": "Prospect",
+            "tenant_party_id": "party-fixture-tenant",
+        }]
         self.stage["jobs"] = []
         self.handler.triage = lambda message: {
             "category": "maintenance", "trade": "plumbing", "urgency": 1, "safety": 0.2,
@@ -555,7 +567,25 @@ class ProspectStageTests(unittest.TestCase):
 
     def test_tenant_can_confirm_or_reopen_resolved_repair(self):
         self.handler.user = {"username": "tenant", "display_name": "Prospect", "role": "tenant"}
-        self.stage["cases"][0]["status"] = "resolved"
+        self.handler.user["account_id"] = "account-fixture-tenant"
+        self.stage["parties"] = [{
+            "id": "party-fixture-tenant",
+            "account_id": "account-fixture-tenant",
+            "roles": ["tenant"],
+            "status": "active",
+        }]
+        self.stage["properties"] = [{
+            "id": "home-1",
+            "tenant": "Prospect",
+            "tenant_party_id": "party-fixture-tenant",
+        }]
+        self.stage["cases"][0].update({
+            "type": "issue",
+            "role": "tenant",
+            "property_id": "home-1",
+            "tenant_party_id": "party-fixture-tenant",
+            "status": "resolved",
+        })
         serve.H.handle_case_action(self.handler, {"id": 490, "action": "confirm_resolution"})
         self.assertEqual(self.stage["cases"][0]["status"], "closed")
         self.assertEqual(self.stage["audit_log"][-1]["action"], "tenant_confirmed_resolution")
