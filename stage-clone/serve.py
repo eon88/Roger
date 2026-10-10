@@ -17,6 +17,7 @@ import calendar
 import imaplib
 import hmac
 import http.cookies
+import mimetypes
 import json
 import os
 import re
@@ -157,9 +158,9 @@ class H(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=ROOT, **kw)
 
     # ---------- auth plumbing ----------
-    PUBLIC_GET = {"/", "/login", "/logout", "/signin", "/register/landlord", "/register/trades",
+    PUBLIC_GET = {"/", "/login", "/signin", "/register/landlord", "/register/trades",
               "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
-    PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry"}
+    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -169,6 +170,28 @@ class H(SimpleHTTPRequestHandler):
         except http.cookies.CookieError:
             pass
         return {k: m.value for k, m in c.items()}
+
+    @staticmethod
+    def session_cookie_header(token, revoke=False):
+        """Secure by default; permit HTTP only in isolated lab."""
+        cookie = http.cookies.SimpleCookie()
+        cookie["stage_session"] = "" if revoke else token
+        morsel = cookie["stage_session"]
+        morsel["httponly"] = True
+        morsel["samesite"] = "Lax"
+        morsel["path"] = "/"
+
+        if revoke:
+            morsel["max-age"] = 0
+
+        lab_http = (
+            os.environ.get("ROGER_ENV") == "security-lab"
+            and os.environ.get("ROGER_LAB_HTTP_COOKIES") == "1"
+        )
+        if not lab_http:
+            morsel["secure"] = True
+
+        return cookie.output(header="").strip()
 
     def session_user(self):
         tok = self.parse_cookies().get("stage_session")
@@ -223,7 +246,7 @@ class H(SimpleHTTPRequestHandler):
         return u
 
     def is_public(self, path):
-        return path in self.PUBLIC_GET or path.startswith("/_next/") or path == "/api/public"
+        return path in self.PUBLIC_GET or path.startswith("/_next/static/") or path == "/api/public"
 
     def do_POST_login(self, data):
         ip = self.client_address[0]
@@ -249,24 +272,48 @@ class H(SimpleHTTPRequestHandler):
         save_users(users)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        ck = http.cookies.SimpleCookie()
-        ck["stage_session"] = tok
-        ck["stage_session"]["httponly"] = True
-        ck["stage_session"]["samesite"] = "Lax"
-        ck["stage_session"]["path"] = "/"
-        self.send_header("Set-Cookie", ck.output(header="").strip())
+        self.send_header("Cache-Control", "no-store")
+        self.send_header(
+            "Set-Cookie",
+            self.session_cookie_header(tok)
+        )
         self.end_headers()
         self.wfile.write(json.dumps({"ok": True, "role": u["role"]}).encode())
 
     # ---------- routes ----------
+    def do_HEAD(self):
+        return self.send_error(405, "HEAD not supported")
+
+    def do_POST_logout(self, data):
+        """Revoke the presented session token on the server."""
+        token = self.parse_cookies().get("stage_session")
+        if token:
+            users = load_users()
+            sessions = users.get("sessions", {})
+            if isinstance(sessions, dict):
+                if sessions.pop(token, None) is not None:
+                    save_users(users)
+
+        self.send_response(303)
+        self.send_header(
+            "Set-Cookie",
+            self.session_cookie_header("", revoke=True)
+        )
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Location", "/login")
+        self.end_headers()
+
     def do_GET(self):
         path = self.path.split("?")[0]
+        if ("%" in path or "\\" in path or "//" in path
+                or any(x in (".", "..") for x in path.split("/"))):
+            return self.send_error(404)
         if path == "/login":
             return self.serve_file("login.html")
         if path == "/logout":
-            self.send_response(302)
-            self.send_header("Set-Cookie", "stage_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax")
-            self.send_header("Location", "/")
+            self.send_response(405)
+            self.send_header("Allow", "POST")
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
         if path == "/api/trades-pool":
@@ -339,9 +386,6 @@ class H(SimpleHTTPRequestHandler):
             if not self.can_view_document(u, doc):
                 return self._json({"error": "not your portal"}, 403)
             return self.serve_document_file(doc)
-        if not self.is_public(path):
-            if not self.require(self.ROLE_PAGES.get(path)):
-                return
         routes = {
             "/api/public": "api-public.json",
             "/api/stage": "__scoped_stage__",
@@ -353,13 +397,71 @@ class H(SimpleHTTPRequestHandler):
             "/landlord": "landlord.html",
             "/trades": "trades.html",
         }
+        public_files = {"/", "/dash.css", "/favicon.svg",
+                        "/sample-home.jpg"}
+        if (path not in routes and path not in public_files
+                and not path.startswith("/_next/static/")):
+            return self.send_error(404)
+        if not self.is_public(path):
+            if not self.require(self.ROLE_PAGES.get(path)):
+                return
         if path in routes:
             if routes[path] == "__scoped_stage__":
                 return self.serve_scoped_stage()
             return self.serve_file(routes[path])
-        if path != "/" and os.path.isdir(os.path.join(ROOT, path.lstrip("/"))):
-            self.path = path.rstrip("/") + ".html"
-        return super().do_GET()
+        # ROGER_PUBLIC_ASSET_ALLOWLIST
+        files = {
+            "/": ("index.html", "text/html; charset=utf-8"),
+            "/dash.css": ("dash.css", "text/css; charset=utf-8"),
+            "/favicon.svg": ("favicon.svg", "image/svg+xml"),
+            "/sample-home.jpg": ("sample-home.jpg", "image/jpeg"),
+        }
+        if path in files:
+            return self.serve_file(*files[path])
+
+        if path.startswith("/_next/static/"):
+            root = os.path.realpath(
+                os.path.join(ROOT, "_next", "static"))
+            target = os.path.realpath(
+                os.path.join(ROOT, path.lstrip("/")))
+            suffix = path.rsplit(".", 1)[-1].lower()
+            allowed = {"js", "css", "woff", "woff2",
+                       "ttf", "png", "jpg", "jpeg",
+                       "svg", "webp", "ico"}
+            if (os.path.commonpath((root, target)) != root
+                    or suffix not in allowed
+                    or not os.path.isfile(target)):
+                return self.send_error(404)
+            mime = mimetypes.guess_type(target)[0]
+            return self.serve_file(
+                path.lstrip("/"), mime or "application/octet-stream")
+
+        return self.send_error(404)
+
+    def account_party_ids(self, stage, user, role):
+        """Resolve ownership by immutable account ID, never a name."""
+        account_id = user.get("account_id")
+        if not account_id or not isinstance(account_id, str):
+            return set()
+        return {
+            p["id"] for p in stage.get("parties", [])
+            if isinstance(p, dict)
+            and isinstance(p.get("id"), str)
+            and p.get("status") == "active"
+            and p.get("account_id") == account_id
+            and role in p.get("roles", [])
+        }
+
+    def has_party_link(self, record, role, party_ids):
+        """Missing or ambiguous legacy ownership fails closed."""
+        if not party_ids or not isinstance(record, dict):
+            return False
+        one = record.get(role + "_party_id")
+        many = record.get(role + "_party_ids")
+        return (isinstance(one, str) and one in party_ids
+                or isinstance(many, list)
+                and any(isinstance(x, str) and x in party_ids
+                        for x in many))
 
     def serve_scoped_stage(self):
         """The audit's biggest hole closed: the SERVER decides what each role may see."""
@@ -371,62 +473,310 @@ class H(SimpleHTTPRequestHandler):
         me = u["display_name"]
         props = d.get("properties", [])
         if u["role"] == "tenant":
-            myprops = [p for p in props if p.get("tenant") == me]
-            mycases = [c for c in d.get("cases", []) if c.get("name") == me]
+            party_ids = self.account_party_ids(stage, u, "tenant")
+            myprops = [p for p in props
+                       if self.has_party_link(p, "tenant", party_ids)]
+            property_ids = {p["id"] for p in myprops}
+            mycases = [c for c in d.get("cases", [])
+                       if self.has_party_link(c, "tenant", party_ids)
+                       and (not c.get("property_id")
+                            or c.get("property_id") in property_ids)]
             cids = {c["id"] for c in mycases}
             myjobs = [{k: v for k, v in j.items() if k != "email"}
                       for j in d.get("jobs", []) if j.get("case_id") in cids]
             for c in mycases:
-                c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or []) or t.get("author") == me]
+                c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or [])
+                                        or t.get("author_account_id") == u.get("account_id")]
             d = {"properties": myprops, "cases": mycases, "jobs": myjobs,
                  "authority": d.get("authority"), "role": "tenant"}
         elif u["role"] == "landlord":
-            myprops = [p for p in props if p.get("landlord") == me]
+            party_ids = self.account_party_ids(stage, u, "landlord")
+            myprops = [p for p in props
+                       if self.has_party_link(p, "landlord", party_ids)]
             pids = {p["id"] for p in myprops}
             mycases = [c for c in d.get("cases", []) if c.get("property_id") in pids]
             for c in mycases:
-                c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or []) or t.get("author") == me]
+                c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or [])
+                                        or t.get("author_account_id") == u.get("account_id")]
             d = {"properties": myprops,
                  "cases": mycases,
                  "jobs": [j for j in d.get("jobs", []) if j.get("property_id") in pids],
-                 "approvals": [a for a in d.get("approvals", []) if a.get("landlord") == me],
+                 "approvals": [a for a in d.get("approvals", []) if (self.has_party_link(a, "landlord", party_ids)
+                                   and a.get("property_id") in pids)],
                  "authority": d.get("authority"), "role": "landlord"}
         elif u["role"] == "trades":
-            keep = ("id", "case_id", "property_id", "message", "triage", "required_trade",
-                    "status", "assigned_to", "requested_by", "gate_reason", "quotes",
-                    "approved_quote_pence", "invoice_pence", "created_at", "completed_at", "paid_at")
-            me = u["display_name"]
-            myjobs = [j for j in d.get("jobs", []) if j.get("status") == "open" or j.get("assigned_to") == me or j.get("requested_by") == me]
-            mycase_ids = {j.get("case_id") for j in myjobs}
+            ids = self.account_party_ids(stage, u, "trades")
+            jobs = d.get("jobs", [])
+
+            owned = [
+                j for j in jobs
+                if ids and (
+                    j.get("assigned_to_party_id") in ids
+                    or j.get("requested_by_party_id") in ids
+                )
+            ]
+
+            available = [
+                j for j in jobs
+                if ids
+                and j.get("status") == "open"
+                and not j.get("assigned_to")
+                and not j.get("assigned_to_party_id")
+                and not j.get("requested_by")
+                and not j.get("requested_by_party_id")
+            ]
+
+            private_fields = {
+                "id", "case_id", "property_id",
+                "message", "triage", "required_trade",
+                "status", "assigned_to", "requested_by",
+                "gate_reason", "quotes",
+                "approved_quote_pence", "invoice_pence",
+                "created_at", "completed_at", "paid_at",
+            }
+
+            private_jobs = [
+                {k: v for k, v in j.items()
+                 if k in private_fields}
+                for j in owned
+            ]
+
+            # An open job is a listing, not permission
+            # to read the tenant's full maintenance report.
+            public_jobs = []
+            for j in available:
+                triage = j.get("triage")
+                safe_triage = (
+                    {k: triage[k] for k in ("urgency", "safety")
+                     if k in triage}
+                    if isinstance(triage, dict) else None
+                )
+                public_jobs.append({
+                    "id": j.get("id"),
+                    "case_id": j.get("case_id"),
+                    "status": "open",
+                    "required_trade": j.get("required_trade"),
+                    "created_at": j.get("created_at"),
+                    "triage": safe_triage,
+                    "message": (
+                        "Further details available after "
+                        "accepting this job."
+                    ),
+                })
+
+            owned_case_ids = {
+                str(j.get("case_id"))
+                for j in owned
+                if j.get("case_id") is not None
+            }
             threads = {}
-            for c in d.get("cases", []):
-                if c["id"] in mycase_ids or me in (c.get("participants") or []):
-                    threads[c["id"]] = [t for t in c.get("thread", [])
-                                        if "trades" in (t.get("to") or []) or t.get("author") == me]
-            d = {"properties": [{k: v for k, v in p.items() if k != "tenant"} for p in props],
-                 "jobs": [{k: v for k, v in j.items() if k in keep} for j in myjobs],
-                 "threads": threads,
-                 "approvals": [{k: v for k, v in a.items() if k != "reason"}
-                               for a in d.get("approvals", []) if a.get("evidence", {}).get("tradesperson") == me],
-                 "authority": d.get("authority"), "role": "trades"}
+            for case in d.get("cases", []):
+                cid = str(case.get("id"))
+                if cid not in owned_case_ids:
+                    continue
+                threads[case["id"]] = [
+                    {
+                        k: v for k, v in msg.items()
+                        if k in (
+                            "author", "role", "text",
+                            "to", "at"
+                        )
+                    }
+                    for msg in (case.get("thread") or [])
+                    if isinstance(msg, dict)
+                    and (
+                        "trades" in (msg.get("to") or [])
+                        or (
+                            msg.get("author_account_id")
+                            == u.get("account_id")
+                            and u.get("account_id")
+                        )
+                    )
+                ]
+
+            owned_property_ids = {
+                j.get("property_id") for j in owned
+            }
+            safe_properties = [
+                {k: p.get(k) for k in ("id", "title", "area")}
+                for p in props
+                if p.get("id") in owned_property_ids
+            ]
+
+            owned_job_ids = {
+                str(j.get("id")) for j in owned
+            }
+            safe_approvals = [
+                {
+                    k: a.get(k)
+                    for k in (
+                        "id", "job_id", "status",
+                        "amount_pence", "requested_at",
+                        "reason_given"
+                    )
+                }
+                for a in d.get("approvals", [])
+                if str(a.get("job_id")) in owned_job_ids
+            ]
+
+            authority = d.get("authority") or {}
+            d = {
+                "role": "trades",
+                "jobs": private_jobs + public_jobs,
+                "threads": threads,
+                "properties": safe_properties,
+                "approvals": safe_approvals,
+                "authority": {
+                    "standing_limit_pence":
+                    authority.get("standing_limit_pence", 15000)
+                },
+            }
         self._json(d)
+
+    def valid_csrf_origin(self):
+        """Accept POST only from explicitly trusted browser origins.
+
+        Never infer the trusted origin from Host or proxy headers.
+        """
+        configured = os.environ.get(
+            "ROGER_ALLOWED_ORIGINS",
+            "https://agency.lifecompass.shop"
+        )
+
+        allowed = set()
+        for item in configured.split(","):
+            origin = item.strip()
+            try:
+                parsed = urllib.parse.urlsplit(origin)
+                if (parsed.scheme in ("http", "https")
+                        and parsed.hostname
+                        and not parsed.username
+                        and not parsed.password
+                        and not parsed.path
+                        and not parsed.query
+                        and not parsed.fragment
+                        and origin == (
+                            parsed.scheme + "://" + parsed.netloc
+                        )):
+                    allowed.add(origin)
+            except ValueError:
+                continue
+
+        if not allowed:
+            return False
+
+        fetch_site = self.headers.get_all(
+            "Sec-Fetch-Site", []
+        )
+        if len(fetch_site) > 1:
+            return False
+        if fetch_site and (
+            fetch_site[0].strip().lower() == "cross-site"
+        ):
+            return False
+
+        origins = self.headers.get_all("Origin", [])
+        if origins:
+            return (
+                len(origins) == 1
+                and origins[0].strip() in allowed
+            )
+
+        referers = self.headers.get_all("Referer", [])
+        if len(referers) != 1:
+            return False
+
+        try:
+            ref = urllib.parse.urlsplit(
+                referers[0].strip()
+            )
+            if (ref.scheme not in ("http", "https")
+                    or not ref.hostname
+                    or ref.username
+                    or ref.password):
+                return False
+
+            ref_origin = (
+                ref.scheme + "://" + ref.netloc
+            )
+            return ref_origin in allowed
+        except ValueError:
+            return False
 
     def do_POST(self):
         path = self.path.split("?")[0]
         self.user = None
+        if not self.valid_csrf_origin():
+            return self._json(
+                {"error": "untrusted request origin"}, 403
+            )
         if not self.is_public(path) and path not in self.PUBLIC_POST:
             u = self.require(self.ROLE_API.get(path))
             if not u:
                 return
             self.user = u
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8") if length else "{}"
+        limits = {
+            "/login": 8 * 1024,
+            "/api/document": 8 * 1024 * 1024,
+            "/api/tenant/issue": 32 * 1024 * 1024,
+        }
+        max_length = limits.get(path, 256 * 1024)
+
+        # Do not attempt to read an unbounded or ambiguous body.
+        if self.headers.get_all("Transfer-Encoding"):
+            self.close_connection = True
+            return self._json(
+                {"error": "transfer encoding not supported"}, 400
+            )
+
+        values = self.headers.get_all("Content-Length", [])
+        if len(values) != 1:
+            self.close_connection = True
+            return self._json(
+                {"error": "one Content-Length header required"},
+                400 if values else 411
+            )
+
+        value = values[0].strip()
+        if not re.fullmatch(r"[0-9]+", value):
+            self.close_connection = True
+            return self._json(
+                {"error": "invalid Content-Length"}, 400
+            )
+
+        length = int(value)
+        if length > max_length:
+            self.close_connection = True
+            return self._json(
+                {"error": "request body too large"}, 413
+            )
+
+        raw = self.rfile.read(length)
+        if len(raw) != length:
+            self.close_connection = True
+            return self._json(
+                {"error": "incomplete request body"}, 400
+            )
+
+        try:
+            body = raw.decode("utf-8") if raw else "{}"
+        except UnicodeDecodeError:
+            return self._json(
+                {"error": "request must be UTF-8"}, 400
+            )
+
         try:
             data = json.loads(body)
-        except Exception:
+        except ValueError:
             data = dict(urllib.parse.parse_qsl(body))
+
+        if not isinstance(data, dict):
+            return self._json(
+                {"error": "request body must be an object"}, 400
+            )
         handlers = {
             "/login": self.do_POST_login,
+            "/logout": self.do_POST_logout,
             "/api/public": self.handle_public_post,
             "/register/landlord": lambda d: self.handle_registration("landlord", d),
             "/register/trades": lambda d: self.handle_registration("trades", d),
@@ -492,6 +842,7 @@ class H(SimpleHTTPRequestHandler):
             return None
         c.setdefault("thread", []).append({
             "author": u["display_name"], "role": u["role"],
+            "author_account_id": u.get("account_id"),
             "text": str(text)[:2000], "to": list(to), "at": now()})
         return c
 
@@ -1180,14 +1531,58 @@ class H(SimpleHTTPRequestHandler):
     def handle_tenant_issue(self, data):
         stage = load_stage()
         prop = self.find_prop(stage, data.get("property_id"))
-        message = str(data.get("message", ""))[:3000]
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+
         issuer = self.user or {}
-        name = issuer.get("display_name") if issuer.get("role") == "tenant" else str(data.get("name", "Tenant"))[:100]
+        role = issuer.get("role")
+        if role not in ("tenant", "agent"):
+            return self._json({"error": "not authorised"}, 403)
+
+        property_party_ids = set()
+        if isinstance(prop.get("tenant_party_id"), str):
+            property_party_ids.add(prop["tenant_party_id"])
+        if isinstance(prop.get("tenant_party_ids"), list):
+            property_party_ids.update(
+                x for x in prop["tenant_party_ids"]
+                if isinstance(x, str)
+            )
+
+        eligible = {
+            party["id"] for party in stage.get("parties", [])
+            if isinstance(party, dict)
+            and party.get("status") == "active"
+            and "tenant" in party.get("roles", [])
+            and party.get("id") in property_party_ids
+        }
+
+        if role == "tenant":
+            eligible &= self.account_party_ids(stage, issuer, "tenant")
+
+        requested = data.get("tenant_party_id")
+        if requested:
+            if requested not in eligible:
+                return self._json({"error": "not your property"}, 403)
+            tenant_party_id = requested
+        elif len(eligible) == 1:
+            tenant_party_id = next(iter(eligible))
+        elif not eligible:
+            return self._json({"error": "not your property"}, 403)
+        else:
+            return self._json(
+                {"error": "select the tenant Party explicitly"}, 409
+            )
+
+        message = str(data.get("message", ""))[:3000]
+        name = (issuer.get("display_name") if role == "tenant"
+                else str(data.get("name", "Tenant"))[:100])
         t = self.triage(message)
         case = {
             "id": stage.get("next_case_id", 490),
             "type": "issue",
-            "property_id": prop["id"] if prop else None,
+            "property_id": prop["id"],
+            "tenant_party_id": tenant_party_id,
+            "created_by_account_id": issuer.get("account_id"),
             "role": "tenant",
             "name": name or "Tenant",
             "email": str(data.get("email", ""))[:254],
@@ -1256,14 +1651,96 @@ class H(SimpleHTTPRequestHandler):
         if action in TRADES_ONLY and role != "trades":
             return self._json({"error": "tradesperson-only move"}, 403)
         actor = (self.user or {}).get("display_name") or "Unknown"
-        if action == "release" and actor != job.get("assigned_to"):
-            return self._json({"error": "not your job to release"}, 403)
+        selected_party_id = None
+
+        if action in TRADES_ONLY:
+            ids = self.account_party_ids(
+                stage, self.user or {}, "trades"
+            )
+            if not ids:
+                return self._json({"error": "unlinked contractor"}, 403)
+
+            if action == "accept":
+                if (job.get("status") != "open"
+                        or job.get("assigned_to")
+                        or job.get("requested_by")
+                        or job.get("assigned_to_party_id")
+                        or job.get("requested_by_party_id")):
+                    return self._json({"error": "job is not open"}, 409)
+
+                requested = data.get("trades_party_id")
+                if requested is not None:
+                    if not isinstance(requested, str) or requested not in ids:
+                        return self._json({"error": "not your Party"}, 403)
+                    selected_party_id = requested
+                elif len(ids) == 1:
+                    selected_party_id = next(iter(ids))
+                else:
+                    return self._json(
+                        {"error": "select your contractor Party"}, 409
+                    )
+            else:
+                assigned = job.get("assigned_to_party_id")
+                if not isinstance(assigned, str) or assigned not in ids:
+                    return self._json({"error": "not your job"}, 403)
+
+                allowed_states = {
+                    "start": {"assigned"},
+                    "complete": {"in_progress"},
+                    "release": {
+                        "assigned", "in_progress", "quote_requested"
+                    },
+                    "submit_quote": {"quote_requested"},
+                }
+                if job.get("status") not in allowed_states[action]:
+                    return self._json(
+                        {"error": "invalid job transition"}, 409
+                    )
+                selected_party_id = assigned
+
+        if action in ("assign", "request_quote"):
+            selected_party_id = data.get("trades_party_id")
+            matches = [
+                party for party in stage.get("parties", [])
+                if isinstance(party, dict)
+                and isinstance(selected_party_id, str)
+                and party.get("id") == selected_party_id
+                and party.get("status") == "active"
+                and "trades" in party.get("roles", [])
+                and party.get("account_id")
+            ]
+            if len(matches) != 1:
+                return self._json(
+                    {"error": "verified contractor Party required"}, 409
+                )
+            if data.get("tradesperson") != matches[0].get("display_name"):
+                return self._json(
+                    {"error": "contractor identity mismatch"}, 409
+                )
+
+        if (action == "verify_approve"
+                and job.get("status") == "pending_verification"):
+            pending_id = job.get("requested_by_party_id")
+            matches = [
+                party for party in stage.get("parties", [])
+                if isinstance(party, dict)
+                and party.get("id") == pending_id
+                and isinstance(pending_id, str)
+                and party.get("status") == "active"
+                and "trades" in party.get("roles", [])
+                and party.get("account_id")
+            ]
+            if len(matches) != 1:
+                return self._json(
+                    {"error": "unverified contractor identity"}, 409
+                )
 
         if action == "accept":
             chk = self.credential_check(job, actor)
             if chk["ok"]:
                 job["status"] = "in_progress"
                 job["assigned_to"] = actor
+                job["assigned_to_party_id"] = selected_party_id
                 self.sync_case(stage, job["case_id"], "in_progress")
                 self.post_msg(stage, job["case_id"], f"{actor} took this job and will get in touch to arrange access.", to=("tenant",))
                 self.audit(stage, {"actor": actor, "action": "job_booked", "target": job["id"]})
@@ -1271,12 +1748,16 @@ class H(SimpleHTTPRequestHandler):
                 # human decision required before a cert-gated job can be booked
                 job["status"] = "pending_verification"
                 job["requested_by"] = actor
+                job["requested_by_party_id"] = selected_party_id
                 job["gate_reason"] = chk["reason"]
                 self.audit(stage, {"actor": actor, "action": "job_booking_blocked_pending_verification",
                                    "target": job["id"], "note": chk["reason"]})
         elif action == "verify_approve" and job["status"] == "pending_verification":
             job["status"] = "in_progress"
             job["assigned_to"] = job.pop("requested_by", None)
+            job["assigned_to_party_id"] = job.pop(
+                "requested_by_party_id"
+            )
             job.pop("gate_reason", None)
             job["override_by"] = "agent"
             self.sync_case(stage, job["case_id"], "in_progress")
@@ -1284,12 +1765,15 @@ class H(SimpleHTTPRequestHandler):
         elif action == "verify_decline" and job["status"] == "pending_verification":
             job["status"] = "open"
             job.pop("requested_by", None)
+            job.pop("requested_by_party_id", None)
             job.pop("gate_reason", None)
             self.audit(stage, {"actor": "agent", "action": "booking_declined", "target": job["id"]})
-        elif action == "release" and job["status"] in ("in_progress", "assigned", "quote_requested") and actor == (job.get("assigned_to") or job.get("requested_by")):
+        elif action == "release" and job["status"] in ("in_progress", "assigned", "quote_requested"):
             job["status"] = "open"
             job["assigned_to"] = None
+            job.pop("assigned_to_party_id", None)
             job.pop("requested_by", None)
+            job.pop("requested_by_party_id", None)
             self.post_msg(stage, job["case_id"], f"{actor} handed this job back to the board.", to=("tenant",))
             self.audit(stage, {"actor": actor, "action": "job_returned", "target": job["id"]})
         # ---- agent choreography: direct the dance instead of waiting for it ----
@@ -1300,6 +1784,7 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": f"{who or 'nobody'} is not an approved tradesperson — approve their registration first"}, 400)
             job["status"] = "assigned"
             job["assigned_to"] = who
+            job["assigned_to_party_id"] = selected_party_id
             c = self.post_msg(stage, job["case_id"], f"{who} has been put on this job by the agency.", to=("tenant", "trades"))
             self.audit(stage, {"actor": "agent", "action": "job_assigned", "target": job["id"], "note": who})
         elif action in ("request_quote",) and self.user["role"] == "agent" and job["status"] in ("open", "assigned"):
@@ -1309,9 +1794,10 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": f"{who or 'nobody'} is not an approved tradesperson"}, 400)
             job["status"] = "quote_requested"
             job["assigned_to"] = who
+            job["assigned_to_party_id"] = selected_party_id
             self.post_msg(stage, job["case_id"], f"Quote requested from {who} — the work starts once the agency approves a price.", to=("trades",))
             self.audit(stage, {"actor": "agent", "action": "quote_requested", "target": job["id"], "note": who})
-        elif action == "submit_quote" and job["status"] == "quote_requested" and actor == job.get("assigned_to"):
+        elif action == "submit_quote" and job["status"] == "quote_requested":
             job["quotes"] = job.get("quotes", [])
             q = {"tradesperson": actor, "pence": max(0, int(data.get("quote_pence", 0))),
                  "note": str(data.get("note", ""))[:500], "at": now(), "status": "pending"}
@@ -1349,6 +1835,8 @@ class H(SimpleHTTPRequestHandler):
             stage["approvals"].append({
                 "id": f"appr-{len(stage['approvals']) + 1}", "job_id": job["id"],
                 "property_id": job["property_id"], "landlord": prop.get("landlord", "Landlord"),
+                    "landlord_party_id": prop.get("landlord_party_id"),
+                    "landlord_party_ids": prop.get("landlord_party_ids", []),
                 "amount_pence": job["invoice_pence"], "reason": job["message"],
                 "evidence": {"tradesperson": job.get("assigned_to"), "job_created": job.get("created_at"),
                              "work_completed": job.get("completed_at")},
@@ -1359,7 +1847,7 @@ class H(SimpleHTTPRequestHandler):
             self.post_msg(stage, job["case_id"], "The agency has sent your invoice to the landlord for sign-off.", to=("trades",))
             self.audit(stage, {"actor": "agent", "action": "invoice_sent_to_landlord", "target": job["id"],
                                "note": f"£{job['invoice_pence']/100:.2f}"})
-        elif action == "start" and job["status"] == "assigned" and actor == job.get("assigned_to"):
+        elif action == "start" and job["status"] == "assigned":
             job["status"] = "in_progress"
             self.sync_case(stage, job["case_id"], "in_progress")
             self.audit(stage, {"actor": actor, "action": "job_started", "target": job["id"]})
@@ -1375,6 +1863,8 @@ class H(SimpleHTTPRequestHandler):
                     "job_id": job["id"],
                     "property_id": job["property_id"],
                     "landlord": prop.get("landlord", "Landlord"),
+                    "landlord_party_id": prop.get("landlord_party_id"),
+                    "landlord_party_ids": prop.get("landlord_party_ids", []),
                     "amount_pence": job["invoice_pence"],
                     "reason": job["message"],
                     "evidence": {
@@ -1409,17 +1899,32 @@ class H(SimpleHTTPRequestHandler):
         appr = next((a for a in stage.get("approvals", []) if a["id"] == data.get("id")), None)
         if not appr:
             return self._json({"error": "approval not found"}, 404)
-        if (self.user or {}).get("role") != "agent" and appr["landlord"] != (self.user or {}).get("display_name"):
-            return self._json({"error": "not your approval"}, 403)
+        user = self.user or {}
+        role = user.get("role")
+        if role not in ("agent", "landlord"):
+            return self._json({"error": "not authorised"}, 403)
+
+        if role == "landlord":
+            ids = self.account_party_ids(stage, user, "landlord")
+            prop = self.find_prop(stage, appr.get("property_id"))
+            if (not prop
+                    or not self.has_party_link(prop, "landlord", ids)
+                    or not self.has_party_link(appr, "landlord", ids)):
+                return self._json({"error": "not your approval"}, 403)
         if appr["status"] != "pending":
             return self._json({"error": "already decided"}, 409)
         action = data.get("action")
         if action not in ("approve", "reject"):
             return self._json({"error": "action must be approve|reject"}, 400)
-        appr["status"] = "approved" if action == "approve" else "rejected"
-        appr["reason_given"] = str(data.get("reason", ""))[:300] if action == "reject" else None
-        if action == "reject" and not appr["reason_given"]:
-            return self._json({"error": "a reason is required when rejecting"}, 400)
+        reason = str(data.get("reason", "")).strip()[:300]
+        if action == "reject" and not reason:
+            return self._json(
+                {"error": "a reason is required when rejecting"}, 400
+            )
+        appr["status"] = (
+            "approved" if action == "approve" else "rejected"
+        )
+        appr["reason_given"] = reason if action == "reject" else None
         appr["decided_at"] = now()
         job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
         if job:
@@ -1907,22 +2412,55 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "case not found"}, 404)
         action = data.get("action")
         u = getattr(self, "user", None) or {}
-        if action in ("close", "reopen", "add_tradesperson", "mark_read", "mark_unread", "note", "follow_up") and u.get("role") != "agent":
-            return self._json({"error": "agent-only move"}, 403)
-        if action in ("reply", "inform", "confirm_resolution", "reopen_unresolved") and u.get("role") == "tenant" and c.get("name") != u.get("display_name"):
-            return self._json({"error": "not your case"}, 403)
-        if action in ("reply", "inform") and u.get("role") == "landlord" and not any(
-                p["id"] == c.get("property_id") and p.get("landlord") == u.get("display_name")
-                for p in stage.get("properties", [])):
-            return self._json({"error": "not your property"}, 403)
-        if action in ("reply", "inform") and u.get("role") == "trades" and u.get("display_name") not in (
-                (c.get("participants") or []) + [j.get("assigned_to") for j in stage.get("jobs", [])
-                                                 if j.get("case_id") == c["id"]]):
-            return self._json({"error": "not your case"}, 403)
+        agent_actions = {
+            "close", "reopen", "add_tradesperson", "mark_read",
+            "mark_unread", "note", "follow_up", "reply", "inform",
+        }
+        tenant_actions = {
+            "reply", "inform", "confirm_resolution", "reopen_unresolved",
+        }
+        allowed = {
+            "agent": agent_actions,
+            "tenant": tenant_actions,
+            "landlord": {"reply", "inform"},
+            "trades": {"reply", "inform"},
+        }
+        role = u.get("role")
+        known_actions = set().union(*allowed.values())
+
+        if action not in known_actions:
+            return self._json({"error": "unknown case action"}, 400)
+        if action not in allowed.get(role, set()):
+            return self._json({"error": "action not permitted"}, 403)
+
+        if role in ("tenant", "landlord"):
+            ids = self.account_party_ids(stage, u, role)
+            prop = self.find_prop(stage, c.get("property_id"))
+            if not prop or not self.has_party_link(prop, role, ids):
+                return self._json({"error": "not your property"}, 403)
+            if role == "tenant" and not self.has_party_link(
+                    c, "tenant", ids):
+                return self._json({"error": "not your case"}, 403)
+
+        if role == "trades":
+            ids = self.account_party_ids(stage, u, "trades")
+            assigned = any(
+                j.get("assigned_to_party_id") in ids
+                and str(j.get("case_id")) == str(c.get("id"))
+                for j in stage.get("jobs", [])
+            )
+            participating = self.has_party_link(c, "trades", ids)
+            if not (assigned or participating):
+                return self._json({"error": "not your case"}, 403)
         if action in ("reply", "inform"):
-            to = data.get("to") or ["tenant"]
-            if u.get("role") == "tenant" and "tenant" not in (to + [u.get("role")]):
-                return self._json({"error": "not your audience"}, 403)
+            to = data.get("to") or (
+                ["agent"] if role == "tenant" else ["tenant"]
+            )
+            audiences = {"agent", "tenant", "landlord", "trades"}
+            if (not isinstance(to, list) or not to
+                    or any(not isinstance(x, str) or x not in audiences
+                           for x in to)):
+                return self._json({"error": "invalid audience"}, 400)
             if not str(data.get("text", "")).strip():
                 return self._json({"error": "nothing to say"}, 400)
             self.post_msg(stage, c["id"], data.get("text"), to=to)
@@ -2086,29 +2624,131 @@ class H(SimpleHTTPRequestHandler):
         return next((d for d in load_stage().get("documents", []) if d["id"] == doc_id), None)
 
     def can_view_document(self, u, doc):
-        if u["role"] == "agent":
-            return True
-        access_roles = doc.get("access_roles")
-        if access_roles and u["role"] not in access_roles:
+        """Authorise document reads using verified Party IDs."""
+        if not isinstance(doc, dict):
             return False
-        stage = load_stage()
-        me = u["display_name"]
-        c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(doc.get("case_id"))), None)
-        prop = self.find_prop(stage, doc.get("property_id") or (c or {}).get("property_id")) or {}
-        if not prop and doc.get("tenancy_id"):
-            tenancy = next((t for t in stage.get("tenancies", []) if t.get("id") == doc.get("tenancy_id")), None)
-            prop = self.find_prop(stage, (tenancy or {}).get("property_id")) or {}
-        if not prop and doc.get("job_id"):
-            job = next((j for j in stage.get("jobs", []) if j.get("id") == doc.get("job_id")), None)
-            prop = self.find_prop(stage, (job or {}).get("property_id")) or {}
-        if u["role"] == "tenant":
-            return prop.get("tenant") == me or (c or {}).get("name") == me
-        if u["role"] == "landlord" and prop.get("landlord") == me:
+
+        role = (u or {}).get("role")
+        if role == "agent":
             return True
-        if u["role"] == "trades":
-            case_ids = {j.get("case_id") for j in stage.get("jobs", []) if j.get("assigned_to") == me}
-            if c and (c["id"] in case_ids or me in (c.get("participants") or [])):
-                return True
+
+        if role not in ("tenant", "landlord", "trades"):
+            return False
+
+        allowed = doc.get("access_roles")
+        if not isinstance(allowed, list) or role not in allowed:
+            return False
+
+        stage = load_stage()
+        ids = self.account_party_ids(stage, u, role)
+        if not ids:
+            return False
+
+        party_id = doc.get("party_id")
+        if party_id and party_id not in ids:
+            return False
+
+        def related(collection, record_id):
+            if record_id is None or record_id == "":
+                return None
+            return next(
+                (
+                    r for r in stage.get(collection, [])
+                    if str(r.get("id")) == str(record_id)
+                ),
+                None,
+            )
+
+        case = related("cases", doc.get("case_id"))
+        job = related("jobs", doc.get("job_id"))
+        tenancy = related("tenancies", doc.get("tenancy_id"))
+
+        for field, record in (
+            ("case_id", case),
+            ("job_id", job),
+            ("tenancy_id", tenancy),
+        ):
+            if doc.get(field) and record is None:
+                return False
+
+        property_ids = [
+            str(value)
+            for value in (
+                doc.get("property_id"),
+                (case or {}).get("property_id"),
+                (job or {}).get("property_id"),
+                (tenancy or {}).get("property_id"),
+            )
+            if value is not None and value != ""
+        ]
+
+        # Contradictory document relationships fail closed.
+        if len(set(property_ids)) > 1:
+            return False
+
+        if case and job and job.get("case_id") is not None:
+            if str(job["case_id"]) != str(case["id"]):
+                return False
+
+        if not property_ids:
+            # Only a document directly linked to this Party,
+            # with no unresolved resource references, can
+            # be accessed without a property relationship.
+            return bool(
+                party_id and party_id in ids
+                and not any(
+                    doc.get(field)
+                    for field in ("case_id", "job_id", "tenancy_id")
+                )
+            )
+
+        prop = self.find_prop(stage, property_ids[0])
+        if not prop:
+            return False
+
+        if role == "tenant":
+            if not self.has_party_link(prop, "tenant", ids):
+                return False
+            if case and not self.has_party_link(
+                case, "tenant", ids
+            ):
+                return False
+            if tenancy and not self.has_party_link(
+                tenancy, "tenant", ids
+            ):
+                return False
+            return True
+
+        if role == "landlord":
+            if not self.has_party_link(prop, "landlord", ids):
+                return False
+            if tenancy and not self.has_party_link(
+                tenancy, "landlord", ids
+            ):
+                return False
+            return True
+
+        # A tradesperson requires an actual Party-linked job.
+        # A public job listing never grants document access.
+        owned_jobs = [
+            j for j in stage.get("jobs", [])
+            if j.get("assigned_to_party_id") in ids
+            and str(j.get("property_id")) == str(prop["id"])
+            and j.get("status") != "open"
+        ]
+
+        if job:
+            return any(
+                str(j.get("id")) == str(job["id"])
+                for j in owned_jobs
+            )
+
+        if case:
+            return any(
+                str(j.get("case_id")) == str(case["id"])
+                for j in owned_jobs
+            )
+
         return False
 
     def scoped_documents(self, u):
@@ -2360,12 +3000,28 @@ class H(SimpleHTTPRequestHandler):
     )
 
     def scoped_notifications(self, u):
+        """Notifications are addressed to verified Party IDs."""
         stage = load_stage()
         notes = stage.get("notifications", [])
-        if u["role"] == "agent":
+        role = (u or {}).get("role")
+
+        if role == "agent":
             return notes
-        return [n for n in notes if n.get("recipient_role") == u["role"]
-                and (not n.get("recipient_name") or n.get("recipient_name") == u.get("display_name"))]
+
+        if role not in ("tenant", "landlord", "trades"):
+            return []
+
+        ids = self.account_party_ids(stage, u, role)
+        if not ids:
+            return []
+
+        return [
+            n for n in notes
+            if isinstance(n, dict)
+            and n.get("recipient_role") == role
+            and isinstance(n.get("recipient_party_id"), str)
+            and n["recipient_party_id"] in ids
+        ]
 
     def handle_notification_action(self, data):
         stage = load_stage()
@@ -2379,6 +3035,36 @@ class H(SimpleHTTPRequestHandler):
             title = str(data.get("title", ""))[:160].strip()
             message = str(data.get("message", ""))[:1200].strip()
             role = data.get("recipient_role") if data.get("recipient_role") in ("agent", "tenant", "landlord", "trades") else "agent"
+            recipient_party_id = data.get("recipient_party_id")
+
+            if role != "agent":
+                if (not isinstance(recipient_party_id, str)
+                        or not recipient_party_id.strip()):
+                    return self._json({
+                        "error": "recipient Party ID required"
+                    }, 400)
+
+                party = next(
+                    (
+                        p for p in stage.get("parties", [])
+                        if p.get("id") == recipient_party_id
+                    ),
+                    None,
+                )
+
+                if (
+                    not party
+                    or party.get("status") != "active"
+                    or role not in (party.get("roles") or [])
+                ):
+                    return self._json({
+                        "error": "invalid recipient Party"
+                    }, 400)
+            elif recipient_party_id:
+                return self._json({
+                    "error": "agent notifications use agent role"
+                }, 400)
+
             if not title or not message:
                 return self._json({"error": "title and message are required"}, 400)
             nums = [int(n["id"].split("-")[1]) for n in notes if re.fullmatch(r"note-\d+", n.get("id", ""))]
@@ -2393,6 +3079,7 @@ class H(SimpleHTTPRequestHandler):
                 "message": message,
                 "recipient_role": role,
                 "recipient_name": str(data.get("recipient_name", ""))[:120] or None,
+                "recipient_party_id": recipient_party_id if role != "agent" else None,
                 "channels": channels,
                 "email_to": str(data.get("email_to", ""))[:254] or None,
                 "email_status": "queued" if "email" in channels else None,
@@ -2433,21 +3120,60 @@ class H(SimpleHTTPRequestHandler):
         return self._json({"success": True, "notification": note})
 
     # ---------- appointments ----------
+    def can_access_appointment(self, stage, user, appt):
+        """Require explicit participant and resource ownership."""
+        role = user.get("role")
+
+        if role == "agent":
+            return True
+        if role not in ("tenant", "landlord", "trades"):
+            return False
+
+        ids = self.account_party_ids(stage, user, role)
+        participants = appt.get("participant_party_ids")
+        roles = appt.get("participant_roles")
+
+        if (not ids
+                or not isinstance(participants, list)
+                or not isinstance(roles, list)
+                or role not in roles):
+            return False
+
+        participant_ids = {
+            x for x in participants if isinstance(x, str)
+        }
+
+        if not ids.intersection(participant_ids):
+            return False
+
+        if role in ("tenant", "landlord"):
+            prop = self.find_prop(
+                stage, appt.get("property_id")
+            )
+            return self.has_party_link(prop, role, ids)
+
+        job_id = appt.get("job_id")
+        if not isinstance(job_id, str) or not job_id:
+            return False
+
+        job = next(
+            (j for j in stage.get("jobs", [])
+             if j.get("id") == job_id),
+            None
+        )
+
+        return bool(
+            job
+            and job.get("assigned_to_party_id") in ids
+            and job.get("property_id") == appt.get("property_id")
+        )
+
     def scoped_appointments(self, u):
         stage = load_stage()
-        appts = [a for a in stage.get("appointments", [])]
-        if u["role"] == "agent":
-            return appts
-        me = u["display_name"]
-        if u["role"] == "tenant":
-            mine = {p["id"] for p in stage.get("properties", []) if p.get("tenant") == me}
-            return [a for a in appts if a.get("property_id") in mine]
-        if u["role"] == "landlord":
-            mine = {p["id"] for p in stage.get("properties", []) if p.get("landlord") == me}
-            return [a for a in appts if a.get("property_id") in mine]
-        jobs = [j for j in stage.get("jobs", []) if j.get("assigned_to") == me]
-        job_ids = {j.get("id") for j in jobs}
-        return [a for a in appts if a.get("job_id") in job_ids]
+        return [
+            a for a in stage.get("appointments", [])
+            if self.can_access_appointment(stage, u, a)
+        ]
 
     def handle_appointment(self, data):
         """Agent schedules a diary item. Roles: agent only."""
@@ -2543,21 +3269,17 @@ class H(SimpleHTTPRequestHandler):
         if action not in allowed:
             return self._json({"error": f"action must be one of {', '.join(allowed)}"}, 400)
         u = self.user or {}
-        if u["role"] == "agent":
-            pass  # agent may take any action
-        else:
-            prop = self.find_prop(stage, appt.get("property_id")) or {}
-            if u["role"] == "tenant" and prop.get("tenant") != u["display_name"]:
-                return self._json({"error": "not your property"}, 403)
-            if u["role"] == "landlord" and prop.get("landlord") != u["display_name"]:
-                return self._json({"error": "not your property"}, 403)
-            if u["role"] == "trades":
-                job = next((j for j in stage.get("jobs", []) if j.get("id") == appt.get("job_id")), {})
-                if job.get("assigned_to") != u["display_name"]:
-                    return self._json({"error": "not your appointment"}, 403)
-            # parties may not cancel an agency-set appointment; agent must
-            if action == "cancel":
-                return self._json({"error": "only the agency can cancel"}, 403)
+
+        if not self.can_access_appointment(stage, u, appt):
+            return self._json(
+                {"error": "not your appointment"}, 403
+            )
+
+        if u.get("role") != "agent" and action == "cancel":
+            return self._json(
+                {"error": "only the agency can cancel"}, 403
+            )
+
         if action == "reschedule":
             start = str(data.get("start_time", ""))[:40]
             end = str(data.get("end_time", ""))[:40]

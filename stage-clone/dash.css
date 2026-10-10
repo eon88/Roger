@@ -23,9 +23,9 @@ a{color:var(--accent);text-decoration:none}
 .who{font-size:13px;color:var(--muted)}
 .who b{color:var(--ink);font-weight:600}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
-.tabs a{padding:9px 14px;min-height:44px;display:inline-flex;align-items:center;border:1px solid var(--line-strong);background:var(--card);border-radius:var(--r-sm);font-size:13px;color:var(--ink);transition:border-color var(--dur) var(--ease),background-color var(--dur) var(--ease)}
-.tabs a:hover{border-color:var(--accent)}
-.tabs a.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.tabs a,.tabs button{padding:9px 14px;min-height:44px;display:inline-flex;align-items:center;border:1px solid var(--line-strong);background:var(--card);border-radius:var(--r-sm);font-size:13px;color:var(--ink);transition:border-color var(--dur) var(--ease),background-color var(--dur) var(--ease)}
+.tabs a:hover,.tabs button:hover{border-color:var(--accent)}
+.tabs a.on,.tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .move{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--accent-deep);text-transform:uppercase;margin-bottom:10px}
 .move::before{content:"— "}
 .section{margin-bottom:36px}
@@ -191,7 +191,7 @@ select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
   .header{padding:14px 0 12px}
   .brand h1{font-size:22px}
   .tabs{width:100%}
-  .tabs a{padding:8px 11px;font-size:12px}
+  .tabs a,.tabs button{padding:8px 11px;font-size:12px}
   .card{padding:16px}
   .stats{grid-template-columns:1fr 1fr}
   .stat .value{font-size:24px}
@@ -202,3 +202,5 @@ select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .badge.urgent,.badge.overdue,.badge.check{background:var(--danger-soft);color:var(--danger)}
 .badge.landlord,.badge.trades,.badge.invitee{background:var(--blue-soft);color:var(--blue)}
 .field>span{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:5px}
+
+.tabs button{font-family:inherit;cursor:pointer}

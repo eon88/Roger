@@ -186,7 +186,16 @@ class AtomicStorageTests(unittest.TestCase):
         handler.user = {"username": "agent", "role": "agent", "display_name": "Agent"}
         response = []
         handler._json = lambda payload, status=200: response.append((payload, status))
-        stage = {"notifications": [], "audit_log": []}
+        stage = {
+            "notifications": [],
+            "audit_log": [],
+            "parties": [{
+                "id": "party-landlord-fixture",
+                "account_id": "account-landlord-fixture",
+                "roles": ["landlord"],
+                "status": "active",
+            }],
+        }
         with patch.object(serve, "load_stage", return_value=stage), patch.object(serve, "save_stage"):
             serve.H.handle_notification_action(handler, {
                 "action": "create",
@@ -195,6 +204,7 @@ class AtomicStorageTests(unittest.TestCase):
                 "message": "Please approve the boiler quote.",
                 "recipient_role": "landlord",
                 "recipient_name": "Landlord",
+                "recipient_party_id": "party-landlord-fixture",
                 "channels": ["in_app", "email"],
                 "email_to": "landlord@example.test",
                 "property_id": "home-1",
