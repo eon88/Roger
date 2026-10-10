@@ -1,0 +1,43 @@
+# DEV ONLY. Never add this service to Roger's production docker-compose.yml.
+name: roger-pg-dev
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: roger_dev
+      POSTGRES_USER: roger_dev
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    command:
+      - postgres
+      - -c
+      - max_connections=30
+      - -c
+      - shared_buffers=64MB
+    secrets:
+      - db_password
+    volumes:
+      - pg_dev_data:/var/lib/postgresql/data
+    networks:
+      - dev_private
+    # No ports. The database cannot be reached over the VPS's public IP.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roger_dev -d roger_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    stop_grace_period: 30s
+
+networks:
+  dev_private:
+    internal: true
+
+volumes:
+  pg_dev_data:
+
+secrets:
+  db_password:
+    file: ./secrets/db_password
