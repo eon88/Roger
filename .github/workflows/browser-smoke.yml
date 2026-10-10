@@ -111,6 +111,19 @@ jobs:
           (async () => {
             const browser = await chromium.launch({ headless: true });
             try {
+              // The public site must never invent demo listings when stage is empty.
+              const publicContext = await browser.newContext();
+              const publicPage = await publicContext.newPage();
+              await publicPage.goto(base + '/');
+              await publicPage.waitForFunction(() =>
+                document.getElementById('propertyCount').textContent === '0 properties',
+                {timeout: 12000}
+              );
+              assert.equal(await publicPage.locator('#cards article').count(), 0);
+              assert.match(await publicPage.locator('#empty').innerText(), /no homes advertised right now/i);
+              console.log('PASS public homepage: zero fake listings and honest empty state');
+              await publicContext.close();
+
               for (const role of ['agent', 'tenant', 'landlord', 'trades']) {
                 const context = await browser.newContext();
                 const page = await context.newPage();
