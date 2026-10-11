@@ -129,8 +129,10 @@ async function scenario(){
     await contains(trade.page,'#my-visits','no access');
 
     const dialogAnswers=['2099-05-21 10:00','After missed access'];
-    trade.page.on('dialog',dialog=>dialog.accept(dialogAnswers.shift()||''));
+    const answerDialog=dialog=>dialog.accept(dialogAnswers.shift()||'');
+    trade.page.on('dialog',answerDialog);
     await trade.page.getByRole('button',{name:'Offer another time'}).click();
+    trade.page.off('dialog',answerDialog);
     await contains(trade.page,'#my-visits','proposed');
 
     await tenant.page.reload();
