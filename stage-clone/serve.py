@@ -3615,191 +3615,272 @@ class H(SimpleHTTPRequestHandler):
         return self._json({"success": True, "notification": note})
 
     # ---------- appointments ----------
-    def can_access_appointment(self, stage, user, appt):
-        """Require explicit participant and resource ownership."""
-        role = user.get("role")
+    @staticmethod
+    def appointment_datetime(value):
+        """Require a real timezone-aware ISO datetime; never compare date strings."""
+        if not isinstance(value, str) or not value or len(value) > 40:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+        return parsed if parsed.tzinfo and parsed.utcoffset() is not None else None
 
+    def appointment_eligible_parties(self, stage, prop, job=None):
+        """Only real, active account-linked people on this property/job may attend."""
+        by_role = {"tenant": set(), "landlord": set(), "trades": set()}
+        for role in ("tenant", "landlord"):
+            linked = prop.get(role + "_party_ids") or []
+            linked = [linked] if isinstance(linked, str) else linked
+            single = prop.get(role + "_party_id")
+            if isinstance(single, str):
+                linked = list(linked) + [single]
+            by_role[role].update(pid for pid in linked if isinstance(pid, str))
+        if job and isinstance(job.get("assigned_to_party_id"), str):
+            by_role["trades"].add(job["assigned_to_party_id"])
+        active = {}
+        for party in stage.get("parties", []):
+            if not isinstance(party, dict) or party.get("status") != "active" or not party.get("account_id"):
+                continue
+            for role, eligible in by_role.items():
+                if party.get("id") in eligible and role in party.get("roles", []):
+                    active.setdefault(role, set()).add(party["id"])
+        return active
+
+    def can_access_appointment(self, stage, user, appt):
+        """A participant must have both an account-linked Party and the resource link."""
+        role = user.get("role")
         if role == "agent":
             return True
         if role not in ("tenant", "landlord", "trades"):
             return False
-
         ids = self.account_party_ids(stage, user, role)
-        participants = appt.get("participant_party_ids")
-        roles = appt.get("participant_roles")
-
-        if (not ids
-                or not isinstance(participants, list)
-                or not isinstance(roles, list)
-                or role not in roles):
+        if not ids or role not in (appt.get("participant_roles") or []):
             return False
-
-        participant_ids = {
-            x for x in participants if isinstance(x, str)
-        }
-
-        if not ids.intersection(participant_ids):
+        if not ids.intersection(set(appt.get("participant_party_ids") or [])):
             return False
-
+        prop = self.find_prop(stage, appt.get("property_id"))
+        if not prop:
+            return False
         if role in ("tenant", "landlord"):
-            prop = self.find_prop(
-                stage, appt.get("property_id")
-            )
             return self.has_party_link(prop, role, ids)
+        job = next((j for j in stage.get("jobs", [])
+                    if j.get("id") == appt.get("job_id")), None)
+        return bool(job and job.get("property_id") == prop.get("id")
+                    and job.get("assigned_to_party_id") in ids)
 
-        job_id = appt.get("job_id")
-        if not isinstance(job_id, str) or not job_id:
-            return False
-
-        job = next(
-            (j for j in stage.get("jobs", [])
-             if j.get("id") == job_id),
-            None
-        )
-
-        return bool(
-            job
-            and job.get("assigned_to_party_id") in ids
-            and job.get("property_id") == appt.get("property_id")
-        )
+    def appointment_for_role(self, appt, user):
+        """Hide tenant access preferences until consent and visit confirmation."""
+        result = dict(appt)
+        role = user.get("role")
+        if role == "landlord":
+            result.pop("access_preference", None)
+            result.pop("contact_consent", None)
+        elif role == "trades" and (appt.get("status") != "confirmed"
+                                  or not appt.get("contact_consent")):
+            result.pop("access_preference", None)
+            result.pop("contact_consent", None)
+        return result
 
     def scoped_appointments(self, u):
         stage = load_stage()
-        return [
-            a for a in stage.get("appointments", [])
-            if self.can_access_appointment(stage, u, a)
-        ]
+        return [self.appointment_for_role(a, u)
+                for a in stage.get("appointments", [])
+                if self.can_access_appointment(stage, u, a)]
 
     def handle_appointment(self, data):
-        """Agent schedules a diary item. Roles: agent only."""
+        """Agent can arrange linked diary items; authorised trade may propose a job visit."""
         stage = load_stage()
+        u = self.user or {}
+        role = u.get("role")
+        if role not in ("agent", "trades"):
+            return self._json({"error": "appointment creation is for the agent or assigned trade"}, 403)
         prop = self.find_prop(stage, data.get("property_id"))
         if not prop:
             return self._json({"error": "property not found"}, 404)
-        case_id = data.get("case_id") or None
         job_id = data.get("job_id") or None
-        case = None
-        job = None
-        if case_id:
-            case = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
-            if not case:
-                return self._json({"error": "case not found"}, 404)
-            case_id = case.get("id")
-        if job_id:
-            job = next((j for j in stage.get("jobs", []) if str(j.get("id")) == str(job_id)), None)
-            if not job:
-                return self._json({"error": "job not found"}, 404)
-            job_id = job.get("id")
-        start = str(data.get("start_time", ""))[:40]
-        end = str(data.get("end_time", ""))[:40]
-        if not start:
-            return self._json({"error": "start_time is required"}, 400)
-        if end and end < start:
-            return self._json({"error": "end_time must be after start_time"}, 400)
+        case_id = data.get("case_id") or None
+        job = next((j for j in stage.get("jobs", [])
+                    if str(j.get("id")) == str(job_id)), None) if job_id else None
+        case = next((c for c in stage.get("cases", [])
+                     if str(c.get("id")) == str(case_id)), None) if case_id else None
+        if job_id and not job:
+            return self._json({"error": "job not found"}, 404)
+        if case_id and not case:
+            return self._json({"error": "case not found"}, 404)
+        if job and job.get("property_id") != prop["id"]:
+            return self._json({"error": "job belongs to another property"}, 409)
+        if case and case.get("property_id") != prop["id"]:
+            return self._json({"error": "case belongs to another property"}, 409)
+        if job and case and str(job.get("case_id")) != str(case.get("id")):
+            return self._json({"error": "case does not match job"}, 409)
+        if job and not case_id:
+            case_id = job.get("case_id")
+        start = str(data.get("start_time") or "")
+        end = str(data.get("end_time") or "")
+        start_dt = self.appointment_datetime(start)
+        end_dt = self.appointment_datetime(end) if end else None
+        if not start_dt or (end and not end_dt) or (end_dt and end_dt <= start_dt):
+            return self._json({"error": "valid timezone-aware start and later end required"}, 400)
+        if start_dt.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+            return self._json({"error": "appointment must be in the future"}, 400)
         appt_type = data.get("appointment_type") or data.get("type") or "viewing"
         if appt_type not in self.APPOINTMENT_TYPES:
             return self._json({"error": "unsupported appointment_type"}, 400)
-        roles = data.get("participant_roles")
-        if not isinstance(roles, list):
-            invitee = data.get("invitee_role")
-            roles = [invitee] if invitee in ("tenant", "landlord", "trades") else ["tenant"]
-        roles = sorted({r for r in roles if r in ("tenant", "landlord", "trades", "agent")})
-        if "agent" not in roles:
-            roles.insert(0, "agent")
-        party_ids = data.get("participant_party_ids") if isinstance(data.get("participant_party_ids"), list) else []
-        party_ids = [str(x)[:80] for x in party_ids if any(str(p.get("id")) == str(x) for p in stage.get("parties", []))]
-        try:
-            reminder_minutes = int(data.get("reminder_minutes_before") or 0)
-        except (TypeError, ValueError):
-            reminder_minutes = 0
+        if role == "trades" or appt_type == "contractor_visit":
+            if not job or job.get("status") not in ("assigned", "in_progress"):
+                return self._json({"error": "an assigned, authorised job is needed before offering a visit"}, 409)
+            if job.get("requires_prework_quote") and not job.get("work_authorised_at"):
+                return self._json({"error": "quote must be approved before proposing access"}, 409)
+        if role == "trades":
+            if appt_type != "contractor_visit":
+                return self._json({"error": "trades can only propose contractor visits"}, 403)
+            ids = self.account_party_ids(stage, u, "trades")
+            if job.get("assigned_to_party_id") not in ids:
+                return self._json({"error": "not your assigned job"}, 403)
+        if appt_type == "contractor_visit":
+            roles = ["agent", "tenant", "trades"]
+        else:
+            supplied = data.get("participant_roles")
+            if not isinstance(supplied, list):
+                invitee = data.get("invitee_role")
+                supplied = [invitee] if invitee in ("tenant", "landlord", "trades") else ["tenant"]
+            roles = sorted({"agent", *(r for r in supplied if r in ("tenant", "landlord", "trades"))})
+        eligible = self.appointment_eligible_parties(stage, prop, job)
+        selected = data.get("participant_party_ids")
+        allowed_ids = set().union(*(eligible.get(r, set()) for r in roles if r != "agent"))
+        if isinstance(selected, list) and selected:
+            if any(not isinstance(pid, str) or pid not in allowed_ids for pid in selected):
+                return self._json({"error": "appointment participant not linked to this property/job"}, 403)
+            selected_ids = sorted(set(selected))
+        else:
+            selected_ids = sorted(allowed_ids)
+        if appt_type == "contractor_visit":
+            if not eligible["tenant"].intersection(selected_ids) or not eligible["trades"].intersection(selected_ids):
+                return self._json({"error": "a linked tenant and assigned trade are required"}, 409)
         appts = stage.setdefault("appointments", [])
-        nums = [int(a["id"].split("-")[1]) for a in appts if re.fullmatch(r"appt-\d+", a["id"])]
+        nums = [int(a["id"].split("-")[1]) for a in appts
+                if isinstance(a.get("id"), str) and re.fullmatch(r"appt-\d+", a["id"])]
         appt = {
-            "id": f"appt-{(max(nums) + 1) if nums else 1}",
-            "property_id": prop["id"],
-            "case_id": case_id,
-            "job_id": job_id,
-            "appointment_type": appt_type,
+            "id": f"appt-{max(nums, default=0) + 1}", "property_id": prop["id"],
+            "case_id": case_id, "job_id": job_id, "appointment_type": appt_type,
             "title": str(data.get("title") or appt_type.replace("_", " ").title())[:120],
-            "description": str(data.get("description", ""))[:1000],
-            "start_time": start,
-            "end_time": end or None,
-            "location": str(data.get("location", "At the property"))[:200],
-            "status": "proposed",
-            "participant_roles": roles,
-            "participant_party_ids": party_ids,
-            "invitee_role": next((r for r in roles if r != "agent"), "tenant"),
-            "reminder_at": str(data.get("reminder_at", ""))[:40] or None,
-            "reminder_minutes_before": reminder_minutes,
-            "created_by": (self.user or {}).get("display_name", "Agent"),
-            "created_at": now(),
-            "updated_at": now(),
-            "notes": "",
-            "outcome": None,
+            "description": str(data.get("description") or "")[:1000],
+            "start_time": start_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "end_time": end_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if end_dt else None,
+            "location": str(data.get("location") or "At the property")[:200],
+            "status": "proposed", "participant_roles": roles, "participant_party_ids": selected_ids,
+            "invitee_role": "tenant" if "tenant" in roles else next((r for r in roles if r != "agent"), "agent"),
+            "reminder_at": str(data.get("reminder_at") or "")[:40] or None,
+            "reminder_minutes_before": 0,
+            "created_by": u.get("display_name", "Agent"), "created_at": now(), "updated_at": now(),
+            "notes": "", "outcome": None, "access_preference": None,
+            "contact_consent": False, "history": [],
         }
         appts.append(appt)
-        if case is not None:
+        if case:
             case.setdefault("appointment_ids", [])
             if appt["id"] not in case["appointment_ids"]:
                 case["appointment_ids"].append(appt["id"])
-        if job is not None:
+        if job:
             job.setdefault("appointment_ids", [])
             if appt["id"] not in job["appointment_ids"]:
                 job["appointment_ids"].append(appt["id"])
-        self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
-                           "action": "appointment_created", "target": appt["id"],
-                           "note": f"{appt['title']} @ {appt['start_time']}"})
+        appt["history"].append({"at": now(), "role": role, "action": "proposed"})
+        self.audit(stage, {"actor": u.get("display_name", "?"),
+                           "action": "appointment_created", "target": appt["id"]})
+        if case_id is not None:
+            self.post_msg(stage, case_id,
+                          "A visit has been proposed. The resident must confirm access before arrival.",
+                          to=("tenant", "trades"))
         save_stage(stage)
-        return self._json({"success": True, "appointment": appt})
+        return self._json({"success": True, "appointment": self.appointment_for_role(appt, u)})
 
     def handle_appointment_action(self, data):
-        """Confirm/decline/reschedule/complete/miss/cancel an appointment. Roles: agent
-        (any), tenant/landlord/trades on their own linked appointment."""
+        """Server-controlled visit state machine; only the resident can consent to access."""
         stage = load_stage()
-        appt = next((a for a in stage.get("appointments", []) if a["id"] == data.get("id")), None)
+        appt = next((a for a in stage.get("appointments", [])
+                     if a.get("id") == data.get("id")), None)
         if not appt:
             return self._json({"error": "appointment not found"}, 404)
-        action = data.get("action")
-        allowed = ("confirm", "decline", "reschedule", "complete", "miss", "cancel")
-        if action not in allowed:
-            return self._json({"error": f"action must be one of {', '.join(allowed)}"}, 400)
         u = self.user or {}
-
+        role = u.get("role")
         if not self.can_access_appointment(stage, u, appt):
-            return self._json(
-                {"error": "not your appointment"}, 403
-            )
-
-        if u.get("role") != "agent" and action == "cancel":
-            return self._json(
-                {"error": "only the agency can cancel"}, 403
-            )
-
+            return self._json({"error": "not your appointment"}, 403)
+        action = data.get("action")
+        allowed = {
+            "agent": {"confirm", "decline", "reschedule", "complete", "miss", "no_access", "parts_delay", "cancel"},
+            "tenant": {"confirm", "decline"},
+            "landlord": {"confirm", "decline"},
+            "trades": {"reschedule", "complete", "miss", "no_access", "parts_delay"},
+        }
+        if action not in allowed.get(role, set()):
+            return self._json({"error": "that appointment action is not permitted for your role"}, 403)
+        contractor = appt.get("appointment_type") == "contractor_visit"
+        if contractor and action in ("confirm", "decline") and role != "tenant":
+            return self._json({"error": "only the linked tenant can agree contractor access"}, 403)
+        current = appt.get("status")
+        if action in ("confirm", "decline") and current != "proposed":
+            return self._json({"error": "only a proposed appointment can be answered"}, 409)
+        if action in ("complete", "miss", "no_access", "parts_delay") and current != "confirmed":
+            return self._json({"error": "an unconfirmed visit cannot have an attendance outcome"}, 409)
+        if action == "reschedule" and current not in (
+                "proposed", "confirmed", "change_requested", "declined", "missed", "no_access", "parts_delay"):
+            return self._json({"error": "appointment cannot be rescheduled in this state"}, 409)
+        if action == "cancel" and current in ("completed", "cancelled"):
+            return self._json({"error": "appointment already closed"}, 409)
+        note = str(data.get("note") or "").strip()[:500]
+        if action in ("miss", "no_access", "parts_delay") and not note:
+            return self._json({"error": "record a reason for missed access or parts delay"}, 400)
         if action == "reschedule":
-            start = str(data.get("start_time", ""))[:40]
-            end = str(data.get("end_time", ""))[:40]
-            if not start:
-                return self._json({"error": "start_time is required"}, 400)
-            if end and end < start:
-                return self._json({"error": "end_time must be after start_time"}, 400)
+            start = str(data.get("start_time") or "")
+            end = str(data.get("end_time") or "")
+            start_dt = self.appointment_datetime(start)
+            end_dt = self.appointment_datetime(end) if end else None
+            if not start_dt or (end and not end_dt) or (end_dt and end_dt <= start_dt):
+                return self._json({"error": "valid timezone-aware start and later end required"}, 400)
+            if start_dt.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+                return self._json({"error": "new visit must be in the future"}, 400)
             appt["previous_start_time"] = appt.get("start_time")
             appt["previous_end_time"] = appt.get("end_time")
-            appt["start_time"] = start
-            appt["end_time"] = end or None
-        status_map = {"confirm": "confirmed", "decline": "declined", "reschedule": "proposed",
-                      "complete": "completed", "miss": "missed", "cancel": "cancelled"}
+            appt["start_time"] = start_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            appt["end_time"] = end_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if end_dt else None
+            appt["access_preference"] = None
+            appt["contact_consent"] = False
+        if action == "confirm" and role == "tenant" and contractor:
+            appt["access_preference"] = str(data.get("access_preference") or "").strip()[:160] or None
+            # Consent is optional; a confirmed visit is not permission to disclose contact details.
+            appt["contact_consent"] = data.get("contact_consent") is True
+        status_map = {
+            "confirm": "confirmed", "decline": "change_requested", "reschedule": "proposed",
+            "complete": "completed", "miss": "missed", "no_access": "no_access",
+            "parts_delay": "parts_delay", "cancel": "cancelled",
+        }
         appt["status"] = status_map[action]
         appt["updated_at"] = now()
-        if data.get("reminder_at") is not None:
-            appt["reminder_at"] = str(data.get("reminder_at") or "")[:40] or None
-        if data.get("note"):
-            appt["notes"] = str(data["note"])[:500]
-        if data.get("outcome"):
-            appt["outcome"] = str(data["outcome"])[:500]
+        if note:
+            appt["notes"] = note
+        if action == "complete":
+            appt["outcome"] = str(data.get("outcome") or "Visit completed; repair still requires separate confirmation")[:500]
+        appt.setdefault("history", []).append({"at": now(), "role": role, "action": action,
+                                                "note": note})
         self.audit(stage, {"actor": u.get("display_name", "?"),
                            "action": f"appointment_{action}", "target": appt["id"]})
+        if appt.get("case_id") is not None:
+            messages = {
+                "confirm": "The resident confirmed the proposed visit.",
+                "decline": "The visit time does not suit the resident. A new proposal is needed.",
+                "reschedule": "A new visit time has been proposed and needs resident confirmation.",
+                "no_access": "The contractor reported no access. The office must arrange a new visit.",
+                "miss": "The visit was missed. The office must follow up.",
+                "parts_delay": "The contractor reported a parts delay. The case remains open.",
+                "complete": "Visit attendance completed; this does not confirm that the repair is fixed.",
+                "cancel": "The office cancelled the appointment.",
+            }
+            self.post_msg(stage, appt["case_id"], messages[action],
+                          to=("tenant", "trades", "landlord"))
         save_stage(stage)
-        return self._json({"success": True, "appointment": appt})
+        return self._json({"success": True, "appointment": self.appointment_for_role(appt, u)})
 
     # ---------- static ----------
     def serve_file(self, name, ctype="text/html; charset=utf-8"):
