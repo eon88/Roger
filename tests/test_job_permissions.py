@@ -159,15 +159,25 @@ class JobPermissionTests(unittest.TestCase):
         self.assertEqual(self.job["status"], "invoice_approved")
         self.assertNotIn("paid_at", self.job)
 
-    def test_payment_requires_external_reference_and_full_amount(self):
+    def test_partial_payment_keeps_balance_open_and_requires_external_reference(self):
         from datetime import datetime, timezone
         self.job.update(status="invoice_approved", invoice_pence=1000)
+        date = datetime.now(timezone.utc).date().isoformat()
         self.denied(expected=400, user="agent", action="record_payment",
-                    payment_amount_pence=1000,
-                    payment_date=datetime.now(timezone.utc).date().isoformat())
+                    payment_amount_pence=1000, payment_date=date)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment", payment_reference="BANK-PART-1",
+            payment_amount_pence=999, payment_date=date), 200)
+        self.assertEqual(self.job["status"], "partially_paid")
+        self.assertEqual(self.job["balance_due_pence"], 1)
+        self.assertEqual(len(self.job["payments"]), 1)
         self.denied(expected=409, user="agent", action="record_payment",
-                    payment_reference="BANK-1", payment_amount_pence=999,
-                    payment_date=datetime.now(timezone.utc).date().isoformat())
+                    payment_reference="BANK-PART-1", payment_amount_pence=1, payment_date=date)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment", payment_reference="BANK-PART-2",
+            payment_amount_pence=1, payment_date=date), 200)
+        self.assertEqual(self.job["status"], "paid")
+        self.assertEqual(self.job["balance_due_pence"], 0)
 
     def test_payment_recorded_once_after_approval(self):
         from datetime import datetime, timezone
