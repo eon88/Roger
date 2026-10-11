@@ -542,6 +542,7 @@ function renderCases(){
       <div class="details">${esc(c.message)}</div>
       ${triageLine(c.triage)}${threadFor(c)}${msgThread(c)}
       ${c.closed_reason?`<div class="fineprint">Closed: ${esc(c.closed_reason)}</div>`:''}
+      ${c.type==='issue'&&['reported','new'].includes(c.status)&&!(stage.jobs||[]).some(j=>String(j.case_id)===String(c.id))?`<div class="actions"><button class="btn primary" onclick="dispatchRepairCase(this,${c.id},'${esc(c.triage?.trade||'general')}')">Review &amp; open repair job</button><span class="fineprint">The agent must review before contractors see the job.</span></div>`:''}
       ${c.status!=='closed'?`<div class="actions closebox">
         <input placeholder="say something — tenant sees it" id="rp-${c.id}" autocomplete="off" onkeydown="if(event.key==='Enter')replyCase(this,${c.id})">
         <label class="who"><input type="checkbox" id="rpl-${c.id}" checked> landlord</label>
@@ -557,6 +558,16 @@ function renderCases(){
       </div>`:
       `<div class="actions"><button class="btn" onclick="reopenCase(this,${c.id})">Reopen case</button></div>`}
     </div>`).join(''):'<div class="empty">Case book is empty — tenant reports land here the moment they arrive, emergencies first.</div>');
+}
+async function dispatchRepairCase(btn,id,suggestedTrade){
+ const triage_note=(prompt('Agent triage note: why should this become a repair job?')||'').trim();
+ if(!triage_note)return;
+ const required_trade=prompt('Required trade (e.g. plumbing, electrical, heating):',suggestedTrade==='other'?'general':suggestedTrade);
+ if(required_trade===null)return;
+ await busy(btn,async()=>{try{
+   await post('/api/case-action',{id,action:'dispatch_repair',triage_note,required_trade:required_trade.trim().toLowerCase()});
+   toast('Repair job opened after agent review.');load();
+ }catch(e){toast(e.message||'Could not dispatch the repair.','bad');}});
 }
 async function closeCase(btn,id){ const r=document.getElementById('cl-'+id).value.trim();
   if(!r){toast('A closing reason is required — it stays on the record.','bad');return;}
@@ -602,7 +613,7 @@ function renderJobs(){
   document.getElementById('view-jobs').innerHTML=`<div class="move">jobs — who took what</div>`+
     sec(g('quoted'),'Quotes waiting on you','approve a price before anyone visits, or decline and ask again','No quotes in. When a trade replies with a price, it lands here for your yes or no.')+
     sec(g('pending_verification'),'Needs verification','credential mismatch — your call before anyone visits','Nothing held back. A booking appears here only when the trade\'s credentials need your eye.')+
-    sec(g('open'),'Unassigned','assign a trusted trade, ask for a quote first, or leave it on the board','No open jobs. Tenant reports become jobs here the moment you dispatch them.')+
+    sec(g('open'),'Unassigned','assign a trusted trade, ask for a quote first, or leave it on the board','No unassigned repair jobs. Review new tenant reports in Cases before opening a job.')+
     sec(g('assigned'),'Assigned, waiting to start','','Nothing sitting with a trade. Assign one from the open list.')+
     sec(g('quote_requested'),'Waiting on a quote','','No quote is outstanding. Ask a trade for a price from an open job.')+
     sec(g('in_progress'),'In progress','','Nothing on the go. Jobs arrive here once work is green-lit.')+
