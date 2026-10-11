@@ -1,0 +1,109 @@
+name: Rollback Roger (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type ROLLBACK to change the live application. Database will NOT be reverted."
+        type: string
+        required: true
+      allow_legacy_backup:
+        description: "Allow old pre-button backups only when they match the exact running app image"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: roger-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    name: Restore previous Roger app
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Confirm intentional live rollback
+        shell: bash
+        env:
+          CONFIRM: ${{ inputs.confirmation }}
+        run: |
+          if [[ "$CONFIRM" != "ROLLBACK" ]]; then
+            echo "::error::Type exactly ROLLBACK to authorise the live application rollback."
+            exit 1
+          fi
+          echo "Reverting application code only; not PostgreSQL or client files."
+
+      - name: Use reviewed automation from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Check script syntax
+        run: |
+          bash -n ops/deploy-roger-mvp.sh
+          bash -n ops/rollback-roger-mvp.sh
+
+      - name: SSH to Hostinger with pinned host key and roll back
+        shell: bash
+        env:
+          ROGER_HOST: ${{ secrets.ROGER_SSH_HOST }}
+          ROGER_KEY: ${{ secrets.ROGER_SSH_PRIVATE_KEY }}
+          ROGER_KNOWN_HOSTS: ${{ secrets.ROGER_SSH_KNOWN_HOSTS }}
+          ALLOW_LEGACY: ${{ inputs.allow_legacy_backup }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ROGER_HOST" || -z "$ROGER_KEY" || -z "$ROGER_KNOWN_HOSTS" ]]; then
+            echo "::error::Missing SSH host, private key or trusted host key secrets."
+            exit 1
+          fi
+          if [[ ! "$ROGER_HOST" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::ROGER_SSH_HOST must be a hostname or IP only."
+            exit 1
+          fi
+          if [[ "$ALLOW_LEGACY" != "true" && "$ALLOW_LEGACY" != "false" ]]; then
+            echo "::error::Invalid legacy-backup choice."
+            exit 1
+          fi
+          key_file="$RUNNER_TEMP/roger_rollback_key"
+          hosts_file="$RUNNER_TEMP/roger_rollback_hosts"
+          if [[ "$ROGER_KEY" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
+            printf '%s\n' "$ROGER_KEY" | tr -d '\r' > "$key_file"
+          else
+            printf '%s' "$ROGER_KEY" | tr -d '[:space:]' | base64 --decode > "$key_file"
+          fi
+          chmod 600 "$key_file"
+          ssh-keygen -y -P '' -f "$key_file" >/dev/null
+
+          host_key="$(printf '%s\n' "$ROGER_KNOWN_HOSTS" | tr -d '\r' | awk '
+            $2 == "ssh-ed25519" { print $2 " " $3; exit }
+            $1 == "ssh-ed25519" { print $1 " " $2; exit }
+          ')"
+          if [[ ! "$host_key" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]]; then
+            echo "::error::Trusted ED25519 host key is missing or invalid."
+            exit 1
+          fi
+          printf '%s %s\n' "$ROGER_HOST" "$host_key" > "$hosts_file"
+          chmod 600 "$hosts_file"
+          ssh-keygen -lf "$hosts_file" >/dev/null
+
+          ssh -i "$key_file" \
+              -o UserKnownHostsFile="$hosts_file" \
+              -o StrictHostKeyChecking=yes \
+              -o IdentitiesOnly=yes \
+              -o BatchMode=yes \
+              -o ConnectTimeout=20 \
+              "root@$ROGER_HOST" \
+              "bash -s -- '$ALLOW_LEGACY'" < ops/rollback-roger-mvp.sh
+
+      - name: Record success
+        if: success()
+        run: |
+          echo "### Roger rollback successful" >> "$GITHUB_STEP_SUMMARY"
+          echo "Website: https://agency.lifecompass.shop" >> "$GITHUB_STEP_SUMMARY"
+          echo "Previous application image restored and health checked." >> "$GITHUB_STEP_SUMMARY"
+          echo "The database was backed up and left unchanged." >> "$GITHUB_STEP_SUMMARY"
