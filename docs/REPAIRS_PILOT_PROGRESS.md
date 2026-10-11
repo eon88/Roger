@@ -69,6 +69,28 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 
 **Release:** Remains in draft PR #5; no live Hostinger deployment, no payments integration.
 
+## Task 04 — verified contractor evidence and service area (11 October 2026)
+
+**Status: PARTIAL — security gates, agent review UI and synthetic tests implemented on the feature branch. No production release.**
+
+- [x] **Fail closed for new repairs**: a 'checked' onboarding stage, approved registration, insurance date, or applicant-claimed Gas Safe number alone does not authorise dispatch. Roger now requires a linked active trades Party/account and a current, agent-recorded independent check supported by **two separate agent-verified trades documents** (insurance and qualification).
+- [x] Agent records separate insurer and qualification source/reference, checked-by/date, checked trade categories, finite review expiry, and confirmed service areas or outward postcode codes. Only the agent can create/revoke that record; the original documents stay in the private library.
+- [x] Live checks on every new quote/dispatch, work start, authorisation, landlord approval and variation: block suspended, unlinked, expired, replaced/rejected evidence, missing current insurance, changed registered trades and out-of-area work.
+- [x] Regulated gas work additionally requires a separate current Gas Safe evidence document and manual independent register lookup reference; legacy in-memory claimed credentials are not sufficient on legacy regulated booking routes either.
+- [x] Revocation instantly blocks new eligibility. Renewal preserves the old verification record in history; source and document changes invalidate the old verification. The Agent Desk shows upcoming review dates, missing/invalid proof, and an office-controlled renewal/revoke form.
+- [x] Contractor selection now filters by a verified service area matching the property's locality or outward postcode (backend independently checks again). No postcode prefix guessing.
+- [x] Added `tests/test_contractor_verification.py` for direct role denial, independent source records, cross-Party evidence rejection, document expiration/replacement, gas registration proof, date limits, exact postcode matching, trade-scope changes and revocation; refreshed existing synthetic repair/test fixtures.
+
+**Still required before claiming the entire area accepted:**
+
+- [ ] Actually inspect genuine supplier/insurer/Gas Safe/other register records and supporting documents. **The agent records an attestation; Roger does not connect to or certify an outside issuer.** No real contractor has been automatically checked.
+- [ ] Check jurisdiction-specific regulated qualifications, insurance policy scopes/limits and who can legally perform each trade with an appropriately qualified human. The prototype category list is not a legal licensing engine.
+- [ ] Contractor self-service upload/renewal and timed notification delivery/retries are not complete; the agency can upload and verify documents via the current admin Documents screen, and review warnings are displayed on the Agent Desk.
+- [ ] Full populated browser run of proof upload → manual issuer check → approval → trade acceptance/expiry/revocation; the standard four-role smoke tests do not exercise this specific workflow.
+- [ ] Transaction-safe concurrent dispatch and immutable evidence storage validation / restoration (Task 06 / Task 05).
+
+**Release policy:** Draft development branch only. The user previously chose to defer the optional full appointment journey; this contractor browser journey remains a future acceptance gate.
+
 ## Next P0 tasks (NOT DONE)
 1. Appointments and access: propose/accept/reschedule/cancel/no-access, contact consent, key instructions and a parts-delay branch. Block misleading “scheduled” statuses.
 2. Case control: single next person/action and due date, duplicate reporting/idempotency, internal/private vs shared notes, disputes, reopening after completed work.
