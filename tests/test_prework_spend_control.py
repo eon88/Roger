@@ -105,6 +105,7 @@ class PreworkCostApprovalTests(unittest.TestCase):
         self.assertEqual(self.stage, before)
 
     def test_contractor_cannot_work_outside_checked_trade(self):
+        self.stage["jobs"][0]["required_trade"] = "plumbing"
         self.stage["registrations"][0]["trades"] = ["electrical"]
         before = copy.deepcopy(self.stage)
         self.assertEqual(self.request_quote(), 409)
