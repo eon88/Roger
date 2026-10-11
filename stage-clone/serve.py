@@ -1763,6 +1763,8 @@ class H(SimpleHTTPRequestHandler):
             "triage": t,
             "submitted_at": now(),
         }
+        self.case_next(case, "agent", "Review the new enquiry and respond",
+                       self.internal_case_target())
         stage["next_case_id"] = case["id"] + 1
         stage.setdefault("cases", []).append(case)
         save_stage(stage)
