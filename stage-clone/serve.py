@@ -540,6 +540,7 @@ class H(SimpleHTTPRequestHandler):
                  "jobs": [j for j in d.get("jobs", []) if j.get("property_id") in pids],
                  "approvals": [a for a in d.get("approvals", []) if (self.has_party_link(a, "landlord", party_ids)
                                    and a.get("property_id") in pids)],
+                 "repair_authority": {p["id"]: self.repair_authority(stage, p["id"]) for p in myprops},
                  "authority": d.get("authority"), "role": "landlord"}
         elif u["role"] == "trades":
             ids = self.account_party_ids(stage, u, "trades")
@@ -2062,7 +2063,10 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "no pending quote"}, 400)
             q = max(pend, key=lambda x: x.get("at", ""))
             if job.get("requires_prework_quote"):
-                limit = int(stage.get("authority", {}).get("standing_limit_pence", 15000))
+                mandate = self.repair_authority(stage, job.get("property_id"))
+                if not mandate:
+                    return self._json({"error": "signed, active management mandate with a spending limit required for this property"}, 409)
+                limit = mandate["limit_pence"]
                 if q["pence"] > limit:
                     prop = self.find_prop(stage, job.get("property_id"))
                     landlord_id = (prop or {}).get("landlord_party_id")
@@ -2076,6 +2080,7 @@ class H(SimpleHTTPRequestHandler):
                     if not eligible:
                         return self._json({"error": "active linked landlord account required for approval"}, 409)
                     q["status"] = "pending_landlord"
+                    job["mandate_snapshot"] = dict(mandate)
                     job["approved_quote_pence"] = q["pence"]
                     job["status"] = "awaiting_prework_approval"
                     stage.setdefault("approvals", [])
@@ -2088,6 +2093,7 @@ class H(SimpleHTTPRequestHandler):
                         "landlord_party_ids": prop.get("landlord_party_ids", []),
                         "amount_pence": q["pence"], "reason": job.get("message", ""),
                         "quote_at": q["at"], "scope": q.get("note", ""),
+                        "mandate_snapshot": dict(mandate),
                         "evidence": {"tradesperson": job.get("assigned_to"),
                                      "job_created": job.get("created_at")},
                         "status": "pending", "requested_at": now(),
@@ -2100,6 +2106,7 @@ class H(SimpleHTTPRequestHandler):
                                        "target": job["id"], "note": str(q["pence"]) + "p"})
                 else:
                     q["status"] = "approved"
+                    job["mandate_snapshot"] = dict(mandate)
                     job["approved_quote_pence"] = q["pence"]
                     job["status"] = "assigned"
                     job["work_authorised_at"] = now()
@@ -2258,6 +2265,9 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "a reason is required when rejecting"}, 400)
         job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
         if prework:
+            current_mandate = self.repair_authority(stage, appr.get("property_id"))
+            if not current_mandate or current_mandate != appr.get("mandate_snapshot"):
+                return self._json({"error": "management authority changed; request a new approval"}, 409)
             if (not job or job.get("status") != "awaiting_prework_approval"
                     or job.get("approved_quote_pence") != appr.get("amount_pence")
                     or not any(
