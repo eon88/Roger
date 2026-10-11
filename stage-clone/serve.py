@@ -2042,6 +2042,23 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": str(exc)}, 400)
         # Intake only. A report is NOT permission to advertise a contractor job.
         # The agent reviews it and dispatches explicitly via /api/case-action.
+        if (t.get("urgency") or 0) >= 2:
+            alerts = stage.setdefault("notifications", [])
+            ids = [int(n["id"].split("-")[1]) for n in alerts
+                   if isinstance(n, dict) and re.fullmatch(r"note-\d+", str(n.get("id", "")))]
+            alert = {"id": "note-"+str(max(ids, default=0)+1),
+                     "notification_type": "agent_alert",
+                     "title": "Urgent tenant report requires manual review",
+                     "message": "Review case #"+str(case["id"])+
+                                " and arrange the appropriate response; Roger does not provide emergency dispatch.",
+                     "recipient_role": "agent", "recipient_party_id": None,
+                     "channels": ["in_app"], "email_status": None,
+                     "status": "unread", "property_id": case.get("property_id"),
+                     "case_id": case["id"], "created_by": "system",
+                     "created_at": now(), "read_at": None}
+            alerts.append(alert)
+            self.audit(stage, {"actor": "system", "action": "urgent_agent_alert_created",
+                               "target": alert["id"], "note": "case #"+str(case["id"])})
         self.audit(stage, {"actor": "system", "action": "case_created", "target": case["id"],
                            "note": f"{t['category']}/{t.get('trade','-')} urgency {t['urgency']}"})
         save_stage(stage)
