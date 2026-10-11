@@ -103,6 +103,12 @@ class RepairAppointmentTests(unittest.TestCase):
         self.assertNotIn("access_preference", self.handler.scoped_appointments(self.users["owner"])[0]
                          if self.handler.scoped_appointments(self.users["owner"]) else {})
         self.act("tenant", "handle_appointment_action", expected=409, id=visit["id"], action="confirm")
+        self.act("tenant", "handle_appointment_action", id=visit["id"], action="decline",
+                 note="I can no longer give access")
+        self.assertEqual(self.stage["appointments"][0]["status"], "change_requested")
+        self.assertIsNone(self.stage["appointments"][0]["access_preference"])
+        self.assertFalse(self.stage["appointments"][0]["contact_consent"])
+        self.assertNotIn("access_preference", self.handler.scoped_appointments(self.users["trade"])[0])
 
     def test_rejection_reproposal_missed_access_and_parts_delay(self):
         aid = self.propose()["id"]
