@@ -250,6 +250,16 @@ function renderAttentionBoard(){
   const add=(list,label,detail,view,id,tag)=>list.push({label,detail,view,id,tag});
   (stage.cases||[]).filter(c=>activeRecord(c)&&(c.status==='new'||c.status==='reported'||c.next_actor==='agent'||Number(c.triage?.urgency)>=2)).sort((a,b)=>(Number(b.triage?.urgency)||0)-(Number(a.triage?.urgency)||0)||String(b.submitted_at||'').localeCompare(String(a.submitted_at||''))).forEach(c=>add(needs,'Case #'+c.id+' · '+(c.type||'case'),propertyName(c.property_id)+' · '+(c.name||'Unidentified person'),'cases','case-'+c.id,Number(c.triage?.urgency)>=2?'urgent':c.status));
   (stage.jobs||[]).filter(j=>['open','quoted','pending_verification'].includes(j.status)).forEach(j=>add(needs,'Job '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,j.status));
+  (stage.registrations||[]).filter(r=>r.role==='trades'&&r.status==='approved'&&r.party_id).forEach(r=>{
+    const v=r.contractor_verification||{},date=String(v.valid_until||'');
+    const deadline=date?Date.parse(date+'T00:00:00Z'):0;
+    const eligible=pool.some(t=>t.party_id===r.party_id&&t.ready_for_new_repairs);
+    if(!eligible)add(needs,'Contractor check needed · '+(r.name||r.id),
+      'Missing, expired, revoked or invalid evidence — new work blocked',
+      'registrations','reg-'+r.id,'urgent');
+    else if(deadline&&deadline<=now+30*86400000)add(upcoming,'Contractor renewal · '+(r.name||r.id),
+      'Independent proof check expires '+date,'registrations','reg-'+r.id,'pending');
+  });
   // Invoices originate from the tradesperson's completed work order.
   // Small invoices auto-settled under authority remain in Finance, not the action queue.
   const followupInvoices=(stage.jobs||[]).filter(j=>j.invoice_pence!=null&&['awaiting_approval','rejected'].includes(j.status));
@@ -610,8 +620,23 @@ async function replyCase(btn,id){ const el=document.getElementById('rp-'+id); co
     el.value=''; toast('Sent — it lands in their portal.'); load(); }catch(e){} }); }
 async function reopenCase(btn,id){ await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'reopen'});
   toast('Reopened — back on the active list.'); load(); }catch(e){} }); }
-function poolPicker(idSuffix,job){ const opts=pool.filter(t=>t.party_id&&(!job.requires_prework_quote||t.ready_for_new_repairs)).map(t=>`<option value="${esc(t.party_id)}">${esc(t.company)} — ${esc((t.trades||[]).join('/'))}${t.gas_safe?' · Gas Safe verified':''}</option>`).join('');
-  return `<select id="pool-${idSuffix}"><option value="">choose verified trade…</option>${opts}</select>`;}
+function poolPicker(idSuffix,job){
+  const home=(stage.properties||[]).find(p=>p.id===job.property_id)||{};
+  const postcode=String(home.postcode||'').replace(/\s/g,'').toUpperCase();
+  const outward=postcode.length>=5?postcode.slice(0,-3):'';
+  const area=String(home.area||'').trim().toUpperCase().replace(/\s/g,'');
+  const suitable=t=>{
+    if(!t.party_id)return false;
+    if(!job.requires_prework_quote)return true;
+    if(!t.ready_for_new_repairs)return false;
+    const allowed=(t.service_areas||[]).map(a=>String(a).toUpperCase().replace(/\s/g,''));
+    return !!((outward&&allowed.includes(outward))||(area&&allowed.includes(area)));
+  };
+  const opts=pool.filter(suitable).map(t=>
+    '<option value="'+esc(t.party_id)+'">'+esc(t.company)+' — '+esc((t.trades||[]).join('/'))+
+    ' · checked areas '+esc((t.service_areas||[]).join(', '))+(t.gas_safe?' · gas evidence checked':'')+'</option>').join('');
+  return '<select id="pool-'+esc(idSuffix)+'"><option value="">'+(opts?'choose checked trade…':'no verified trade in this area')+'</option>'+opts+'</select>';
+}
 
 function renderJobs(){
   const jobs=(stage.jobs||[]).slice().reverse();
