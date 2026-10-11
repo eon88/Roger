@@ -30,7 +30,7 @@ class FourRoleRepairPilotTests(unittest.TestCase):
             "cases": [], "jobs": [], "approvals": [], "documents": [],
             "next_case_id": 51, "audit_log": [],
             "management_agreements": [{
-                "id": "management-a", "landlord_party_id": "owner-1",
+                "id": "management-a", "agreement_type": "full_management", "landlord_party_id": "owner-1",
                 "property_ids": ["home-1"], "status": "active",
                 "signed_at": "2026-10-01", "updated_at": "2026-10-01T10:00:00Z",
                 "spending_limit_pence": 15000,
