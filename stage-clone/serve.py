@@ -3716,6 +3716,7 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "case does not match job"}, 409)
         if job and not case_id:
             case_id = job.get("case_id")
+            case = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
         start = str(data.get("start_time") or "")
         end = str(data.get("end_time") or "")
         start_dt = self.appointment_datetime(start)
@@ -3852,7 +3853,7 @@ class H(SimpleHTTPRequestHandler):
             # Consent is optional; a confirmed visit is not permission to disclose contact details.
             appt["contact_consent"] = data.get("contact_consent") is True
         status_map = {
-            "confirm": "confirmed", "decline": "change_requested", "reschedule": "proposed",
+            "confirm": "confirmed", "decline": "change_requested" if contractor else "declined", "reschedule": "proposed",
             "complete": "completed", "miss": "missed", "no_access": "no_access",
             "parts_delay": "parts_delay", "cancel": "cancelled",
         }
