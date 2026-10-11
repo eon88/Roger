@@ -2027,8 +2027,10 @@ class H(SimpleHTTPRequestHandler):
         role = (self.user or {}).get("role")
         AGENT_ONLY = {"assign", "request_quote", "approve_quote", "decline_quote",
                       "send_to_landlord", "verify_approve", "verify_decline",
-                      "approve_invoice", "record_payment"}
-        TRADES_ONLY = {"accept", "start", "complete", "release", "submit_quote"}
+                      "approve_invoice", "record_payment", "record_credit",
+                      "approve_variation", "decline_variation"}
+        TRADES_ONLY = {"accept", "start", "complete", "release", "submit_quote",
+                       "submit_variation"}
         if action in AGENT_ONLY and role != "agent":
             return self._json({"error": "agent-only move"}, 403)
         if action in TRADES_ONLY and role != "trades":
@@ -2074,6 +2076,7 @@ class H(SimpleHTTPRequestHandler):
                         "assigned", "in_progress", "quote_requested"
                     },
                     "submit_quote": {"quote_requested"},
+                    "submit_variation": {"assigned", "in_progress"},
                 }
                 if job.get("status") not in allowed_states[action]:
                     return self._json(
@@ -2245,8 +2248,22 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "quote must be a positive amount in pence"}, 400)
             if quote_pence <= 0:
                 return self._json({"error": "quote must be greater than zero"}, 400)
+            if "line_items" in data:
+                try:
+                    breakdown = self.money_lines(data["line_items"])
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                if breakdown["gross_pence"] != quote_pence:
+                    return self._json({"error": "quote items plus VAT must equal total quote"}, 409)
+            else:
+                breakdown = None  # existing clients remain compatible, flagged as legacy
             job["quotes"] = job.get("quotes", [])
             q = {"tradesperson": actor, "pence": quote_pence,
+                 "version": len(job["quotes"]) + 1,
+                 "pricing_format": "itemised" if breakdown else "legacy_lump_sum",
+                 "line_items": breakdown["lines"] if breakdown else [],
+                 "net_pence": breakdown["net_pence"] if breakdown else None,
+                 "vat_pence": breakdown["vat_pence"] if breakdown else None,
                  "note": str(data.get("note", ""))[:500], "at": now(), "status": "pending"}
             job["quotes"].append(q)
             job["status"] = "quoted"
@@ -2282,6 +2299,7 @@ class H(SimpleHTTPRequestHandler):
                     q["status"] = "pending_landlord"
                     job["mandate_snapshot"] = dict(mandate)
                     job["approved_quote_pence"] = q["pence"]
+                    job["approved_quote_version"] = q["version"]
                     job["status"] = "awaiting_prework_approval"
                     stage.setdefault("approvals", [])
                     stage["approvals"].append({
@@ -2292,7 +2310,9 @@ class H(SimpleHTTPRequestHandler):
                         "landlord_party_id": landlord_id,
                         "landlord_party_ids": prop.get("landlord_party_ids", []),
                         "amount_pence": q["pence"], "reason": job.get("message", ""),
-                        "quote_at": q["at"], "scope": q.get("note", ""),
+                        "quote_at": q["at"], "quote_version": q["version"],
+                        "quote_lines": q.get("line_items", []), "quote_net_pence": q.get("net_pence"),
+                        "quote_vat_pence": q.get("vat_pence"), "scope": q.get("note", ""),
                         "mandate_snapshot": dict(mandate),
                         "evidence": {"tradesperson": job.get("assigned_to"),
                                      "job_created": job.get("created_at")},
@@ -2308,6 +2328,7 @@ class H(SimpleHTTPRequestHandler):
                     q["status"] = "approved"
                     job["mandate_snapshot"] = dict(mandate)
                     job["approved_quote_pence"] = q["pence"]
+                    job["approved_quote_version"] = q["version"]
                     job["status"] = "assigned"
                     job["work_authorised_at"] = now()
                     job["work_authorised_by"] = actor
@@ -2320,6 +2341,7 @@ class H(SimpleHTTPRequestHandler):
             else:
                 q["status"] = "approved"
                 job["approved_quote_pence"] = q["pence"]
+                job["approved_quote_version"] = q["version"]
                 job["status"] = "in_progress"
                 self.sync_case(stage, job["case_id"], "in_progress")
                 self.post_msg(stage, job["case_id"], f"Quote of £{q['pence']/100:.2f} approved — {job['assigned_to']} can start.", to=("tenant", "trades"))
