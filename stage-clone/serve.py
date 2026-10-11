@@ -1780,30 +1780,13 @@ class H(SimpleHTTPRequestHandler):
             docs = self.store_case_attachments(stage, case, data.get("attachments"), name or "Tenant")
         except ValueError as exc:
             return self._json({"error": str(exc)}, 400)
-        job = None
-        if t["category"] == "maintenance":
-            stage.setdefault("jobs", [])
-            job = {
-                "id": f"job-{max([int(j['id'].split('-')[1]) for j in stage['jobs']] or [0]) + 1}",
-                "case_id": case["id"],
-                "property_id": case["property_id"],
-                "message": message,
-                "triage": t,
-                "required_trade": t.get("trade") if t.get("trade") not in (None, "other") else None,
-                "status": "open",
-                "assigned_to": None,
-                "invoice_pence": None,
-                "created_at": now(),
-            }
-            if case.get("document_ids"):
-                job["evidence_document_ids"] = list(case["document_ids"])
-            stage["jobs"].append(job)
-            case["status"] = "dispatched"
+        # Intake only. A report is NOT permission to advertise a contractor job.
+        # The agent reviews it and dispatches explicitly via /api/case-action.
         self.audit(stage, {"actor": "system", "action": "case_created", "target": case["id"],
                            "note": f"{t['category']}/{t.get('trade','-')} urgency {t['urgency']}"})
         save_stage(stage)
         self._json({"success": True, "case_id": case["id"], "triage": t,
-                    "job_id": job["id"] if job else None,
+                    "job_id": None,
                     "document_ids": [d["id"] for d in docs] if docs else []})
 
     # ---------- trades: BOOK → complete → settle or escalate ----------
@@ -2650,6 +2633,7 @@ class H(SimpleHTTPRequestHandler):
         agent_actions = {
             "close", "reopen", "add_tradesperson", "mark_read",
             "mark_unread", "note", "follow_up", "reply", "inform",
+            "dispatch_repair",
         }
         tenant_actions = {
             "reply", "inform", "confirm_resolution", "reopen_unresolved",
@@ -2701,6 +2685,46 @@ class H(SimpleHTTPRequestHandler):
             self.post_msg(stage, c["id"], data.get("text"), to=to)
             self.audit(stage, {"actor": u.get("display_name", "?"), "action": f"case_{action}",
                                "target": c["id"], "note": "-> " + ",".join(to)})
+        elif action == "dispatch_repair":
+            if c.get("type") != "issue" or c.get("status") not in ("reported", "new"):
+                return self._json({"error": "only an untriaged tenant issue can become a repair job"}, 409)
+            prop = self.find_prop(stage, c.get("property_id"))
+            if not prop:
+                return self._json({"error": "case property is missing"}, 409)
+            if any(str(j.get("case_id")) == str(c["id"]) for j in stage.get("jobs", [])):
+                return self._json({"error": "this report already has a repair job"}, 409)
+            triage = c.get("triage") if isinstance(c.get("triage"), dict) else {}
+            reason = str(data.get("triage_note", "")).strip()[:500]
+            if not reason:
+                return self._json({"error": "record why the agent is dispatching this repair"}, 400)
+            trade = str(data.get("required_trade") or triage.get("trade") or "").strip().lower()
+            if not re.fullmatch(r"[a-z][a-z_]{0,39}", trade):
+                return self._json({"error": "select a valid repair trade"}, 400)
+            if trade == "other":
+                trade = ""
+            stage.setdefault("jobs", [])
+            job_ids = [int(j["id"].split("-")[1])
+                       for j in stage["jobs"]
+                       if isinstance(j.get("id"), str) and re.fullmatch(r"job-\d+", j["id"])]
+            jid = "job-" + str(max(job_ids, default=0) + 1)
+            job = {
+                "id": jid, "case_id": c["id"], "property_id": c["property_id"],
+                "message": c.get("message", ""), "triage": triage,
+                "required_trade": trade or None, "status": "open",
+                "assigned_to": None, "invoice_pence": None,
+                "created_at": now(), "triaged_at": now(),
+                "triaged_by": u.get("username", "agent"), "triage_note": reason,
+            }
+            if c.get("document_ids"):
+                job["evidence_document_ids"] = list(c["document_ids"])
+            stage["jobs"].append(job)
+            c["status"] = "dispatched"
+            c["triaged_at"] = now()
+            c["triaged_by"] = u.get("username", "agent")
+            c["triage_note"] = reason
+            self.post_msg(stage, c["id"], "Your report has been reviewed by the agent; a repair job has been opened.", to=("tenant",))
+            self.audit(stage, {"actor": u.get("display_name", "agent"), "action": "repair_dispatched",
+                               "target": jid, "note": "Case #" + str(c["id"]) + ": " + reason})
         elif action == "add_tradesperson":
             who = str(data.get("tradesperson", ""))[:100]
             known = {t["company"] for t in self.approved_trades(stage)}
