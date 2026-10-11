@@ -4,28 +4,98 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agent Desk | Stage</title>
 <link rel="stylesheet" href="/dash.css">
+<style>
+/* Roger showcase MVP shell — visual enhancement only; existing APIs and auth remain intact */
+:root{
+ --paper:#f3f5f1;--card:#fff;--ink:#1b3026;--muted:#687a70;
+ --line:#e2e9e2;--line-soft:#edf1eb;--line-strong:#b9cbbb;
+ --accent:#2d6047;--accent-deep:#193e30;--accent-soft:#eaf2eb;
+ --r:16px;--r-sm:10px;
+ --font-ui:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;
+ --font-display:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;
+}
+body{background:var(--paper);font-family:var(--font-ui)}
+.shell{max-width:1320px;padding:0 28px 72px}
+.mvp-head.header{display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px 24px;margin:0 0 32px;padding:19px 0 12px;border-bottom:0;background:var(--paper)}
+.mvp-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.mvp-brand-mark{display:grid;place-items:center;background:#244a38;color:#f7fbf6;font-size:24px;font-weight:800;border-radius:14px;width:46px;height:46px;line-height:1}
+.mvp-brand-title h1{font-family:var(--font-display);font-weight:800;font-size:23px;letter-spacing:-1px;line-height:1.1}
+.mvp-brand-dot{color:#6e9d76}
+.mvp-brand-title>span{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.mvp-userbar{display:flex;align-items:center;gap:14px;justify-content:flex-end;flex-wrap:wrap}
+.mvp-userbar .who{font-size:12px;max-width:260px}
+.mvp-site-link{font-size:13px;color:var(--accent-deep);font-weight:600}
+.mvp-signout{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;background:white;color:var(--ink);padding:9px 13px;cursor:pointer}
+.mvp-signout:hover{background:#e9f1eb}
+.mvp-nav.tabs{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #e2e9e2;background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(26,49,34,.04)}
+.mvp-nav.tabs>a.tab,.mvp-more>summary,.mvp-more-menu>a.tab{font:inherit;font-size:13px;font-weight:600;text-decoration:none;min-height:42px;padding:11px 15px;border:0;border-radius:10px;background:transparent;color:#62796d;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap}
+.mvp-nav.tabs>a.tab:hover,.mvp-more>summary:hover,.mvp-more-menu>a.tab:hover{background:#eff4ee;color:#214b35}
+.mvp-nav.tabs>a.tab.on,.mvp-more-menu>a.tab.on{background:#eaf3e9;color:#245a3d;border:0}
+.mvp-more{position:relative;margin-left:auto}
+.mvp-more>summary{list-style:none;gap:9px}
+.mvp-more>summary::-webkit-details-marker{display:none}
+.mvp-more-menu{position:absolute;z-index:90;right:0;top:calc(100% + 10px);min-width:235px;max-height:min(70vh,520px);overflow:auto;display:grid;gap:2px;background:#fff;border:1px solid var(--line);padding:9px;border-radius:13px;box-shadow:0 16px 42px rgba(23,46,31,.17)}
+.mvp-more-menu>a.tab{display:block;padding:11px 14px;min-height:unset}
+main{padding-top:2px}
+.card{border:1px solid var(--line);background:#fff;border-radius:18px;box-shadow:0 4px 18px rgba(32,57,39,.035)}
+.card h3{font-family:var(--font-display);font-weight:750;color:#243d2f}
+.move{color:#3e7653;font-weight:750;letter-spacing:.09em}
+.stats .stat,.stat{border-radius:12px}
+.btn.primary{background:#2b6045;border-color:#2b6045}
+.btn.primary:hover{background:#1a4833}
+input,textarea,select{accent-color:#2b6045}
+:focus-visible{outline:3px solid #96bd92!important;outline-offset:2px}
+@media(max-width:870px){
+ .mvp-head.header{grid-template-columns:1fr}
+ .mvp-userbar{justify-content:flex-start}
+ .mvp-nav.tabs{overflow:visible;gap:4px}
+ .mvp-nav.tabs>a.tab{padding:10px 11px}
+ .mvp-more{margin-left:0}
+}
+@media(max-width:560px){
+ .shell{padding:0 13px 60px}
+ .mvp-head.header{padding-top:12px;gap:12px;margin-bottom:20px}
+ .mvp-userbar .who{flex-basis:100%;max-width:none}
+ .mvp-nav.tabs{padding:6px;border-radius:13px}
+ .mvp-nav.tabs>a.tab,.mvp-more>summary{font-size:12px;padding:10px}
+ .mvp-more-menu{right:auto;left:0;min-width:220px}
+ .card{border-radius:13px}
+}
+</style>
 </head>
 <body>
 <div class="shell">
-  <header class="header stuck">
-    <div class="brand"><h1>Agent Desk</h1><span class="who" id="stamp">…</span></div>
-    <nav class="tabs">
-      <a href="#" class="tab on" data-view="overview">Overview</a>
-      <a href="#" class="tab" data-view="cases">Cases</a>
-      <a href="#" class="tab" data-view="jobs">Jobs</a>
-      <a href="#" class="tab" data-view="communications">Communications</a>
-      <a href="#" class="tab" data-view="notifications">Notifications</a>
-      <a href="#" class="tab" data-view="tasks">Tasks</a>
-      <a href="#" class="tab" data-view="money">Money</a>
-      <a href="#" class="tab" data-view="compliance">Compliance</a>
-      <a href="#" class="tab" data-view="appointments">Appointments</a>
-      <a href="#" class="tab" data-view="documents">Documents</a>
-      <a href="#" class="tab" data-view="registrations">Registrations</a>
-      <a href="#" class="tab" data-view="prospects">Prospects</a>
-      <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
+  <header class="header stuck mvp-head">
+    <div class="mvp-brand">
+      <span class="mvp-brand-mark" aria-hidden="true">r.</span>
+      <div class="mvp-brand-title"><h1>Roger<span class="mvp-brand-dot">.</span></h1><span>Agent workspace</span></div>
+    </div>
+    <div class="mvp-userbar">
+      <span class="who" id="stamp">Connecting to Roger…</span>
+      <a class="mvp-site-link" href="/">Public website ↗</a>
+      <form action="/logout" method="POST"><input type="hidden" name="intent" value="logout"><button class="mvp-signout" type="submit">Log out</button></form>
+    </div>
+    <nav class="tabs mvp-nav" aria-label="Agent workspace">
+      <a href="#" class="tab on" data-view="overview">Today &amp; inbox</a>
+      <a href="#" class="tab" data-view="cases">Cases &amp; messages</a>
+      <a href="#" class="tab" data-view="jobs">Work orders</a>
       <a href="#" class="tab" data-view="properties">Properties</a>
-      <a href="#" class="tab" data-view="history">History</a>
-      <a href="/" class="tab out">Lettings site</a><form action="/logout" method="POST" style="display:contents"><input type="hidden" name="intent" value="logout"><button class="tab out" type="submit">Log out</button></form>
+      <a href="#" class="tab" data-view="money">Finance</a>
+      <details class="mvp-more">
+        <summary>More tools <span aria-hidden="true">⌄</span></summary>
+        <div class="mvp-more-menu">
+          <a href="#" class="tab" data-view="communications">Communications</a>
+          <a href="#" class="tab" data-view="notifications">Notifications</a>
+          <a href="#" class="tab" data-view="tasks">Tasks</a>
+          <a href="#" class="tab" data-view="compliance">Compliance</a>
+          <a href="#" class="tab" data-view="appointments">Appointments</a>
+          <a href="#" class="tab" data-view="documents">Documents</a>
+          <a href="#" class="tab" data-view="registrations">Registrations</a>
+          <a href="#" class="tab" data-view="prospects">Prospects</a>
+          <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
+          <a href="#" class="tab" data-view="history">Activity history</a>
+        </div>
+      </details>
     </nav>
   </header>
   <div id="api-error" class="banner danger" style="display:none">Couldn't reach the portal. <button class="btn" onclick="load(true)">Try again</button></div>
@@ -909,7 +979,7 @@ function renderHistory(){
   const selected=document.getElementById('history-property');if(selected)selected.value=propId;
 }
 
-function show(v){ document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
+function show(v){ document.querySelector('.mvp-more')?.removeAttribute('open'); document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
   document.querySelectorAll('[id^=view-]').forEach(s=>s.style.display='none');
   document.getElementById('view-'+v).style.display='block'; }
 document.querySelectorAll('.tabs .tab[data-view]').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();show(t.dataset.view);}));
