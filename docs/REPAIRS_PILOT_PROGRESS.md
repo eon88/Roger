@@ -135,14 +135,28 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 
 **Release:** Keep PR #5 in draft; the production Hostinger instance has not been changed.
 
-## Next P0 tasks (NOT DONE)
+## Task 07 — populated four-role browser pilot (11 October 2026)
+
+**COMPLETE for the synthetic pilot happy-path acceptance journey. NOT a production release.**
+
+- [x] Playwright test `tests/full_repair_browser.cjs` starts its own disposable server/data directory and logs in as five separate fake users: Agent, Tenant, Landlord, Trades and an unrelated Tenant.
+- [x] Real Chromium clicks cover tenant report → agent manual triage/dispatch → verified contractor chosen by the agent → VAT-itemised contractor quote → agent approval → landlord pre-work approval → contractor visit proposal → tenant confirmation/access consent.
+- [x] Continue with contractor start → itemised extra-work request → landlord approval of revised maximum → numbered invoice submission → tenant confirmation of completed repair → agent invoice approval → partial external payment → supplier credit → second external payment → final balance and landlord dashboard totals.
+- [x] Verify two negative permissions: unrelated tenant cannot view or change the case, and the contractor cannot start before approval or invoice pending extra work. All case and settlement data survive page reloads and distinct role logins.
+- [x] **GitHub Actions evidence:** [full four-role repair browser and existing four-role smoke, successful run #38181438758](https://github.com/eon88/Roger/actions/runs/38181438758); [359 Python regression tests, successful run #38181438482](https://github.com/eon88/Roger/actions/runs/38181438482).
+- [ ] This is **not** the full production certification: browser edge branches (missed/changed visit, every rejected quote, exhausted notifications, document revocation) and genuine human/accounting/evidence reviews still require work; Task 01–06 release gates remain open.
+- [ ] No real bank money was moved, no email was sent by this test, no real supplier independently verified and the live Hostinger site was not touched.
+
+**Result:** Task 07's intended complete real-click synthetic repair happy path is confirmed passing, including role-level privacy denial. The overall Roger MVP is **not** production-approved.
+
+## Remaining P0 acceptance and production gates
 1. Appointments and access: propose/accept/reschedule/cancel/no-access, contact consent, key instructions and a parts-delay branch. Block misleading “scheduled” statuses.
 2. Case control: single next person/action and due date, duplicate reporting/idempotency, internal/private vs shared notes, disputes, reopening after completed work.
 3. Financial completion: itemised quotes, VAT, quote version/scope receipt, approved variations, invoice number/duplicate check, partial payments, credits, reconciliation. Keep all money external until a reviewed accounting route exists.
 4. Contractor proof: evidence attachments, independent credential check (especially regulated trades), verification expiry, service-area checks and re-review. Gas dispatch remains blocked without explicit verified proof.
 5. Office settings and delivery: real agency contact and emergency policy, notifications with failure/retry, audit, account invitations/access revocation, tested restore.
 6. Database safety: PostgreSQL currently also uses shared JSON snapshots; implement transaction-safe concurrent updates and verify independent tenancy/agency access at API/file level.
-7. True populated browser pilot for all four roles (current browser smoke checks portals and property submissions; the full repair path is unit-tested with synthetic fixtures but not yet with browser clicks).
+7. **DONE (synthetic full happy path):** browser journey including all four roles, visits, quote/variation approval and external payment records. See Task 07 section and CI run #38181438758.
 
 ## Release status
 All work here is on the GitHub feature branch. **Not merged or deployed to the production Hostinger Roger.** Release only after security/data checks, fresh backup, passing CI and an explicit production decision. The live application remains on the previous deployed version.
