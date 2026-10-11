@@ -144,8 +144,45 @@ class JobPermissionTests(unittest.TestCase):
         self.assertEqual(
             self.act(user="trade1", action="complete"), 200
         )
-        self.assertEqual(self.job["status"], "paid")
+        self.assertEqual(self.job["status"], "invoice_submitted")
+        self.assertNotIn("paid_at", self.job)
         self.saved.assert_called_once()
+
+    def test_agent_approval_is_not_payment(self):
+        self.assertEqual(self.act(user="trade1", action="complete"), 200)
+        self.assertEqual(self.act(user="agent", action="approve_invoice"), 200)
+        self.assertEqual(self.job["status"], "invoice_approved")
+        self.assertNotIn("paid_at", self.job)
+
+    def test_payment_requires_external_reference_and_full_amount(self):
+        from datetime import datetime, timezone
+        self.job.update(status="invoice_approved", invoice_pence=1000)
+        self.denied(expected=400, user="agent", action="record_payment",
+                    payment_amount_pence=1000,
+                    payment_date=datetime.now(timezone.utc).date().isoformat())
+        self.denied(expected=409, user="agent", action="record_payment",
+                    payment_reference="BANK-1", payment_amount_pence=999,
+                    payment_date=datetime.now(timezone.utc).date().isoformat())
+
+    def test_payment_recorded_once_after_approval(self):
+        from datetime import datetime, timezone
+        self.job.update(status="invoice_approved", invoice_pence=1000)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment",
+            payment_reference="BANK-123", payment_amount_pence=1000,
+            payment_date=datetime.now(timezone.utc).date().isoformat()), 200)
+        self.assertEqual(self.job["status"], "paid")
+        self.assertEqual(self.job["payment_reference"], "BANK-123")
+        self.assertEqual(self.job["payment_amount_pence"], 1000)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment",
+            payment_reference="BANK-123", payment_amount_pence=1000,
+            payment_date=datetime.now(timezone.utc).date().isoformat()), 409)
+
+    def test_invoice_above_approved_quote_needs_variation(self):
+        self.job.update(status="invoice_submitted", invoice_pence=25000,
+                        approved_quote_pence=20000)
+        self.denied(expected=409, user="agent", action="approve_invoice")
 
     def test_own_job_release_allowed(self):
         self.assertEqual(
