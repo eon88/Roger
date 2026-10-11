@@ -19,7 +19,7 @@ class FourRoleRepairPilotTests(unittest.TestCase):
                 {"id": "tenant-2", "account_id": "account-stranger", "roles": ["tenant"], "status": "active"},
                 {"id": "owner-1", "account_id": "account-landlord", "roles": ["landlord"],
                  "status": "active", "display_name": "Test Owner"},
-                {"id": "trade-1", "account_id": "account-trade", "roles": ["trades"],
+                {"id": "trade-1", "account_id": "account-trade", "source_registration_id": "trade-reg-1", "roles": ["trades"],
                  "status": "active", "display_name": TRADE},
             ],
             "properties": [
@@ -29,6 +29,12 @@ class FourRoleRepairPilotTests(unittest.TestCase):
             ],
             "cases": [], "jobs": [], "approvals": [], "documents": [],
             "next_case_id": 51, "audit_log": [],
+            "registrations": [{
+                "id": "trade-reg-1", "role": "trades", "name": TRADE,
+                "status": "approved", "prospect_stage": "available",
+                "party_id": "trade-1", "credentials_checked_at": "2026-10-01T10:00:00Z",
+                "trades": ["plumbing"], "insurance_expiry": "2099-12-31",
+            }],
             "management_agreements": [{
                 "id": "management-a", "agreement_type": "full_management", "landlord_party_id": "owner-1",
                 "property_ids": ["home-1"], "status": "active",
