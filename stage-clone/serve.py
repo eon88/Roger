@@ -1885,6 +1885,33 @@ class H(SimpleHTTPRequestHandler):
                     "job_id": None,
                     "document_ids": [d["id"] for d in docs] if docs else []})
 
+    def update_case_from_job(self, stage, job):
+        """Keep the case handoff aligned with a job transition; no extra case database."""
+        case = next((c for c in stage.get("cases", [])
+                     if str(c.get("id")) == str(job.get("case_id"))), None)
+        if not case or case.get("status") in ("closed", "declined"):
+            return
+        state = job.get("status")
+        next_steps = {
+            "triaged": ("agent", "Request an eligible contractor quote"),
+            "open": ("agent", "Choose an eligible contractor"),
+            "quote_requested": ("trades", "Submit the requested repair quote"),
+            "quoted": ("agent", "Review the contractor quote"),
+            "awaiting_prework_approval": ("landlord", "Approve or reject the pre-work quote"),
+            "pending_verification": ("agent", "Review contractor verification"),
+            "assigned": ("trades", "Propose a visit and agree access with the tenant"),
+            "in_progress": ("trades", "Complete the agreed work and submit evidence"),
+            "invoice_submitted": ("agent", "Review the contractor invoice"),
+            "awaiting_approval": ("landlord", "Review the pending contractor invoice"),
+            "invoice_approved": ("tenant", "Confirm whether the repair is resolved"),
+            "paid": ("tenant", "Confirm repair resolution or ask for follow-up"),
+            "rejected": ("agent", "Resolve the rejected invoice or dispute"),
+        }
+        next_step = next_steps.get(state)
+        if next_step:
+            self.case_next(case, next_step[0], next_step[1],
+                           self.internal_case_target(), "job_workflow")
+
     # ---------- trades: BOOK → complete → settle or escalate ----------
     def verified_contractor_for_new_repair(self, stage, party_id, required_trade):
         """Check a persistent, linked approval; never trust demo credential names."""
@@ -2346,6 +2373,7 @@ class H(SimpleHTTPRequestHandler):
         else:
             return self._json({"error": f"invalid action {action} for status {job['status']}"}, 400)
 
+        self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "job": job})
 
@@ -2446,6 +2474,8 @@ class H(SimpleHTTPRequestHandler):
             "action": ("prework_quote_" if prework else "invoice_") + appr["status"],
             "target": appr["id"], "note": reason or None
         })
+        if job:
+            self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "approval": appr})
 
