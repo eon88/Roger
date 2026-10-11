@@ -568,8 +568,12 @@ class H(SimpleHTTPRequestHandler):
                 "id", "case_id", "property_id",
                 "message", "triage", "required_trade",
                 "status", "assigned_to", "requested_by",
-                "gate_reason", "quotes",
-                "approved_quote_pence", "invoice_pence",
+                "gate_reason", "quotes", "approved_quote_version",
+                "approved_quote_pence", "approved_variations", "pending_variation",
+                "invoice_pence", "invoice_number", "invoice_line_items",
+                "invoice_net_pence", "invoice_vat_pence",
+                "balance_due_pence", "payments", "credit_notes",
+                "payment_reference", "payment_amount_pence",
                 "created_at", "completed_at", "paid_at",
             }
 
@@ -2919,18 +2923,38 @@ class H(SimpleHTTPRequestHandler):
                     })
         maintenance_lines = []
         for job in stage.get("jobs", []):
-            paid_date = str(job.get("paid_at", ""))[:10]
-            covered = any(a.get("landlord_party_id") == landlord_id
-                           and job.get("property_id") in a.get("property_ids", [])
-                           and a.get("status") in ("active", "ended")
-                           and (not a.get("created_at") or str(a.get("created_at"))[:10] <= paid_date)
-                           and (not a.get("ended_at") or a.get("ended_at") >= paid_date)
-                           for a in stage.get("management_agreements", []))
-            if covered and job.get("property_id") in property_ids and job.get("status") == "paid" and start_iso <= paid_date <= end_iso:
-                maintenance_lines.append({
-                    "job_id": job.get("id"), "property_id": job.get("property_id"),
-                    "paid_date": paid_date, "amount_pence": int(job.get("invoice_pence") or 0),
-                })
+            if job.get("property_id") not in property_ids:
+                continue
+            # Each independently recorded external payment belongs to its own period.
+            # Supplier credits reduce invoices but are NOT cash paid and do not appear here.
+            payments = job.get("payments")
+            if not isinstance(payments, list):
+                legacy_date = str(job.get("paid_at") or "")[:10]
+                payments = ([{"date": legacy_date,
+                              "amount_pence": int(job.get("payment_amount_pence")
+                                                  or job.get("invoice_pence") or 0),
+                              "reference": job.get("payment_reference") or "legacy-unverified"}]
+                            if job.get("status") == "paid" and legacy_date else [])
+            for payment in payments:
+                paid_date = str(payment.get("date") or "")[:10]
+                try:
+                    paid_amount = int(payment.get("amount_pence") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if paid_amount <= 0 or not start_iso <= paid_date <= end_iso:
+                    continue
+                covered = any(a.get("landlord_party_id") == landlord_id
+                              and job.get("property_id") in a.get("property_ids", [])
+                              and a.get("status") in ("active", "ended")
+                              and (not a.get("created_at") or str(a.get("created_at"))[:10] <= paid_date)
+                              and (not a.get("ended_at") or a.get("ended_at") >= paid_date)
+                              for a in stage.get("management_agreements", []))
+                if covered:
+                    maintenance_lines.append({
+                        "job_id": job.get("id"), "property_id": job.get("property_id"),
+                        "paid_date": paid_date, "amount_pence": paid_amount,
+                        "external_reference": str(payment.get("reference") or "")[:120],
+                    })
         gross = sum(x["rent_received_pence"] for x in rent_lines)
         fees = sum(x["agency_fee_pence"] for x in rent_lines)
         maintenance = sum(x["amount_pence"] for x in maintenance_lines)
