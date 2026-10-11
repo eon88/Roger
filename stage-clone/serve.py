@@ -2397,6 +2397,98 @@ class H(SimpleHTTPRequestHandler):
             self.post_msg(stage, job["case_id"], "Quote declined — " + str(data.get("reason", "price not right"))[:300]
                           + ". Please re-quote or a different trade will be asked.", to=("trades",))
             self.audit(stage, {"actor": "agent", "action": "quote_declined", "target": job["id"]})
+        elif action == "submit_variation":
+            if not job.get("requires_prework_quote") or not job.get("work_authorised_at"):
+                return self._json({"error": "approved original work required before proposing an extra"}, 409)
+            if job.get("pending_variation"):
+                return self._json({"error": "existing variation needs a decision first"}, 409)
+            if not self.verified_contractor_for_new_repair(
+                    stage, job.get("assigned_to_party_id"), job.get("required_trade")):
+                return self._json({"error": "contractor verification expired or revoked"}, 409)
+            note = str(data.get("note") or "").strip()[:500]
+            try:
+                extra = int(data.get("extra_pence", 0))
+            except (ValueError, TypeError):
+                return self._json({"error": "a valid extra-work amount is required"}, 400)
+            if not note or extra <= 0 or extra > 1000000000:
+                return self._json({"error": "extra work needs a scope and positive gross amount"}, 400)
+            if "line_items" in data:
+                try:
+                    breakdown = self.money_lines(data["line_items"])
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                if breakdown["gross_pence"] != extra:
+                    return self._json({"error": "variation items and VAT do not match the additional amount"}, 409)
+            else:
+                breakdown = None
+            variation = {
+                "id": f"variation-{len(job.get('variation_history', [])) + 1}",
+                "extra_pence": extra, "base_authorised_pence": job["approved_quote_pence"],
+                "scope": note, "status": "pending_agent",
+                "line_items": breakdown["lines"] if breakdown else [],
+                "net_pence": breakdown["net_pence"] if breakdown else None,
+                "vat_pence": breakdown["vat_pence"] if breakdown else None,
+                "requested_at": now(), "requested_by": actor,
+            }
+            job["pending_variation"] = variation
+            job.setdefault("variation_history", []).append(variation)
+            self.audit(stage, {"actor": actor, "action": "variation_requested",
+                               "target": job["id"], "note": f"+{extra}p"})
+            self.post_msg(stage, job["case_id"],
+                          "Contractor requested approval for additional work. "
+                          "No additional work is authorised until a decision is recorded.",
+                          to=("tenant", "landlord", "trades"))
+        elif action in ("approve_variation", "decline_variation"):
+            variation = job.get("pending_variation")
+            if not variation or variation.get("status") != "pending_agent":
+                return self._json({"error": "no extra-work request awaiting agent"}, 409)
+            if variation.get("base_authorised_pence") != job.get("approved_quote_pence"):
+                return self._json({"error": "authorised cost changed; ask for a new variation"}, 409)
+            if not job.get("work_authorised_at") or job.get("status") not in ("assigned", "in_progress"):
+                return self._json({"error": "job not authorised for extra work"}, 409)
+            if action == "decline_variation":
+                reason = str(data.get("reason") or "").strip()[:500]
+                if not reason:
+                    return self._json({"error": "reason is required"}, 400)
+                variation["status"] = "declined"
+                variation["decision_reason"] = reason
+                variation["decided_at"] = now()
+                job.pop("pending_variation", None)
+                self.audit(stage, {"actor": actor, "action": "variation_declined",
+                                   "target": job["id"], "note": reason})
+            else:
+                if not self.verified_contractor_for_new_repair(
+                        stage, job.get("assigned_to_party_id"), job.get("required_trade")):
+                    return self._json({"error": "contractor no longer approved"}, 409)
+                mandate = self.repair_authority(stage, job.get("property_id"))
+                if not mandate:
+                    return self._json({"error": "active signed mandate required"}, 409)
+                combined = job["approved_quote_pence"] + variation["extra_pence"]
+                if combined > mandate["limit_pence"]:
+                    prop = self.find_prop(stage, job["property_id"]) or {}
+                    landlord_id = prop.get("landlord_party_id")
+                    if not any(p.get("id") == landlord_id and p.get("status") == "active"
+                               and "landlord" in p.get("roles", []) and p.get("account_id")
+                               for p in stage.get("parties", [])):
+                        return self._json({"error": "active linked landlord required"}, 409)
+                    variation["status"] = "pending_landlord"
+                    stage.setdefault("approvals", []).append({
+                        "id": f"appr-{len(stage.get('approvals', [])) + 1}",
+                        "approval_type": "variation_quote",
+                        "job_id": job["id"], "property_id": job["property_id"],
+                        "landlord_party_id": landlord_id,
+                        "landlord_party_ids": prop.get("landlord_party_ids", []),
+                        "amount_pence": combined, "extra_pence": variation["extra_pence"],
+                        "variation_id": variation["id"],
+                        "base_authorised_pence": variation["base_authorised_pence"],
+                        "scope": variation["scope"], "line_items": variation["line_items"],
+                        "mandate_snapshot": dict(mandate),
+                        "status": "pending", "requested_at": now()
+                    })
+                    self.audit(stage, {"actor": actor, "action": "variation_landlord_approval_requested",
+                                       "target": job["id"], "note": f"total {combined}p"})
+                else:
+                    self.approve_job_variation(stage, job, variation, actor)
         elif action == "send_to_landlord" and self.user["role"] == "agent":
             if job["status"] not in ("invoice_submitted", "invoice_approved") or not job.get("invoice_pence"):
                 return self._json({"error": "a submitted invoice is required"}, 409)
