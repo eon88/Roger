@@ -171,6 +171,7 @@ class JobPermissionTests(unittest.TestCase):
         self.assertEqual(self.job["status"], "partially_paid")
         self.assertEqual(self.job["balance_due_pence"], 1)
         self.assertEqual(len(self.job["payments"]), 1)
+        self.saved.reset_mock()
         self.denied(expected=409, user="agent", action="record_payment",
                     payment_reference="BANK-PART-1", payment_amount_pence=1, payment_date=date)
         self.assertEqual(self.act(
