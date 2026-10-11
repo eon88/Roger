@@ -157,6 +157,9 @@ test "$(curl --max-time 15 -sS -o /dev/null -w '%{http_code}' \
   http://127.0.0.1:8901/api/stage)" = "401"
 curl -fsS --max-time 15 http://127.0.0.1:8901/login -o /dev/null
 
+# A rollback target is eligible only after this deployment passed health checks.
+# Pre-button backups lack this marker and require explicit legacy opt-in.
+printf '%s\n' "$SHA" > "$BACKUP/deployment-success.sha"
 SUCCESS=1
 trap - EXIT
 echo "ROGER DEPLOYMENT SUCCESSFUL: $SHA"
