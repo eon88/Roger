@@ -114,6 +114,27 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 
 **Do not deploy without:** backup + restore evidence, real office contacts, operational emergency procedures and user approval.
 
+## Task 06 — concurrent writes and data isolation (11 October 2026)
+
+**Status: PARTIAL — development code and synthetic tests; NOT production-deployed or PostgreSQL-certified.**
+
+- [x] Serialize a whole mutating HTTP request, from reading current state through validation and saving, rather than only locking the final file replacement. This prevents cooperative Roger web processes from overwriting each other's simultaneous JSON state edits.
+- [x] On the Linux file backend: use an OS-level advisory file lock plus a per-process thread mutex. Windows local development has a corresponding byte-range lock. On the isolated PostgreSQL backend: use a stable transaction-level advisory lock acquired for the entire modifying request.
+- [x] Expired sessions are rejected during GET without saving a stale users snapshot over fresher login or access-revocation changes. Login/logout and other modifying routes run under the write lock.
+- [x] A legacy **single-agency** guard rejects reads and writes if snapshots are explicitly tagged with different agencies, mismatched environment agency configuration, or unowned rows in a tagged agency snapshot. API reads return an isolation error instead of exposing mixed records.
+- [x] Test four separate OS processes concurrently incrementing and replacing the same JSON snapshot without losing updates. Also test request-wide locking, PostgreSQL lock acquisition/release using a mock, and refusal to persist mixed agency records.
+- [x] With two independent properties, tenants and landlords, verify scoped API results, real document download route denial when guessing a foreign document ID, forbidden reply attempts on foreign cases, and loss of access after revocation.
+- [x] Existing Python tests and general four-role browser smoke run via GitHub Actions; new tests live in `tests/test_storage_concurrency.py`.
+
+**Still required for full release acceptance:**
+
+- [ ] PostgreSQL real two-session/process integration test, rollback/crash/recovery tests, and the actual reviewed data migration. The current relational projection **TRUNCATEs and rebuilds shared tables** after snapshot writes: it is a development-only design, not a multi-agency production data model.
+- [ ] True supported multi-agency records: agency-linked accounts and every relevant row/document, row-level security, safe cross-agency denial, immutable audit and uploads. Roger currently **fails closed on mixed agencies; it does not operate multiple agencies**.
+- [ ] A coordinated transaction across multiple storage systems (users, stage, uploaded files and outside email) and a safe plan for external scripts/direct SQL. Current OS/advisory locks only protect writers **cooperating through Roger's HTTP path**; external writers must explicitly take the same lock.
+- [ ] Operational Hostinger backup/recovery rehearsal on an isolated clone, load testing with independent app instances and a populated two-tenant/two-agency browser/API pilot.
+
+**Release:** Keep PR #5 in draft; the production Hostinger instance has not been changed.
+
 ## Next P0 tasks (NOT DONE)
 1. Appointments and access: propose/accept/reschedule/cancel/no-access, contact consent, key instructions and a parts-delay branch. Block misleading “scheduled” statuses.
 2. Case control: single next person/action and due date, duplicate reporting/idempotency, internal/private vs shared notes, disputes, reopening after completed work.
