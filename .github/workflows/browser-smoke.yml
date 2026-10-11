@@ -232,6 +232,8 @@ jobs:
             console.log('FOUR-ROLE BROWSER SMOKE PASSED');
           })().catch(err => { console.error(err.stack || err); process.exitCode = 1; });
           JS
+      - name: Exercise full role-based repair journey with Chromium
+        run: node tests/full_repair_browser.cjs
       - name: Upload browser failure screenshots
         if: failure()
         uses: actions/upload-artifact@v4
