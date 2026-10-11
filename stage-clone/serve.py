@@ -335,6 +335,38 @@ class H(SimpleHTTPRequestHandler):
                 return
             stage = load_stage()
             return self._json({"entries": [self.safe_rent_entry(x) for x in stage.get("rent_ledger_entries", [])]})
+        if path == "/api/landlord/rent-ledger":
+            u = self.require({"landlord"})
+            if not u:
+                return
+            stage = load_stage()
+            # Never resolve ownership from a display name or untrusted query value.
+            party_ids = self.account_party_ids(stage, u, "landlord")
+            property_ids = {
+                p["id"] for p in stage.get("properties", [])
+                if isinstance(p, dict) and isinstance(p.get("id"), str)
+                and self.has_party_link(p, "landlord", party_ids)
+            }
+            entries = []
+            for entry in stage.get("rent_ledger_entries", []):
+                if not isinstance(entry, dict) or entry.get("property_id") not in property_ids:
+                    continue
+                safe = self.safe_rent_entry(entry)
+                # Landlords may see rent and receipt dates, not internal notes,
+                # agency fee calculations or other tenants' payment data.
+                entries.append({
+                    k: safe.get(k) for k in (
+                        "id", "property_id", "tenancy_id", "due_date",
+                        "amount_due_pence", "amount_received_pence",
+                        "balance_pence", "status"
+                    )
+                } | {"payments": [
+                    {"received_date": payment.get("received_date"),
+                     "amount_pence": payment.get("amount_pence")}
+                    for payment in entry.get("payments", [])
+                    if isinstance(payment, dict)
+                ]})
+            return self._json({"entries": entries})
         if path == "/api/appointments":
             u = self.require({"agent", "tenant", "landlord", "trades"})
             if not u:
