@@ -134,7 +134,7 @@ class CaseControlTests(unittest.TestCase):
             ("quote_requested","trades"),("quoted","agent"),
             ("awaiting_prework_approval","landlord"),("assigned","trades"),
             ("in_progress","trades"),("invoice_submitted","agent"),
-            ("invoice_approved","tenant")
+            ("invoice_approved","agent"),("partially_paid","agent"),("credited","agent")
         ]:
             job["status"]=status
             self.h.update_case_from_job(self.stage,job)
