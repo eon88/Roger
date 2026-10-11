@@ -321,7 +321,7 @@ function renderOverview(){
   const unassigned=jobs.filter(j=>j.status==='open').length;
   const gated=jobs.filter(j=>j.status==='pending_verification').length;
   const waiting=(stage.approvals||[]).filter(a=>a.status==='pending');
-  const settledToday=jobs.filter(j=>j.status==='paid'&&(j.paid_at||'').slice(0,10)===new Date().toISOString().slice(0,10));
+  const settledToday=jobs.flatMap(j=>(j.payments||[]).map(p=>({...p,job_id:j.id}))).filter(p=>p.date===new Date().toISOString().slice(0,10));
   const regs=(stage.registrations||[]).filter(r=>r.status==='pending').length;
   const lim=(stage.authority?.standing_limit_pence||15000)/100;
   const tile=(n,label,view,hot)=>`<a class="stat ${hot?'hot':''}" href="#" onclick="show('${view}');return false"><div class="value">${n}</div><div class="label">${label}</div></a>`;
@@ -336,7 +336,7 @@ function renderOverview(){
         ${tile(gated,'bookings needing your verification','jobs',gated>0)}
         ${tile(unassigned,'open jobs nobody took','jobs',unassigned>0)}
         ${tile(waiting.length,'invoices waiting on landlord'+(waiting.length?' · '+waiting.map(a=>money(a.amount_pence)).join(', '):''),'jobs',waiting.length>0)}
-        ${tile(money(settledToday.reduce((s,j)=>s+(j.invoice_pence||0),0)),'settled today','jobs')}
+        ${tile(money(settledToday.reduce((s,p)=>s+(p.amount_pence||0),0)),'external payments recorded today','jobs')}
         ${tile(regs,'registrations to review','registrations',regs>0)}
       </div>
       <p class="fineprint">Standing authority: invoices up to £${lim.toFixed(0)} settle automatically — the £150 rule lives here so you never have to explain it twice. Above it, the landlord decides.</p>
