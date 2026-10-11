@@ -3840,8 +3840,11 @@ class H(SimpleHTTPRequestHandler):
                     or job.get("status") not in ("assigned", "in_progress")
                     or (job.get("requires_prework_quote") and not job.get("work_authorised_at"))):
                 return self._json({"error": "the repair is no longer authorised for a visit"}, 409)
-        if action in ("confirm", "decline") and current != "proposed":
-            return self._json({"error": "only a proposed appointment can be answered"}, 409)
+        if action == "confirm" and current != "proposed":
+            return self._json({"error": "only a proposed appointment can be confirmed"}, 409)
+        if action == "decline" and current not in (
+                ("proposed", "confirmed") if contractor else ("proposed",)):
+            return self._json({"error": "this appointment cannot be changed by the invitee"}, 409)
         if action in ("complete", "miss", "no_access", "parts_delay") and current != "confirmed":
             return self._json({"error": "an unconfirmed visit cannot have an attendance outcome"}, 409)
         if action == "reschedule" and current not in (
@@ -3865,6 +3868,9 @@ class H(SimpleHTTPRequestHandler):
             appt["previous_end_time"] = appt.get("end_time")
             appt["start_time"] = start_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
             appt["end_time"] = end_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if end_dt else None
+            appt["access_preference"] = None
+            appt["contact_consent"] = False
+        if action == "decline" and role == "tenant" and contractor:
             appt["access_preference"] = None
             appt["contact_consent"] = False
         if action == "confirm" and role == "tenant" and contractor:
