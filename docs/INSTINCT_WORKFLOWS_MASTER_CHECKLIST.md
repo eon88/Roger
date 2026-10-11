@@ -22,8 +22,14 @@ These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` a
   - [x] Development code: assigned trade proposals, tenant confirmations/change requests, agent diary, no-access/parts-delay reasons, consent scoping and status safeguards.
   - [x] Python regression suite and existing general four-role browser smoke passing at development commits.
   - [ ] Run the new dedicated full browser visit test (`node tests/visit_browser_smoke.cjs`) and link successful evidence.
+  - **Deferred at the user's request (11 Oct 2026).** Do not block progress on Task 02; Task 01 remains not accepted.
   - [ ] Office-approved secure access/key handover procedure and acceptance check; **do not mark Task 01 done yet**.
 - [ ] **02 Case control** — next person/action and due date, duplicate prevention, notes visibility, reopen/dispute rules. *(A1, S2, T2, T3)*
+  - [x] Server keeps a single next actor/action/internal due date for new reports and enquiries and updates it for the common job/approval statuses.
+  - [x] Agent Desk editing and attention views; retry-safe tenant report IDs; internal-note read privacy; completed-case dispute/reopen control.
+  - [x] Synthetic permissions, privacy, duplicate-token and transition regression tests added in `tests/test_case_control.py`.
+  - [ ] Still needed for full acceptance: safe concurrent writes, manual same-issue duplicate handling, legacy-case backfill, automated escalation/real people ownership, fully populated role-based browser verification.
+  - **Status: PARTIAL, tested code; not production deployed.**
 - [ ] **03 Financial controls** — itemised/VAT quotes, versioned approvals, variations, unique invoice numbers, part payments, credit/reconciliation. *(A2, L2, R3, R5)*
 - [ ] **04 Contractor evidence** — independently checked certificates, uploads, expiry and coverage. *(R1, S2)*
 - [ ] **05 Office settings and delivery** — real contacts/out-of-hours policy, alerts/retries, audit, user revocation and restore. *(S2, S3, T1)*
