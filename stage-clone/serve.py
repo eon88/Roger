@@ -209,7 +209,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -531,6 +531,11 @@ class H(SimpleHTTPRequestHandler):
                 c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or [])
                                         or t.get("author_account_id") == u.get("account_id")]
             d = {"properties": myprops,
+                 "property_submissions": [
+                     s for s in d.get("property_submissions", [])
+                     if s.get("landlord_party_id") in party_ids
+                     and s.get("created_by_account_id") == u.get("account_id")
+                 ],
                  "cases": mycases,
                  "jobs": [j for j in d.get("jobs", []) if j.get("property_id") in pids],
                  "approvals": [a for a in d.get("approvals", []) if (self.has_party_link(a, "landlord", party_ids)
@@ -825,6 +830,8 @@ class H(SimpleHTTPRequestHandler):
             "/api/registration-action": self.handle_registration_action,
             "/api/prospect-action": self.handle_prospect_action,
             "/api/property-action": self.handle_property_action,
+            "/api/landlord/property-submission": self.handle_landlord_property_submission,
+            "/api/agent/property-submission": self.handle_agent_property_submission,
             "/api/party-action": self.handle_party_action,
             "/api/tenancy-action": self.handle_tenancy_action,
             "/api/management-agreement-action": self.handle_management_agreement_action,
@@ -1395,6 +1402,150 @@ class H(SimpleHTTPRequestHandler):
                            "note": current + " -> " + target})
         save_stage(stage)
         return self._json({"success": True, "status": target, "updated_at": at})
+
+    # ---------- authenticated landlord property onboarding ----------
+    def handle_landlord_property_submission(self, data):
+        """Receive a property for review; do NOT advertise it or create a listing."""
+        user = self.user
+        stage = load_stage()
+        party_ids = sorted(self.account_party_ids(stage, user, "landlord"))
+        if not party_ids:
+            return self._json({"error": "your landlord account is not linked to an active Party"}, 403)
+        fields = ("address", "postcode", "area", "property_type", "description")
+        vals = {}
+        for key in fields:
+            raw = data.get(key, "")
+            if not isinstance(raw, str):
+                return self._json({"error": key + " must be text"}, 400)
+            vals[key] = raw.strip()
+        for key in ("address", "postcode", "area"):
+            if not vals[key]:
+                return self._json({"error": key + " is required"}, 400)
+        for key, limit in (("address", 200), ("postcode", 20), ("area", 120),
+                           ("property_type", 60), ("description", 1500)):
+            if len(vals[key]) > limit:
+                return self._json({"error": key + " is too long"}, 400)
+        try:
+            beds = int(data.get("beds"))
+            rent = int(data.get("rent_pence"))
+        except (TypeError, ValueError):
+            return self._json({"error": "bedrooms and monthly rent are required"}, 400)
+        if not 0 <= beds <= 30 or not 1 <= rent <= 10000000:
+            return self._json({"error": "enter a valid bedroom count and monthly rent"}, 400)
+
+        submission_id = data.get("submission_id")
+        items = stage.setdefault("property_submissions", [])
+        existing = None
+        if submission_id is not None:
+            if not isinstance(submission_id, str) or len(submission_id) > 100:
+                return self._json({"error": "invalid submission reference"}, 400)
+            existing = next((s for s in items if s.get("id") == submission_id), None)
+            if not existing:
+                return self._json({"error": "submission not found"}, 404)
+            if (existing.get("created_by_account_id") != user.get("account_id")
+                    or existing.get("landlord_party_id") not in party_ids):
+                return self._json({"error": "not your submission"}, 403)
+            if existing.get("status") != "changes_requested":
+                return self._json({"error": "only submissions needing changes can be resubmitted"}, 409)
+
+        at = now()
+        if existing:
+            submission = existing
+            action = "property_submission_resubmitted"
+        else:
+            num = int(stage.get("next_property_submission_id", 1))
+            submission = {
+                "id": "submission-" + str(num),
+                "landlord_party_id": party_ids[0],
+                "created_by_account_id": user["account_id"],
+                "created_at": at,
+                "review_history": [],
+            }
+            stage["next_property_submission_id"] = num + 1
+            items.append(submission)
+            action = "property_submission_received"
+        submission.update(vals)
+        submission.update({
+            "beds": beds, "rent_pence": rent, "status": "pending",
+            "submitted_at": at, "reviewed_at": None, "agent_note": "",
+        })
+        submission["review_history"].append({
+            "at": at, "by": user.get("username", "landlord"), "action": "submitted",
+        })
+        self.audit(stage, {
+            "actor": user.get("username", "landlord"), "action": action,
+            "target": submission["id"], "note": submission["address"],
+        })
+        save_stage(stage)
+        return self._json({"success": True, "submission_id": submission["id"], "status": "pending"})
+
+    def handle_agent_property_submission(self, data):
+        """An agent reviews a landlord's submission; approval only creates onboarding."""
+        stage = load_stage()
+        submission_id = str(data.get("submission_id", ""))[:100]
+        submission = next((s for s in stage.get("property_submissions", [])
+                           if s.get("id") == submission_id), None)
+        if not submission:
+            return self._json({"error": "submission not found"}, 404)
+        if submission.get("status") != "pending":
+            return self._json({"error": "submission is not pending review"}, 409)
+        action = data.get("action")
+        if action not in ("approve", "request_changes", "decline"):
+            return self._json({"error": "invalid review action"}, 400)
+        raw_note = data.get("note", "")
+        if not isinstance(raw_note, str) or len(raw_note) > 1000:
+            return self._json({"error": "invalid agent note"}, 400)
+        note = raw_note.strip()
+        if action != "approve" and not note:
+            return self._json({"error": "give the landlord a reason or question"}, 400)
+        party_id = submission.get("landlord_party_id")
+        owner = next((p for p in stage.get("parties", [])
+                      if p.get("id") == party_id and p.get("status") == "active"
+                      and "landlord" in p.get("roles", [])), None)
+        if not owner:
+            return self._json({"error": "landlord account is no longer active"}, 409)
+        if action == "approve":
+            num = int(stage.get("next_onboarded_property_id", 1))
+            existing_ids = {str(x.get("id")) for x in stage.get("properties", [])}
+            while "onboarded-" + str(num) in existing_ids:
+                num += 1
+            property_id = "onboarded-" + str(num)
+            stage["next_onboarded_property_id"] = num + 1
+            stage.setdefault("properties", []).append({
+                "id": property_id, "title": submission["address"],
+                "area": submission["area"], "postcode": submission["postcode"],
+                "beds": submission["beds"], "rent": submission["rent_pence"],
+                "property_type": submission.get("property_type", ""),
+                "landlord": owner.get("display_name", "Landlord"),
+                "landlord_party_id": party_id,
+                "landlord_party_ids": [party_id],
+                "tenant": "", "lifecycle_status": "onboarding",
+                "public_listing": {},
+                "source_submission_id": submission["id"], "created_at": now(),
+            })
+            submission["property_id"] = property_id
+            submission["status"] = "approved"
+        elif action == "request_changes":
+            submission["status"] = "changes_requested"
+        else:
+            submission["status"] = "declined"
+        at = now()
+        submission["agent_note"] = note
+        submission["reviewed_at"] = at
+        submission.setdefault("review_history", []).append({
+            "at": at, "by": (self.user or {}).get("username", "agent"),
+            "action": action, "note": note,
+        })
+        self.audit(stage, {
+            "actor": (self.user or {}).get("username", "agent"),
+            "action": "property_submission_" + action,
+            "target": submission_id, "note": note or submission["address"],
+        })
+        save_stage(stage)
+        return self._json({
+            "success": True, "status": submission["status"],
+            "property_id": submission.get("property_id"),
+        })
 
     def handle_property_action(self, data):
         """Agent-controlled property lifecycle transition and public listing draft update."""
