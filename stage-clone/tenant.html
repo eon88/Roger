@@ -170,11 +170,12 @@ async function apptAct(btn,id,action){ if(btn&&btn.dataset.busy)return;
     toast(action==='confirm'?'Visit confirmed — the office can see your reply.':'Change requested — the office will arrange another proposal.');await load();}
   catch(e){toast('Could not update the appointment — try again.','bad');}finally{if(btn)delete btn.dataset.busy;}
 }
+let pendingReportId=null; // reused on retry, regenerated only when report changes or succeeds
 /* form friction: blur hints + Enter submits from the email field */
 const msg=document.getElementById('issue-msg'), email=document.getElementById('issue-email');
 msg.addEventListener('focus',()=>{ msg.dataset.touched='1'; });
 msg.addEventListener('blur',()=>{ document.getElementById('issue-hint').classList.toggle('show',msg.dataset.touched==='1'&&!msg.value.trim()); });
-msg.addEventListener('input',()=>{ if(msg.value.trim()) document.getElementById('issue-hint').classList.remove('show'); });
+msg.addEventListener('input',()=>{ pendingReportId=null; if(msg.value.trim()) document.getElementById('issue-hint').classList.remove('show'); });
 function emailBad(){ return !!email.value && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email.value.trim()); }
 email.addEventListener('blur',()=>{ const bad=emailBad();
   email.setAttribute('aria-invalid',bad?'true':'false');
@@ -210,15 +211,18 @@ async function report(){
   if(!text){ toast('Tell us what is going on first.','bad'); msg.focus();
     document.getElementById('issue-hint').classList.add('show'); return; }
   if(emailBad()){ toast('Check the email address so we can reply.','bad'); email.focus(); return; }
-  const btn=document.getElementById('report-btn'); btn.disabled=true; btn.textContent='Sending…';
+  const btn=document.getElementById('report-btn'); if(btn.disabled)return;
+  pendingReportId=pendingReportId||(crypto.randomUUID?crypto.randomUUID():'report-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+  btn.disabled=true; btn.textContent='Sending…';
   document.getElementById('report-note').textContent='Sending…';
   try{
     const prop=(stage.properties||[])[0];
     const files=Array.from(document.getElementById('issue-files').files||[]).slice(0,4);
     const attachments=await Promise.all(files.map(fileAttachment));
-    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments});
+    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments,request_id:pendingReportId});
+    pendingReportId=null;
     msg.value=''; document.getElementById('issue-files').value='';
-    toast(`Logged as #${res.case_id}. ${res.document_ids?.length?res.document_ids.length+' evidence file(s) saved. ':''}${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
+    toast(`${res.already_received?'Already received':'Logged'} as #${res.case_id}. ${res.document_ids?.length?res.document_ids.length+' evidence file(s) saved. ':''}${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
     await load();
   }catch(e){ toast(e.message&&e.message!=='failed'?e.message:'Could not send — try again or ring the office.','bad'); }
   finally{ btn.disabled=false; btn.textContent='Send report'; document.getElementById('report-note').textContent=''; }
