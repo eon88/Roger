@@ -2003,9 +2003,12 @@ class H(SimpleHTTPRequestHandler):
         if job.get("requires_prework_quote"):
             if action in ("accept", "assign", "verify_approve"):
                 return self._json({"error": "quote approval required before assignment"}, 409)
-            if action == "start" and (not job.get("work_authorised_at")
-                                      or not job.get("approved_quote_pence")):
-                return self._json({"error": "work not authorised"}, 409)
+            if action == "start":
+                if not job.get("work_authorised_at") or not job.get("approved_quote_pence"):
+                    return self._json({"error": "work not authorised"}, 409)
+                if not self.verified_contractor_for_new_repair(
+                        stage, job.get("assigned_to_party_id"), job.get("required_trade")):
+                    return self._json({"error": "contractor approval or insurance expired; work cannot start"}, 409)
         if action == "complete" and job.get("requires_prework_quote"):
             try:
                 proposed_invoice = int(data.get("invoice_pence", 0))
@@ -2132,6 +2135,9 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "no pending quote"}, 400)
             q = max(pend, key=lambda x: x.get("at", ""))
             if job.get("requires_prework_quote"):
+                if not self.verified_contractor_for_new_repair(
+                        stage, job.get("assigned_to_party_id"), job.get("required_trade")):
+                    return self._json({"error": "contractor is no longer eligible for this repair"}, 409)
                 mandate = self.repair_authority(stage, job.get("property_id"))
                 if not mandate:
                     return self._json({"error": "signed, active management mandate with a spending limit required for this property"}, 409)
@@ -2334,6 +2340,9 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "a reason is required when rejecting"}, 400)
         job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
         if prework:
+            if not job or not self.verified_contractor_for_new_repair(
+                    stage, job.get("assigned_to_party_id"), job.get("required_trade")):
+                return self._json({"error": "contractor is no longer approved for this repair"}, 409)
             current_mandate = self.repair_authority(stage, appr.get("property_id"))
             if not current_mandate or current_mandate != appr.get("mandate_snapshot"):
                 return self._json({"error": "management authority changed; request a new approval"}, 409)
