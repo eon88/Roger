@@ -176,5 +176,63 @@ class OfficeAndNotificationTests(unittest.TestCase):
         self.assertIsNone(self.stage["notifications"][0]["email_status"])
 
 
+class AccountRevocationTests(unittest.TestCase):
+    def setUp(self):
+        self.accounts={"users":[
+            {"username":"real-tenant","role":"tenant","account_id":"acc-tenant"},
+            {"username":"real-agent","role":"agent","account_id":"acc-agent"},
+        ],"sessions":{
+            "tenant-session":{"username":"real-tenant","exp":"2099-01-01T00:00:00+00:00"},
+            "agent-session":{"username":"real-agent","exp":"2099-01-01T00:00:00+00:00"},
+        }}
+        self.stage={"parties":[
+            {"id":"tenant-party","roles":["tenant"],"status":"active","account_id":"acc-tenant"},
+            {"id":"landlord-other-role","roles":["landlord"],"status":"active","account_id":"acc-tenant"},
+            {"id":"agent-party","roles":["agent"],"status":"active","account_id":"acc-agent"},
+        ],"audit_log":[],"cases":[{"id":1,"tenant_party_id":"tenant-party","message":"Saved history"}]}
+        self.h=serve.H.__new__(serve.H)
+        self.h.user={"role":"agent","username":"real-agent","display_name":"Office"}
+        self.out=[]
+        self.h._json=lambda data,status=200:self.out.append((data,status))
+        self.h.parse_cookies=lambda:{"stage_session":"tenant-session"}
+        a=patch.object(serve,"load_stage",return_value=self.stage)
+        b=patch.object(serve,"save_stage")
+        c=patch.object(serve,"load_users",return_value=self.accounts)
+        d=patch.object(serve,"save_users")
+        a.start();b.start();c.start();d.start()
+        self.addCleanup(a.stop);self.addCleanup(b.stop)
+        self.addCleanup(c.stop);self.addCleanup(d.stop)
+
+    def test_revocation_disables_all_account_roles_and_sessions_but_keeps_case_history(self):
+        self.h.handle_access_revoke({"action":"revoke","party_id":"tenant-party","reason":"Account is compromised"})
+        result,status=self.out[-1]
+        self.assertEqual(status,200,result)
+        self.assertEqual(result["sessions_closed"],1)
+        self.assertEqual(result["revoked_party_ids"],["tenant-party","landlord-other-role"])
+        self.assertEqual(self.stage["parties"][0]["status"],"revoked")
+        self.assertEqual(self.stage["parties"][1]["status"],"revoked")
+        self.assertIn("tenant-session",{"revoked":"tenant-session"})
+        self.assertNotIn("tenant-session",self.accounts["sessions"])
+        self.assertIn("agent-session",self.accounts["sessions"])
+        self.assertTrue(self.accounts["users"][0]["disabled_at"])
+        self.assertIsNone(self.h.session_user())
+        self.assertEqual(self.stage["cases"][0]["message"],"Saved history")
+        self.assertEqual(self.stage["audit_log"][-1]["action"],"portal_account_revoked")
+
+    def test_cannot_revoke_agent_or_repeat_or_act_as_tenant(self):
+        self.h.handle_access_revoke({"action":"revoke","party_id":"agent-party","reason":"No"})
+        self.assertEqual(self.out[-1][1],403)
+        self.h.user={"role":"tenant","account_id":"acc-tenant"}
+        self.h.handle_access_revoke({"action":"revoke","party_id":"tenant-party","reason":"No"})
+        self.assertEqual(self.out[-1][1],403)
+        self.h.user={"role":"agent","username":"real-agent"}
+        self.h.handle_access_revoke({"action":"revoke","party_id":"tenant-party","reason":" "})
+        self.assertEqual(self.out[-1][1],400)
+        self.h.handle_access_revoke({"action":"revoke","party_id":"tenant-party","reason":"Compromised"})
+        self.assertEqual(self.out[-1][1],200)
+        self.h.handle_access_revoke({"action":"revoke","party_id":"tenant-party","reason":"repeat"})
+        self.assertEqual(self.out[-1][1],409)
+
+
 if __name__=="__main__":
     unittest.main()
