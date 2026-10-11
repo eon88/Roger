@@ -31,6 +31,23 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 
 **Current status:** built on the feature branch with regression coverage; awaiting full browser proof and office acceptance. Do not call Task 01 DONE or proceed to Task 02 until those gates are met.
 
+## Task 02 — case tracking implementation (11 October 2026)
+
+**Built and regression-tested on the development branch. No production changes.**
+
+- [x] Each new tenant repair or public enquiry starts with one **agent** next action and a dated internal tracking target. This is an office target, **not** a tenant response-time promise.
+- [x] Agent can assign one named *role* (agent, linked tenant, linked landlord or assigned contractor), next action and valid future/today due date to an open case.
+- [x] Existing repair job and invoice state changes update the case's next role/action and tracking date; closed cases lose active next steps.
+- [x] Agent Desk shows the next actor/action/date, and includes waiting cases and overdue cases in attention views.
+- [x] Report retries can use a client-generated idempotency key; the same signed-in owner/property/key and identical report returns the same case number instead of producing a duplicate.
+- [x] Tenant and landlord scoped stage responses strip **internal_notes** entirely; shared threads still obey their audience lists.
+- [x] Reopening a completed repair requires a resident's explanation, retains history and reassigns agent follow-up. It cannot be repeatedly reopened while still reported.
+- [x] Synthetic role, isolation, idempotency, stage-transition, deadline and internal-notes regression tests; normal four-role browser smoke runs separately.
+- [ ] **Remaining:** near-simultaneous duplicate submissions/concurrent writes require transactional storage controls (Task 06). Same-wording reports with *different* request IDs are not auto-merged; the agent still needs a manual duplicate decision.
+- [ ] **Remaining:** verify next-step assignment on older/legacy open cases, named staff assignees, overdue escalations/reminders, disputes across every path and a fully populated multi-role browser acceptance journey.
+
+**Status: PARTIAL / code-tested; not fully accepted.** Do not silently mark Task 02 DONE. The user asked to defer the extra Task 01 visit browser test and move on.
+
 ## Next P0 tasks (NOT DONE)
 1. Appointments and access: propose/accept/reschedule/cancel/no-access, contact consent, key instructions and a parts-delay branch. Block misleading “scheduled” statuses.
 2. Case control: single next person/action and due date, duplicate reporting/idempotency, internal/private vs shared notes, disputes, reopening after completed work.
