@@ -594,7 +594,9 @@ function renderJobs(){
         <button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask for quote first</button></div>`:''}
       ${j.status==='assigned'&&j.assigned_to?`<div class="actions"><button class="btn primary" data-who="${esc(j.assigned_to)}" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask them to quote first</button></div>`:''}
       ${j.invoice_pence!=null?`<div class="meta">invoice ${money(j.invoice_pence)}${j.approved_quote_pence!=null&&j.invoice_pence>j.approved_quote_pence?` · <span class="amber">above approved quote of ${money(j.approved_quote_pence)}</span>`:''}</div>`:''}
-      ${j.status==='paid'&&j.invoice_pence!=null?`<div class="actions"><button class="btn ghost" onclick="jobAct(this,'${esc(j.id)}','send_to_landlord')">Send this invoice to the landlord anyway</button></div>`:''}
+      ${j.status==='invoice_submitted'?`<div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','approve_invoice')">Approve invoice</button><button class="btn ghost" onclick="jobAct(this,'${esc(j.id)}','send_to_landlord')">Ask landlord to review</button></div>`:''}
+      ${j.status==='invoice_approved'?`<div class="actions"><button class="btn primary" onclick="recordJobPayment(this,'${esc(j.id)}',${j.invoice_pence})">Record external payment</button><span class="fineprint">Only after checking the bank/payment record.</span></div>`:''}
+      ${j.status==='paid'?`<div class="meta">External payment recorded: ${esc(j.payment_reference||'legacy record — no reference')} ${j.payment_recorded_at?' · '+when(j.payment_recorded_at):''}</div>`:''}
     </div>`;
   const sec=(list,title,note,none)=>`<h2>${title}</h2>${note?`<p class="fineprint">${note}</p>`:''}${list.length?list.map(card).join(''):`<div class="empty">${none}</div>`}`;
   document.getElementById('view-jobs').innerHTML=`<div class="move">jobs — who took what</div>`+
@@ -604,8 +606,10 @@ function renderJobs(){
     sec(g('assigned'),'Assigned, waiting to start','','Nothing sitting with a trade. Assign one from the open list.')+
     sec(g('quote_requested'),'Waiting on a quote','','No quote is outstanding. Ask a trade for a price from an open job.')+
     sec(g('in_progress'),'In progress','','Nothing on the go. Jobs arrive here once work is green-lit.')+
-    sec(g('awaiting_approval'),'Waiting on landlord','','No bills over the standing limit are waiting on a landlord.')+
-    sec(g('paid'),'Settled','','Nothing settled yet. Paid invoices move here.')+
+    sec(g('invoice_submitted'),'Invoice needs review','Review against the job and approved quote before approving.','No invoices awaiting review.')+
+    sec(g('awaiting_approval'),'Waiting on landlord','','No invoices are waiting on a landlord.')+
+    sec(g('invoice_approved'),'Approved, not yet paid','Check the actual external payment before recording it here.','No approved unpaid invoices.')+
+    sec(g('paid'),'External payments recorded','These have a manually entered payment reference; Roger does not send money.','No external payments recorded yet.')+
     sec(g('rejected'),'Declined by landlord','','No landlord has declined an invoice.');
 }
 async function pickAct(btn,id,action){ const sel=document.getElementById('pool-'+id);
@@ -616,8 +620,19 @@ async function jobAct(btn,id,action,tradesperson){ await busy(btn,async()=>{ try
   const say={verify_approve:'Booking released to the tradesperson.',verify_decline:'Booking sent back — it returns to the open board.',
     assign:'Assigned — they see it on their board now.',request_quote:'Quote requested — it waits on their price.',
     approve_quote:'Quote approved — work is green-lit.',decline_quote:'Quote declined; they\'ve been asked to re-quote or stand down.',
-    send_to_landlord:'Invoice sent to the landlord for sign-off.'}[action]||'Done.';
+    send_to_landlord:'Invoice sent to the landlord for sign-off.',
+    approve_invoice:'Invoice approved. External payment has NOT been made.'}[action]||'Done.';
   toast(say); load(); }catch(e){} }); }
+async function recordJobPayment(btn,id,amountPence){
+ const payment_reference=(prompt('External bank or payment reference (required):')||'').trim();
+ if(!payment_reference){toast('Nothing recorded — payment reference is required.','bad');return;}
+ const payment_date=prompt('Date payment was made (YYYY-MM-DD):',new Date().toISOString().slice(0,10));
+ if(payment_date===null)return;
+ await busy(btn,async()=>{try{
+   await post('/api/job-action',{id,action:'record_payment',payment_reference,payment_date,payment_amount_pence:amountPence});
+   toast('External payment recorded.');load();
+ }catch(e){toast(e.message||'Could not record payment.','bad');}});
+}
 function quoteAct(btn,id,action){ const reason=action==='decline_quote'?prompt('Reason for the trade (kept on record):')||'price not right':undefined;
   busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote approved — work is green-lit.':'Quote declined and sent back.'); load(); }catch(e){} }); }
 
@@ -861,14 +876,14 @@ async function taskAction(btn,id,action){await busy(btn,async()=>{try{await post
 
 function renderContractorInvoices(){
  const invoices=(stage.jobs||[]).filter(j=>j.invoice_pence!=null).slice().reverse();
- const action=invoices.filter(j=>["awaiting_approval","rejected"].includes(j.status));
- const status=j=>j.status==="paid"?"Paid / settled":j.status==="awaiting_approval"?"Landlord approval pending":j.status==="rejected"?"Declined — follow up":j.status;
+ const action=invoices.filter(j=>["invoice_submitted","invoice_approved","awaiting_approval","rejected"].includes(j.status));
+ const status=j=>j.status==="paid"?"External payment recorded":j.status==="invoice_submitted"?"Needs agent review":j.status==="invoice_approved"?"Approved — unpaid":j.status==="awaiting_approval"?"Landlord approval pending":j.status==="rejected"?"Declined — follow up":j.status;
  const records=invoices.length?invoices.slice(0,25).map(j=>
    deskLink("Invoice "+money(j.invoice_pence)+" · "+(j.assigned_to||"Tradesperson"),
      propLine(j.property_id)+" · "+status(j)+" · Work order "+j.id,
      "jobs","job-"+j.id,j.status==="awaiting_approval"?"pending":j.status==="rejected"?"overdue":"completed")
    ).join(""):"<div class=\"empty\">No contractor invoices received yet. Completed jobs with submitted invoices appear here.</div>";
- return `<div class="move">contractor invoices</div><div class="card"><div class="cardtop"><h3>Invoices from tradespeople</h3><span class="badge ${action.length?"pending":"completed"}">${action.length} need follow-up</span></div><p class="fineprint">Every entry links to its actual job. Roger applies the agency standing-authority rules; this screen does not transfer money.</p>${records}</div>`;
+ return `<div class="move">contractor invoices</div><div class="card"><div class="cardtop"><h3>Invoices from tradespeople</h3><span class="badge ${action.length?"pending":"completed"}">${action.length} need follow-up</span></div><p class="fineprint">Every entry links to its job. Invoice approval does not mean payment. Only manually verified external payments can be marked paid; Roger does not transfer money.</p>${records}</div>`;
 }
 function renderMoney(){
  const eligible=(stage.tenancies||[]).filter(t=>t.agreement_status==='signed'&&['move_in_scheduled','active','renewal','notice_given'].includes(t.status));
