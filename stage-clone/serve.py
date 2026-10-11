@@ -1827,7 +1827,8 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "job not found"}, 404)
         role = (self.user or {}).get("role")
         AGENT_ONLY = {"assign", "request_quote", "approve_quote", "decline_quote",
-                      "send_to_landlord", "verify_approve", "verify_decline"}
+                      "send_to_landlord", "verify_approve", "verify_decline",
+                      "approve_invoice", "record_payment"}
         TRADES_ONLY = {"accept", "start", "complete", "release", "submit_quote"}
         if action in AGENT_ONLY and role != "agent":
             return self._json({"error": "agent-only move"}, 403)
@@ -1917,6 +1918,32 @@ class H(SimpleHTTPRequestHandler):
                 return self._json(
                     {"error": "unverified contractor identity"}, 409
                 )
+
+        if action == "approve_invoice":
+            if job.get("status") != "invoice_submitted":
+                return self._json({"error": "invoice must be submitted before agency approval"}, 409)
+            amount = job.get("invoice_pence")
+            if not isinstance(amount, int) or amount <= 0:
+                return self._json({"error": "valid invoice amount required"}, 409)
+            quoted = job.get("approved_quote_pence")
+            if isinstance(quoted, int) and amount > quoted:
+                return self._json({"error": "invoice exceeds approved quote; obtain a variation approval"}, 409)
+        if action == "record_payment":
+            if job.get("status") != "invoice_approved":
+                return self._json({"error": "invoice approval required before recording payment"}, 409)
+            reference = str(data.get("payment_reference", "")).strip()[:120]
+            payment_date = str(data.get("payment_date", "")).strip()
+            try:
+                parsed_date = datetime.strptime(payment_date, "%Y-%m-%d").date()
+                payment_amount = int(data.get("payment_amount_pence", 0))
+            except (ValueError, TypeError):
+                return self._json({"error": "valid payment date and pence amount required"}, 400)
+            if not reference or not reference.strip():
+                return self._json({"error": "external payment reference is required"}, 400)
+            if parsed_date > datetime.now(timezone.utc).date():
+                return self._json({"error": "payment date cannot be in the future"}, 400)
+            if payment_amount <= 0 or payment_amount != job.get("invoice_pence"):
+                return self._json({"error": "payment amount must match the approved invoice"}, 409)
 
         if action == "accept":
             chk = self.credential_check(job, actor)
@@ -2011,8 +2038,8 @@ class H(SimpleHTTPRequestHandler):
                           + ". Please re-quote or a different trade will be asked.", to=("trades",))
             self.audit(stage, {"actor": "agent", "action": "quote_declined", "target": job["id"]})
         elif action == "send_to_landlord" and self.user["role"] == "agent":
-            if job["status"] not in ("paid", "in_progress") or not job.get("invoice_pence"):
-                return self._json({"error": "nothing to send — job has no invoice yet"}, 400)
+            if job["status"] not in ("invoice_submitted", "invoice_approved") or not job.get("invoice_pence"):
+                return self._json({"error": "a submitted invoice is required"}, 409)
             prop = self.find_prop(stage, job["property_id"]) or {}
             stage.setdefault("approvals", [])
             stage["approvals"].append({
@@ -2060,16 +2087,40 @@ class H(SimpleHTTPRequestHandler):
                 }
                 stage["approvals"].append(appr)
                 job["status"] = "awaiting_approval"
-                self.sync_case(stage, job["case_id"], "awaiting_approval")
-                self.post_msg(stage, job["case_id"], f"Work done. Invoice £{job['invoice_pence']/100:.2f} is above the standing authority, so the landlord will sign it off.", to=("tenant", "landlord"))
+                self.sync_case(stage, job["case_id"], "awaiting_confirmation")
+                self.post_msg(stage, job["case_id"], f"Work submitted. Invoice £{job['invoice_pence']/100:.2f} needs landlord review; payment has not been recorded.", to=("tenant", "landlord"))
                 self.audit(stage, {"actor": job.get("assigned_to") or "trades", "action": "invoice_submitted",
                                    "target": job["id"], "note": f"£{job['invoice_pence']/100:.2f} above standing authority"})
             else:
-                job["status"] = "paid"
-                job["paid_at"] = now()
-                self.sync_case(stage, job["case_id"], "resolved")
-                self.audit(stage, {"actor": "system", "action": "invoice_auto_settled",
-                                   "target": job["id"], "note": f"£{job['invoice_pence']/100:.2f} under limit"})
+                job["status"] = "invoice_submitted"
+                self.sync_case(stage, job["case_id"], "awaiting_confirmation")
+                self.post_msg(stage, job["case_id"],
+                              "Work submitted for your confirmation. The invoice is awaiting the agent's review.",
+                              to=("tenant", "trades"))
+                self.audit(stage, {"actor": actor, "action": "invoice_submitted",
+                                   "target": job["id"], "note": f"£{job['invoice_pence']/100:.2f} awaiting review"})
+        elif action == "approve_invoice":
+            job["status"] = "invoice_approved"
+            job["invoice_approved_at"] = now()
+            job["invoice_approved_by"] = actor
+            self.post_msg(stage, job["case_id"],
+                          "The agent approved the invoice. External payment has not been recorded.",
+                          to=("trades", "landlord"))
+            self.audit(stage, {"actor": actor, "action": "invoice_approved",
+                               "target": job["id"], "note": f"£{job['invoice_pence']/100:.2f}"})
+        elif action == "record_payment":
+            job["status"] = "paid"
+            job["paid_at"] = payment_date + "T00:00:00Z"
+            job["payment_recorded_at"] = now()
+            job["payment_reference"] = reference
+            job["payment_amount_pence"] = payment_amount
+            job["payment_recorded_by"] = actor
+            job["payment_evidence_type"] = "manual_external_reference"
+            self.post_msg(stage, job["case_id"],
+                          "The office recorded an external payment reference for the contractor invoice.",
+                          to=("trades", "landlord"))
+            self.audit(stage, {"actor": actor, "action": "external_payment_recorded",
+                               "target": job["id"], "note": "External ref: " + reference})
         else:
             return self._json({"error": f"invalid action {action} for status {job['status']}"}, 400)
 
@@ -2116,12 +2167,13 @@ class H(SimpleHTTPRequestHandler):
                           + f"£{appr['amount_pence']/100:.2f}" + (f". Reason: {appr['reason_given']}" if appr.get("reason_given") else "."),
                           to=("tenant", "trades", "landlord"))
             if appr["status"] == "approved":
-                job["status"] = "paid"
-                job["paid_at"] = now()
-                self.sync_case(stage, job["case_id"], "resolved")
+                job["status"] = "invoice_approved"
+                job["invoice_approved_at"] = now()
+                job["invoice_approved_by"] = user.get("display_name", "Landlord")
+                # Bill approval is NOT proof of payment, nor proof of repair quality.
             else:
                 job["status"] = "rejected"
-                self.sync_case(stage, job["case_id"], "declined")
+                # An invoice dispute never cancels or closes the underlying repair.
                 # P1: rejection creates agent work, never a silent death
                 stage.setdefault("cases", []).append({
                     "id": stage.get("next_case_id", 490),
