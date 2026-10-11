@@ -108,7 +108,8 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 - [ ] Actually enter and independently check the real agency phone, office hours, out-of-hours provider and reviewed emergency policy. No contact details were invented or published automatically.
 - [ ] Integrate a real provider or securely operated mail worker with delivery receipts, failure callbacks and automated retries. **The current outbox is manual only: Roger does NOT send the queued messages.** Failure/retry recording alone is not an email service.
 - [ ] Live operational reminders, emergency escalation and human response rota, notification retention/privacy policies, full staff/administrator MFA and recovery.
-- [ ] End-to-end disaster backup/restore drill on a disposable clone (including uploaded document files, users and exact state) and transaction-safe/concurrent writes, still needed before production release.
+- [x] Synthetic disposable restore rehearsal: `scripts/rehearse_restore.py` verifies that stage/users snapshots parse, copied files match hashes, linked documents exist and a corrupt/missing document is rejected. Its regression tests pass; no live client data is needed.
+- [ ] Perform a real operational backup and restoration from a quiesced Hostinger backup onto a separate disposable server, including uploaded files, user logins and service configuration. Also finish transaction-safe concurrent writes; the synthetic rehearsal does not replace this release gate.
 - [ ] Dedicated role-populated browser acceptance test for office settings, failed mail retries and session revocation. The existing general browser smoke does not exercise these journeys.
 
 **Do not deploy without:** backup + restore evidence, real office contacts, operational emergency procedures and user approval.
