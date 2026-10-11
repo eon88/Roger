@@ -1011,6 +1011,7 @@ class H(SimpleHTTPRequestHandler):
             "submitted_at": now(),
         }
         if role == "trades":
+            reg["verification_required"] = True
             reg["gas_safe_number"] = str(data.get("gas_safe_number", ""))[:20]
             reg["trades"] = [str(t)[:20] for t in (data.get("trades") or [])][:8]
             reg["insurance_expiry"] = str(data.get("insurance_expiry", ""))[:20]
@@ -2064,39 +2065,67 @@ class H(SimpleHTTPRequestHandler):
                            self.internal_case_target(), "job_workflow")
 
     # ---------- trades: BOOK → complete → settle or escalate ----------
-    def verified_contractor_for_new_repair(self, stage, party_id, required_trade):
-        """Check a persistent, linked approval; never trust demo credential names."""
+    def verified_contractor_for_new_repair(self, stage, party_id, required_trade, property_id=None):
+        """Require current agent-reviewed independent evidence for new repair work.
+
+        This is a human-documented check, NOT automatic issuer certification.
+        """
         party = next((p for p in stage.get("parties", [])
                       if p.get("id") == party_id and p.get("status") == "active"
                       and "trades" in p.get("roles", []) and p.get("account_id")), None)
         if not party:
             return False
-        reg_id = party.get("source_registration_id")
         reg = next((r for r in stage.get("registrations", [])
-                    if r.get("id") == reg_id
-                    and r.get("party_id") == party_id
-                    and r.get("role") == "trades"
+                    if r.get("id") == party.get("source_registration_id")
+                    and r.get("party_id") == party_id and r.get("role") == "trades"
                     and r.get("name") == party.get("display_name")
                     and r.get("status") == "approved"
-                    and r.get("credentials_checked_at")
-                    and r.get("prospect_stage") not in ("rejected", "suspended")), None)
+                    and r.get("prospect_stage") not in ("suspended", "rejected")), None)
         if not reg:
             return False
-        expiry = reg.get("insurance_expiry") or ""
+        verify = reg.get("contractor_verification")
+        if not isinstance(verify, dict) or verify.get("status") != "verified":
+            return False
+        if (verify.get("party_id") != party_id or verify.get("registration_id") != reg.get("id")
+                or not verify.get("checked_at") or not verify.get("checked_by")
+                or not verify.get("external_check_reference")
+                or not verify.get("insurance_check_reference")):
+            return False
         try:
-            if datetime.strptime(expiry, "%Y-%m-%d").date() < datetime.now(timezone.utc).date():
+            today = datetime.now(timezone.utc).date()
+            expires = datetime.strptime(verify["valid_until"], "%Y-%m-%d").date()
+            insurance_end = datetime.strptime(reg["insurance_expiry"], "%Y-%m-%d").date()
+            checked_at = datetime.fromisoformat(verify["checked_at"].replace("Z", "+00:00"))
+        except (KeyError, ValueError, TypeError):
+            return False
+        if (expires < today or insurance_end < today or checked_at.tzinfo is None
+                or checked_at.astimezone(timezone.utc).date() > today):
+            return False
+        for kind in ("insurance", "qualification"):
+            doc = self.contractor_verified_document(stage, party_id, verify.get(kind + "_document_id"))
+            if not doc or doc.get("verified_at") != verify.get(kind + "_document_verified_at"):
                 return False
-        except (ValueError, TypeError):
+            if datetime.strptime(doc["expiry_date"], "%Y-%m-%d").date() < expires:
+                return False
+        if not verify.get("service_areas"):
             return False
-        trades = set(str(t).lower() for t in reg.get("trades", []))
-        if required_trade and required_trade not in trades:
-            return False
-        # A claimed Gas Safe number alone is not proof of a verified listing.
-        # Until explicit verified evidence is recorded, refuse gas dispatch.
-        if required_trade == "gas" and not (reg.get("gas_safe_number")
-                                               and reg.get("gas_safe_verified_at")
-                                               and reg.get("gas_safe_verification_reference")):
-            return False
+        if required_trade:
+            required_trade = str(required_trade).strip().lower()
+            if required_trade not in verify.get("verified_trades", []):
+                return False
+            if required_trade == "gas":
+                gas = verify.get("gas")
+                if not isinstance(gas, dict) or gas.get("number") != reg.get("gas_safe_number"):
+                    return False
+                doc = self.contractor_verified_document(stage, party_id, gas.get("document_id"))
+                if (not doc or doc.get("verified_at") != gas.get("document_verified_at")
+                        or not gas.get("register_reference")
+                        or datetime.strptime(doc["expiry_date"], "%Y-%m-%d").date() < expires):
+                    return False
+        if property_id:
+            prop = self.find_prop(stage, property_id)
+            if not prop or not self.contractor_location_match(verify, prop):
+                return False
         return True
 
     def credential_check(self, job, tradesperson):
