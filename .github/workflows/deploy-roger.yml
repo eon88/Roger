@@ -38,6 +38,7 @@ jobs:
           set -euo pipefail
           sha="$(git -C application rev-parse HEAD)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          bash -n ops/deploy-roger-mvp.sh
           python3 -m py_compile application/stage-clone/serve.py
           test -f application/Dockerfile
           tar -czf "$RUNNER_TEMP/roger-$sha.tar.gz" \
