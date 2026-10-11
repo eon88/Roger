@@ -92,6 +92,38 @@ class PreworkCostApprovalTests(unittest.TestCase):
         })
         return self.responses[-1][1]
 
+    def test_contractor_requires_linked_approved_registration(self):
+        self.stage["registrations"][0]["party_id"] = None
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.request_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_contractor_requires_current_insurance(self):
+        self.stage["registrations"][0]["insurance_expiry"] = "2020-01-01"
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.request_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_contractor_cannot_work_outside_checked_trade(self):
+        self.stage["registrations"][0]["trades"] = ["electrical"]
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.request_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_contractor_suspension_blocks_new_job(self):
+        self.stage["registrations"][0]["prospect_stage"] = "suspended"
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.request_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_claimed_gas_safe_number_is_not_verified_evidence(self):
+        self.stage["jobs"][0]["required_trade"] = "gas"
+        self.stage["registrations"][0]["trades"].append("gas")
+        self.stage["registrations"][0]["gas_safe_number"] = "CLAIMED-NUMBER"
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.request_quote(), 409)
+        self.assertEqual(self.stage, before)
+
     def test_unpriced_job_cannot_be_claimed_or_directly_assigned(self):
         before = copy.deepcopy(self.stage)
         self.assertEqual(self.job_action("trade", "accept"), 409)
