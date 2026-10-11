@@ -525,8 +525,8 @@ function renderNotifications(){
  const typeOptions=Object.entries(NOTIFICATION_TYPES).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
  const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
  const taskOptions=tasks.filter(activeRecord).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>').join('');
- const rows=notes.slice().reverse().map(n=>'<div class="card" id="notification-'+esc(n.id)+'"><div class="cardtop"><h3>'+esc(n.title||n.id)+'</h3><span class="badge '+(n.status==='unread'?'pending':'completed')+'">'+esc(n.status||'unread')+'</span></div><div class="meta">'+esc(NOTIFICATION_TYPES[n.notification_type]||n.notification_type||'Notification')+' · to '+esc(n.recipient_role||'agent')+(n.recipient_name?' / '+esc(n.recipient_name):'')+(n.due_at?' · due '+esc(n.due_at):'')+'</div><div class="details">'+esc(n.message||'')+'</div><div class="meta">'+esc(notificationEntityLine(n)||'No related record')+' · channels: '+esc((n.channels||['in_app']).join(', '))+(n.email_status?' · email '+esc(n.email_status):'')+'</div><div class="actions"><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\''+(n.status==='unread'?'read':'unread')+'\')">Mark '+(n.status==='unread'?'read':'unread')+'</button>'+(n.email_status==='queued'?'<button class="btn primary" onclick="notificationAction(this,\''+esc(n.id)+'\',\'sent\')">Mark email sent</button>':'')+'</div></div>').join('');
- document.getElementById('view-notifications').innerHTML='<div class="move">notification centre</div><p class="fineprint">Create in-app alerts and email outbox items for tenants, landlords, trades and agents. SMTP delivery for general notifications is tracked separately from case email replies.</p>'+
+ const rows=notes.slice().reverse().map(n=>'<div class="card" id="notification-'+esc(n.id)+'"><div class="cardtop"><h3>'+esc(n.title||n.id)+'</h3><span class="badge '+(n.status==='unread'?'pending':'completed')+'">'+esc(n.status||'unread')+'</span></div><div class="meta">'+esc(NOTIFICATION_TYPES[n.notification_type]||n.notification_type||'Notification')+' · to '+esc(n.recipient_role||'agent')+(n.recipient_name?' / '+esc(n.recipient_name):'')+(n.due_at?' · due '+esc(n.due_at):'')+'</div><div class="details">'+esc(n.message||'')+'</div><div class="meta">'+esc(notificationEntityLine(n)||'No related record')+' · channels: '+esc((n.channels||['in_app']).join(', '))+(n.email_status?' · email '+esc(n.email_status):'')+'</div><div class="actions"><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\''+(n.status==='unread'?'read':'unread')+'\')">Mark '+(n.status==='unread'?'read':'unread')+'</button>'+(n.email_status==='queued'?'<button class="btn primary" onclick="notificationAction(this,\''+esc(n.id)+'\',\'sent\')">Record external delivery</button><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\'failed\')">Record failure</button>':'')+(n.email_status==='failed'?'<button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\'retry\')">Requeue when due</button><span class="fineprint">Attempts: '+esc(n.email_attempts||0)+'/3 · next '+esc(n.email_next_retry_at||'not scheduled')+'</span>':'')+(n.email_status==='exhausted'?'<span class="fineprint hot">Three failed attempts. Contact the person by another method.</span>':'')+'</div></div>').join('');
+ document.getElementById('view-notifications').innerHTML='<div class="move">notification centre</div><p class="fineprint">Create in-app alerts and a manual email outbox. Roger does NOT send these emails; record external provider proof when sent. Failures can be requeued after their due time, up to three attempts.</p>'+
  '<div class="stats"><div class="stat '+(notes.some(n=>n.status==='unread')?'hot':'')+'"><div class="value">'+notes.filter(n=>n.status==='unread').length+'</div><div class="label">unread</div></div><div class="stat"><div class="value">'+notes.filter(n=>(n.channels||[]).includes('email')).length+'</div><div class="label">email outbox</div></div><div class="stat"><div class="value">'+notes.filter(n=>n.email_status==='queued').length+'</div><div class="label">queued emails</div></div></div>'+
  '<div class="card"><h2>Create notification</h2><div class="grid2"><label class="field"><span>Type</span><select id="note-type">'+typeOptions+'</select></label><label class="field"><span>Recipient role</span><select id="note-role" onchange="refreshNotificationPartyOptions()"><option value="agent">Agent</option><option value="tenant">Tenant</option><option value="landlord">Landlord</option><option value="trades">Trades</option></select></label><label class="field"><span>Recipient Party</span><select id="note-party"><option value="">Choose a verified recipient</option></select></label><label class="field"><span>Email to</span><input id="note-email" type="email" placeholder="Optional email address"></label><label class="field"><span>Property</span><select id="note-property"><option value="">No property</option>'+propOptions+'</select></label><label class="field"><span>Case ID</span><input id="note-case"></label><label class="field"><span>Job ID</span><input id="note-job"></label><label class="field"><span>Related task</span><select id="note-task"><option value="">No task</option>'+taskOptions+'</select></label><label class="field"><span>Due / reminder time</span><input id="note-due" type="datetime-local"></label></div><div class="field"><span>Channels</span><label><input type="checkbox" name="note-channel" value="in_app" checked> In-app</label> <label><input type="checkbox" name="note-channel" value="email"> Email outbox</label></div><label class="field"><span>Title</span><input id="note-title" maxlength="160"></label><label class="field"><span>Message</span><textarea id="note-message" rows="3" maxlength="1200"></textarea></label><button class="btn primary" onclick="createNotification(this)">Create notification</button></div>'+
  '<div class="move">notifications</div>'+(rows||'<div class="empty">No notifications yet.</div>');
@@ -576,17 +576,40 @@ async function createNotification(btn){
        case_id:document.getElementById('note-case').value,
        job_id:document.getElementById('note-job').value,
        task_id:document.getElementById('note-task').value,
-       due_at:due?due+':00Z':'',
+       due_at:due?new Date(due).toISOString():'',
        channels,
        title:document.getElementById('note-title').value,
-       message:document.getElementById('note-message').value
+       message:document.getElementById('note-message').value,
+       request_id:crypto.randomUUID()
      });
      toast('Notification created.');
      load();
    }catch(e){}
  });
 }
-async function notificationAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/notification-action',{id,action});toast('Notification updated.');load();}catch(e){}});}
+async function notificationAction(btn,id,action){
+  const payload={id,action};
+  if(action==='sent'){
+    const source=prompt('External email provider / mail application used for the actual send');
+    if(source===null)return;
+    const reference=prompt('Real sent email ID / delivery reference (from external mail logs)');
+    if(reference===null)return;
+    payload.delivery_source=source.trim();payload.delivery_reference=reference.trim();
+    if(payload.delivery_source.length<3||payload.delivery_reference.length<5){
+      toast('External delivery evidence required. Roger has not sent the email.','bad');return;
+    }
+  }else if(action==='failed'){
+    const reason=prompt('Reason the external email attempt failed');
+    if(reason===null)return;
+    if(!reason.trim()){toast('Please record why the email failed.','bad');return;}
+    payload.reason=reason.trim();
+  }
+  await busy(btn,async()=>{try{
+    await post('/api/notification-action',payload);
+    toast(action==='sent'?'External delivery reference recorded':action==='failed'?'Failure recorded — check retry time':'Notification updated.');
+    load();
+  }catch(e){toast(e.message||'Could not update notification.','bad');}});
+}
 async function sendCommunicationReply(btn,id){
  const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
  if(!textValue){toast('Type a reply first.','bad');return;}
