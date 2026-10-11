@@ -2053,7 +2053,7 @@ class H(SimpleHTTPRequestHandler):
                 "status": "pending", "requested_at": now(),
                 "sent_by_agent": True})
             job["status"] = "awaiting_approval"
-            self.sync_case(stage, job["case_id"], "awaiting_approval")
+            # Invoice review must not overwrite the tenant's repair status.
             self.post_msg(stage, job["case_id"], "The agency has sent your invoice to the landlord for sign-off.", to=("trades",))
             self.audit(stage, {"actor": "agent", "action": "invoice_sent_to_landlord", "target": job["id"],
                                "note": f"£{job['invoice_pence']/100:.2f}"})
