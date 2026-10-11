@@ -60,7 +60,12 @@ These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` a
   - [x] Unit tests for a mocked PostgreSQL advisory transaction and lock-aware HTTP dispatch. File backend remains the only runtime concurrency path exercised with real processes.
   - [ ] Still needed: real PostgreSQL concurrent/rollback tests, row-level agency isolation, multi-agency account ownership, coherent writes across different storage systems, operational backup/restore and a populated production-like security pilot. Current PostgreSQL projections are shared global tables; multi-agency hosting is NOT supported.
   - **Status: PARTIAL — safe cooperative writers and legacy one-agency fail-closed checks tested, NOT full multi-agency production isolation or deployment.**
-- [ ] **07 Full populated browser pilot** — exercise real clicks across Agent, Tenant, Landlord and Trades for report → approval → trade visit → tenant result → invoice/external payment record. *(All P0 items)*
+- [x] **07 Full populated browser pilot** — actual Chromium clicks across Agent, Tenant, Landlord and Trades; report → vetted dispatch → itemised quote → agent/landlord approval → confirmed visit → extra-work landlord approval → invoice → tenant confirmation → two external payment entries + supplier credit. *(All P0 tasks' main happy path)*
+  - [x] Entirely isolated temporary Roger and fake accounts; also an unrelated tenant is denied access, including forged actions.
+  - [x] Test: `tests/full_repair_browser.cjs` now runs in `.github/workflows/browser-smoke.yml` alongside the existing portal smoke.
+  - [x] Evidence: [successful 4-role full browser journey, run #38181438758](https://github.com/eon88/Roger/actions/runs/38181438758) and [359 Python tests passing, run #38181438482](https://github.com/eon88/Roger/actions/runs/38181438482).
+  - [ ] Still needed for release: other failure/edge journeys, real issuer/office verification, bank reconciliation, safe production DB migration and Hostinger restore drill (tracked under Tasks 01–06).
+  - **Status: DONE for the defined synthetic end-to-end happy path; NOT live, deployed or financial-production certified.**
 
 **Build/test rule for each step:** implement the smallest vertical slice; run regression + denied-action tests; run a genuine role-based browser scenario; verify records survive reload; update this file with evidence; only then move to the next item. If failed, fix before advancing.
 
