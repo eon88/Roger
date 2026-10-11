@@ -43,6 +43,25 @@ class FourRoleRepairPilotTests(unittest.TestCase):
             }],
             "authority": {"standing_limit_pence": 15000},
         }
+        # Linked synthetic verification record; not a real outside issuer lookup.
+        self.stage["documents"] = [
+            {"id": "doc-ins", "party_id": "trade-1", "document_type": "trades_document",
+             "status": "verified", "verified_at": "2026-10-01T10:00:00Z",
+             "expiry_date": "2099-12-31", "storage_key": "synthetic-insurer-file"},
+            {"id": "doc-qual", "party_id": "trade-1", "document_type": "trades_document",
+             "status": "verified", "verified_at": "2026-10-01T10:00:00Z",
+             "expiry_date": "2099-12-31", "storage_key": "synthetic-qual-file"},
+        ]
+        self.stage["registrations"][0]["contractor_verification"] = {
+            "status": "verified", "registration_id": "trade-reg-1", "party_id": "trade-1",
+            "checked_at": "2026-10-01T10:00:00Z", "checked_by": "fixture-agent",
+            "valid_until": "2099-12-31", "insurance_document_id": "doc-ins",
+            "insurance_document_verified_at": "2026-10-01T10:00:00Z",
+            "qualification_document_id": "doc-qual",
+            "qualification_document_verified_at": "2026-10-01T10:00:00Z",
+            "external_check_reference": "SYNTH-QUAL", "insurance_check_reference": "SYNTH-INS",
+            "service_areas": ["LEEDS"], "verified_trades": ["plumbing"],
+        }
         self.users = {
             "tenant": {"role": "tenant", "username": "tenant", "display_name": "Resident",
                        "account_id": "account-tenant"},
