@@ -515,6 +515,7 @@ class H(SimpleHTTPRequestHandler):
             myjobs = [{k: v for k, v in j.items() if k != "email"}
                       for j in d.get("jobs", []) if j.get("case_id") in cids]
             for c in mycases:
+                c.pop("internal_notes", None)
                 c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or [])
                                         or t.get("author_account_id") == u.get("account_id")]
             d = {"properties": myprops, "cases": mycases, "jobs": myjobs,
@@ -526,6 +527,7 @@ class H(SimpleHTTPRequestHandler):
             pids = {p["id"] for p in myprops}
             mycases = [c for c in d.get("cases", []) if c.get("property_id") in pids]
             for c in mycases:
+                c.pop("internal_notes", None)
                 c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or [])
                                         or t.get("author_account_id") == u.get("account_id")]
             d = {"properties": myprops,
@@ -1767,6 +1769,19 @@ class H(SimpleHTTPRequestHandler):
         self._json({"success": True, "case_id": case["id"], "triage": t})
 
     # ---------- tenant issues: REPORT → dispatch ----------
+    @staticmethod
+    def internal_case_target():
+        """Internal tracking date only; never a promised response time."""
+        return (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+
+    def case_next(self, case, actor, action, due_date, changed_by="system"):
+        """Keep exactly one next actor, task and target date for a case."""
+        case["next_actor"] = actor
+        case["next_action"] = action
+        case["next_due_at"] = due_date
+        case["next_action_updated_at"] = now()
+        case["next_action_by"] = changed_by
+
     def handle_tenant_issue(self, data):
         stage = load_stage()
         prop = self.find_prop(stage, data.get("property_id"))
@@ -1812,7 +1827,27 @@ class H(SimpleHTTPRequestHandler):
                 {"error": "select the tenant Party explicitly"}, 409
             )
 
-        message = str(data.get("message", ""))[:3000]
+        message = str(data.get("message", "")).strip()[:3000]
+        if not message:
+            return self._json({"error": "describe the problem before submitting"}, 400)
+        request_id = data.get("request_id")
+        if request_id is not None and (
+                not isinstance(request_id, str)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request_id)):
+            return self._json({"error": "invalid report request id"}, 400)
+        if request_id:
+            previous = next((case for case in stage.get("cases", [])
+                             if case.get("request_id") == request_id
+                             and case.get("property_id") == prop["id"]
+                             and case.get("tenant_party_id") == tenant_party_id
+                             and case.get("created_by_account_id") == issuer.get("account_id")
+                             and case.get("type") == "issue"), None)
+            if previous:
+                if previous.get("message") != message:
+                    return self._json({"error": "request id already used for a different report"}, 409)
+                return self._json({"success": True, "case_id": previous["id"],
+                                   "already_received": True, "triage": previous.get("triage"),
+                                   "job_id": None, "document_ids": previous.get("document_ids", [])})
         name = (issuer.get("display_name") if role == "tenant"
                 else str(data.get("name", "Tenant"))[:100])
         t = self.triage(message)
@@ -1826,10 +1861,13 @@ class H(SimpleHTTPRequestHandler):
             "name": name or "Tenant",
             "email": str(data.get("email", ""))[:254],
             "message": message,
+            "request_id": request_id,
             "status": "reported",
             "triage": t,
             "submitted_at": now(),
         }
+        self.case_next(case, "agent", "Review the repair report and decide what happens next",
+                       self.internal_case_target())
         stage["next_case_id"] = case["id"] + 1
         stage.setdefault("cases", []).append(case)
         try:
@@ -2868,7 +2906,7 @@ class H(SimpleHTTPRequestHandler):
         agent_actions = {
             "close", "reopen", "add_tradesperson", "mark_read",
             "mark_unread", "note", "follow_up", "reply", "inform",
-            "dispatch_repair",
+            "dispatch_repair", "set_next_action",
         }
         tenant_actions = {
             "reply", "inform", "confirm_resolution", "reopen_unresolved",
@@ -2920,6 +2958,31 @@ class H(SimpleHTTPRequestHandler):
             self.post_msg(stage, c["id"], data.get("text"), to=to)
             self.audit(stage, {"actor": u.get("display_name", "?"), "action": f"case_{action}",
                                "target": c["id"], "note": "-> " + ",".join(to)})
+        elif action == "set_next_action":
+            if c.get("status") in ("closed", "declined"):
+                return self._json({"error": "reopen the case before planning further action"}, 409)
+            actor = data.get("next_actor")
+            instruction = str(data.get("next_action") or "").strip()[:200]
+            due_date = data.get("next_due_at")
+            if actor not in ("agent", "tenant", "landlord", "trades") or not instruction:
+                return self._json({"error": "one next actor and a clear next action are required"}, 400)
+            if not isinstance(due_date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", due_date):
+                return self._json({"error": "next due date must be YYYY-MM-DD"}, 400)
+            try:
+                parsed_due = datetime.strptime(due_date, "%Y-%m-%d").date()
+            except ValueError:
+                return self._json({"error": "invalid next due date"}, 400)
+            if parsed_due < datetime.now(timezone.utc).date():
+                return self._json({"error": "next due date cannot be in the past"}, 400)
+            if actor == "trades" and not any(
+                    str(j.get("case_id")) == str(c.get("id"))
+                    and j.get("assigned_to_party_id")
+                    for j in stage.get("jobs", [])):
+                return self._json({"error": "no assigned contractor for this case"}, 409)
+            self.case_next(c, actor, instruction, due_date, u.get("username", "agent"))
+            self.audit(stage, {"actor": u.get("display_name", "Agent"),
+                               "action": "case_next_action_set", "target": c["id"],
+                               "note": f"{actor} by {due_date}: {instruction}"})
         elif action == "dispatch_repair":
             if c.get("type") != "issue" or c.get("status") not in ("reported", "new"):
                 return self._json({"error": "only an untriaged tenant issue can become a repair job"}, 409)
@@ -2958,6 +3021,8 @@ class H(SimpleHTTPRequestHandler):
             c["triaged_at"] = now()
             c["triaged_by"] = u.get("username", "agent")
             c["triage_note"] = reason
+            self.case_next(c, "agent", "Request a vetted contractor quote for the repair",
+                           self.internal_case_target(), u.get("username", "agent"))
             self.post_msg(stage, c["id"], "Your report has been reviewed by the agent; a repair job has been opened.", to=("tenant",))
             self.audit(stage, {"actor": u.get("display_name", "agent"), "action": "repair_dispatched",
                                "target": jid, "note": "Case #" + str(c["id"]) + ": " + reason})
@@ -2976,12 +3041,15 @@ class H(SimpleHTTPRequestHandler):
             if not reason:
                 return self._json({"error": "a closing reason is required"}, 400)
             c["status"] = "closed"
+            self.case_next(c, None, None, None, u.get("username", "agent"))
             c["closed_reason"] = reason
             c["actioned_at"] = now()
             self.post_msg(stage, c["id"], f"Case closed: {reason}", to=("tenant", "trades", "landlord"))
             self.audit(stage, {"actor": "agent", "action": "case_closed", "target": c["id"], "note": reason})
         elif action == "reopen":
             c["status"] = "new"
+            self.case_next(c, "agent", "Review the reopened case",
+                           self.internal_case_target(), u.get("username", "agent"))
             self.post_msg(stage, c["id"], "Case reopened by the agency.", to=("tenant",))
             self.audit(stage, {"actor": "agent", "action": "case_reopened", "target": c["id"]})
         elif action == "mark_read":
@@ -3018,16 +3086,21 @@ class H(SimpleHTTPRequestHandler):
             if c.get("status") not in ("resolved", "awaiting_confirmation"):
                 return self._json({"error": "only resolved cases can be confirmed"}, 409)
             c["status"] = "closed"
+            self.case_next(c, None, None, None, u.get("username", "tenant"))
             c["tenant_confirmed_at"] = now()
             self.post_msg(stage, c["id"], "Tenant confirmed the repair is resolved.", to=("agent", "landlord", "trades"))
             self.audit(stage, {"actor": u.get("display_name", "tenant"), "action": "tenant_confirmed_resolution",
                                "target": c["id"]})
         elif action == "reopen_unresolved":
+            if c.get("status") not in ("resolved", "awaiting_confirmation", "closed"):
+                return self._json({"error": "only a completed or closed repair may be disputed here"}, 409)
             reason = str(data.get("text", "")).strip()[:1000]
             if not reason:
                 return self._json({"error": "explain what is still unresolved"}, 400)
             c["status"] = "reported"
             c["reopened_at"] = now()
+            self.case_next(c, "agent", "Review tenant's unresolved repair and arrange follow-up",
+                           self.internal_case_target(), u.get("username", "tenant"))
             self.post_msg(stage, c["id"], "This repair is still unresolved: " + reason, to=("agent", "landlord", "trades"))
             self.audit(stage, {"actor": u.get("display_name", "tenant"), "action": "tenant_reopened_unresolved",
                                "target": c["id"], "note": reason[:120]})
