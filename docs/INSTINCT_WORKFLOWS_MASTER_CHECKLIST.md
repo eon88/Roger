@@ -46,6 +46,12 @@ These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` a
   - [ ] Still needed: genuine external issuer checks by a trained operator, policy/licence scope review, contractor self-upload and expiry notifications, dedicated browser journey and transactional storage protection.
   - **Status: PARTIAL — built and code-tested, NOT automatically checked against external registers and NOT live.**
 - [ ] **05 Office settings and delivery** — real contacts/out-of-hours policy, alerts/retries, audit, user revocation and restore. *(S2, S3, T1)*
+  - [x] Agent can save, review, publish or hide actual office phone, email, hours and emergency policy; all four roles receive only published details; missing contacts use paperwork, never invented data.
+  - [x] Manual email outbox with Party-address validation, duplicate request IDs, required external sent-message evidence, failure reasons, timed requeue and three-attempt limit; no simulated delivery.
+  - [x] Urgent maintenance intake creates one agent-only in-app alert; account revocation invalidates active non-agent sessions and future logins, preserving records.
+  - [x] Agent controls, audit entries and synthetic regression tests added to the development branch.
+  - [ ] Remaining: real agency review/publication, actual SMTP/provider delivery + worker/retries, recovery/MFA, full backup-restore drill, production resilience and populated browser checks.
+  - **Status: PARTIAL — tested code, manual email outbox only, no real contacts configured, not deployed.**
 - [ ] **06 Database and tenant isolation** — safe concurrent writes and two-agency/two-tenancy API/document denial tests; PostgreSQL development must remain isolated until reviewed. *(S1, S4)*
 - [ ] **07 Full populated browser pilot** — exercise real clicks across Agent, Tenant, Landlord and Trades for report → approval → trade visit → tenant result → invoice/external payment record. *(All P0 items)*
 
