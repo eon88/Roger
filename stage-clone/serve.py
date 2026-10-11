@@ -1117,10 +1117,22 @@ class H(SimpleHTTPRequestHandler):
         return self._json({"success": True, "party": party})
 
     def repair_authority(self, stage, property_id):
-        """Return active, signed per-property mandate with an explicit spend cap."""
+        """Return active, signed property authority from its real linked owner."""
+        prop = self.find_prop(stage, property_id)
+        if not prop:
+            return None
+        owners = set()
+        if isinstance(prop.get("landlord_party_id"), str):
+            owners.add(prop["landlord_party_id"])
+        owners.update(pid for pid in prop.get("landlord_party_ids", [])
+                      if isinstance(pid, str))
+        if not owners:
+            return None
         matches = [
             a for a in stage.get("management_agreements", [])
-            if a.get("status") == "active"
+            if a.get("landlord_party_id") in owners
+            and a.get("agreement_type") == "full_management"
+            and a.get("status") == "active"
             and a.get("signed_at")
             and property_id in a.get("property_ids", [])
             and type(a.get("spending_limit_pence")) is int
