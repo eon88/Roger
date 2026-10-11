@@ -31,6 +31,12 @@ These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` a
   - [ ] Still needed for full acceptance: safe concurrent writes, manual same-issue duplicate handling, legacy-case backfill, automated escalation/real people ownership, fully populated role-based browser verification.
   - **Status: PARTIAL, tested code; not production deployed.**
 - [ ] **03 Financial controls** — itemised/VAT quotes, versioned approvals, variations, unique invoice numbers, part payments, credit/reconciliation. *(A2, L2, R3, R5)*
+  - [x] Itemised VAT-aware net/gross quotes, quote versions, exact approval snapshots; legacy sums flagged as incomplete.
+  - [x] Extra-work approval within mandate or by the linked landlord when the combined amount exceeds authority.
+  - [x] Supplier invoice numbers, itemised totals, part-payments, credits, outstanding balance and updated agent/landlord/trades screens.
+  - [x] Statements include dated external payment records and exclude credits from bank-payment totals. Synthetic regression tests added.
+  - [ ] Remaining: independent supplier/VAT evidence review, concurrency-safe accounting and duplicate prevention, bank reconciliation and fully populated finance browser pilot.
+  - **Status: PARTIAL — code-tested but not a live payment or bookkeeping system.**
 - [ ] **04 Contractor evidence** — independently checked certificates, uploads, expiry and coverage. *(R1, S2)*
 - [ ] **05 Office settings and delivery** — real contacts/out-of-hours policy, alerts/retries, audit, user revocation and restore. *(S2, S3, T1)*
 - [ ] **06 Database and tenant isolation** — safe concurrent writes and two-agency/two-tenancy API/document denial tests; PostgreSQL development must remain isolated until reviewed. *(S1, S4)*
