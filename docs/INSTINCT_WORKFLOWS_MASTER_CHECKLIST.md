@@ -54,6 +54,12 @@ These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` a
   - [ ] Remaining: real agency review/publication, actual SMTP/provider delivery + worker/retries, administrator recovery/MFA, real Hostinger backup-restore drill, production resilience and populated browser checks.
   - **Status: PARTIAL — tested code, manual email outbox only, no real contacts configured, not deployed.**
 - [ ] **06 Database and tenant isolation** — safe concurrent writes and two-agency/two-tenancy API/document denial tests; PostgreSQL development must remain isolated until reviewed. *(S1, S4)*
+  - [x] Serialize the entire modifying HTTP request across Roger file-backed processes with an OS write lock; development PostgreSQL requests use a transaction-scoped advisory lock.
+  - [x] Prevent stale GET session cleanup from overwriting newer logins or revocations. Reject reads **and saves** of mixed-agency or incompletely tagged multi-agency snapshots.
+  - [x] Regression: four simultaneous processes edit the same JSON snapshot and preserve every update; two independent tenancy/account scopes cannot view foreign records/downloads or reply to another tenant's case. Wrong-agency snapshot/API requests fail closed.
+  - [x] Unit tests for a mocked PostgreSQL advisory transaction and lock-aware HTTP dispatch. File backend remains the only runtime concurrency path exercised with real processes.
+  - [ ] Still needed: real PostgreSQL concurrent/rollback tests, row-level agency isolation, multi-agency account ownership, coherent writes across different storage systems, operational backup/restore and a populated production-like security pilot. Current PostgreSQL projections are shared global tables; multi-agency hosting is NOT supported.
+  - **Status: PARTIAL — safe cooperative writers and legacy one-agency fail-closed checks tested, NOT full multi-agency production isolation or deployment.**
 - [ ] **07 Full populated browser pilot** — exercise real clicks across Agent, Tenant, Landlord and Trades for report → approval → trade visit → tenant result → invoice/external payment record. *(All P0 items)*
 
 **Build/test rule for each step:** implement the smallest vertical slice; run regression + denied-action tests; run a genuine role-based browser scenario; verify records survive reload; update this file with evidence; only then move to the next item. If failed, fix before advancing.
