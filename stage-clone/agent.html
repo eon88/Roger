@@ -584,8 +584,8 @@ async function replyCase(btn,id){ const el=document.getElementById('rp-'+id); co
     el.value=''; toast('Sent — it lands in their portal.'); load(); }catch(e){} }); }
 async function reopenCase(btn,id){ await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'reopen'});
   toast('Reopened — back on the active list.'); load(); }catch(e){} }); }
-function poolPicker(idSuffix,jobId){ const opts=pool.map(t=>`<option value="${esc(t.company)}">${esc(t.company)} — ${esc(t.trades.join('/'))}${t.gas_safe?' · Gas Safe':''}</option>`).join('');
-  return `<select id="pool-${idSuffix}"><option value="">choose trade…</option>${opts}</select>`;}
+function poolPicker(idSuffix,job){ const opts=pool.filter(t=>t.party_id&&(!job.requires_prework_quote||t.ready_for_new_repairs)).map(t=>`<option value="${esc(t.party_id)}">${esc(t.company)} — ${esc((t.trades||[]).join('/'))}${t.gas_safe?' · Gas Safe verified':''}</option>`).join('');
+  return `<select id="pool-${idSuffix}"><option value="">choose verified trade…</option>${opts}</select>`;}
 
 function renderJobs(){
   const jobs=(stage.jobs||[]).slice().reverse();
@@ -600,11 +600,11 @@ function renderJobs(){
       ${j.gate_reason?`<div class="fineprint hot">Blocked: ${esc(j.gate_reason)} — booked by ${esc(j.requested_by)}</div>
         <div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','verify_approve')">Allow anyway</button>
         <button class="btn danger" onclick="jobAct(this,'${esc(j.id)}','verify_decline')">Send back</button></div>`:''}
-      ${j.status==='triaged'?`<div class="actions"><span>${poolPicker(j.id,j.id)}</span><button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Request quote before work</button></div>`:''}
-      ${['open'].includes(j.status)?`<div class="actions"><span>${poolPicker(j.id,j.id)}</span>
+      ${j.status==='triaged'?`<div class="actions"><span>${poolPicker(j.id,j)}</span><button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Request quote before work</button></div>`:''}
+      ${['open'].includes(j.status)?`<div class="actions"><span>${poolPicker(j.id,j)}</span>
         <button class="btn" onclick="pickAct(this,'${esc(j.id)}','assign')">Assign directly</button>
         <button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask for quote first</button></div>`:''}
-      ${j.status==='assigned'&&j.assigned_to?`<div class="actions"><button class="btn primary" data-who="${esc(j.assigned_to)}" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask them to quote first</button></div>`:''}
+      ${j.status==='assigned'&&j.assigned_to?`<div class="actions"><button class="btn primary" data-party-id="${esc(j.assigned_to_party_id||'')}" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask them to quote first</button></div>`:''}
       ${j.invoice_pence!=null?`<div class="meta">invoice ${money(j.invoice_pence)}${j.approved_quote_pence!=null&&j.invoice_pence>j.approved_quote_pence?` · <span class="amber">above approved quote of ${money(j.approved_quote_pence)}</span>`:''}</div>`:''}
       ${j.status==='invoice_submitted'?`<div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','approve_invoice')">Approve invoice</button><button class="btn ghost" onclick="jobAct(this,'${esc(j.id)}','send_to_landlord')">Ask landlord to review</button></div>`:''}
       ${j.status==='invoice_approved'?`<div class="actions"><button class="btn primary" onclick="recordJobPayment(this,'${esc(j.id)}',${j.invoice_pence})">Record external payment</button><span class="fineprint">Only after checking the bank/payment record.</span></div>`:''}
@@ -627,10 +627,11 @@ function renderJobs(){
     sec(g('rejected'),'Declined by landlord','','No landlord has declined an invoice.');
 }
 async function pickAct(btn,id,action){ const sel=document.getElementById('pool-'+id);
-  const who=(sel?sel.value:'')||btn.dataset.who||'';
-  if(!who){toast('Choose a tradesperson from the list first.','bad');return;}
-  await jobAct(btn,id,action,who); }
-async function jobAct(btn,id,action,tradesperson){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:tradesperson||'agent'});
+  const partyId=(sel?sel.value:'')||btn.dataset.partyId||'';
+  const trade=pool.find(t=>t.party_id===partyId);
+  if(!trade){toast('Choose an approved contractor with a linked portal account first.','bad');return;}
+  await jobAct(btn,id,action,trade.company,partyId); }
+async function jobAct(btn,id,action,tradesperson,trades_party_id){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:tradesperson||'agent',trades_party_id});
   const say={verify_approve:'Booking released to the tradesperson.',verify_decline:'Booking sent back — it returns to the open board.',
     assign:'Assigned — they see it on their board now.',request_quote:'Quote requested — it waits on their price.',
     approve_quote:'Quote reviewed; high quotes wait for landlord approval.',decline_quote:'Quote declined; they\'ve been asked to re-quote or stand down.',
@@ -780,7 +781,8 @@ function renderPeopleTenancies(){
  const partyOptions=(role,selected)=>parties.filter(p=>p.status==='active'&&(p.roles||[]).includes(role)).map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.display_name)+' · '+esc(p.id)+'</option>').join('');
  const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title)+' · '+esc(p.area)+'</option>').join('');
  const prospectOptions=(stage.cases||[]).filter(c=>c.type==='enquiry'&&['renter','tenant'].includes(c.role)).map(c=>'<option value="'+esc(c.id)+'">#'+esc(c.id)+' · '+esc(c.name||'Prospect')+'</option>').join('');
- const landlordRegOptions=(stage.registrations||[]).filter(x=>x.role==='landlord'&&x.status==='approved'&&!x.party_id).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name||x.id)+' · '+esc(x.id)+'</option>').join('');
+ const linkableRegs=(stage.registrations||[]).filter(x=>['landlord','trades'].includes(x.role)&&x.status==='approved'&&!x.party_id&&(x.role==='landlord'||x.credentials_checked_at));
+ const registrationOptions=linkableRegs.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name||x.id)+' · '+esc(x.role)+' · '+esc(x.id)+'</option>').join('');
  const landlordOptions=partyOptions('landlord');
  const agreements=stage.management_agreements||[];
  const agreementCards=agreements.length?agreements.slice().reverse().map(a=>{const landlord=parties.find(p=>p.id===a.landlord_party_id)||{};const properties=(a.property_ids||[]).map(id=>(props.find(p=>p.id===id)||{}).title||id).join(', ');const choices=[a.status,...({draft:['sent','cancelled'],sent:['signed','cancelled'],signed:['active','ended'],active:['ended']}[a.status]||[])];return '<div class="card" id="'+esc(a.id)+'"><div class="cardtop"><h3>'+esc(a.id)+' · '+esc(landlord.display_name||a.landlord_party_id)+'</h3><span class="badge '+esc(a.status)+'">'+esc(a.status)+'</span></div><div class="meta">'+esc(a.agreement_type.replace(/_/g,' '))+' · '+esc(properties)+' · fee '+(Number(a.management_fee_bps||0)/100).toFixed(2)+'% · spending limit '+(Number.isInteger(a.spending_limit_pence)?money(a.spending_limit_pence):'not agreed')+(a.signed_at?' · signed '+esc(a.signed_at):'')+(a.ended_at?' · ended '+esc(a.ended_at):'')+'</div><div class="grid2"><label class="field"><span>Agreement stage</span><select class="management-stage">'+choices.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('')+'</select></label><label class="field"><span>Signed date</span><input class="management-signed" type="date" value="'+esc(a.signed_at||'')+'"></label><label class="field"><span>End date</span><input class="management-ended" type="date" value="'+esc(a.ended_at||'')+'"></label><label class="field"><span>Evidence note</span><input class="management-evidence" maxlength="1000" value="'+esc(a.evidence_note||'')+'"></label></div><button class="btn primary" data-agreement-id="'+esc(a.id)+'" onclick="saveManagementAgreement(this)">Update agreement</button></div>';}).join(''):'<div class="empty">No management agreements recorded yet.</div>';
@@ -805,7 +807,7 @@ function renderPeopleTenancies(){
  '<label class="field"><span>Email</span><input id="party-email" type="email" maxlength="254"></label><label class="field"><span>Phone</span><input id="party-phone" type="text" maxlength="40"></label>'+
  '<label class="field"><span>Address</span><input id="party-address" type="text" maxlength="300"></label><div class="field"><span>Role assignments</span>'+
  '<label><input type="checkbox" name="party-role" value="landlord"> Landlord</label> <label><input type="checkbox" name="party-role" value="tenant"> Tenant</label> <label><input type="checkbox" name="party-role" value="trades"> Trades</label> <label><input type="checkbox" name="party-role" value="agent"> Agent</label></div>'+
- '<label class="field"><span>Link approved landlord registration (optional)</span><select id="party-registration"><option value="">No linked registration</option>'+landlordRegOptions+'</select></label>'+
+ '<label class="field"><span>Link matching approved landlord or trades registration (optional)</span><select id="party-registration"><option value="">No linked registration</option>'+registrationOptions+'</select></label>'+
  '<label class="field"><span>Agent notes</span><textarea id="party-notes" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="createParty(this)">Create Party</button></div>'+
  '<div class="card"><h2>People records</h2>'+partyCards+'</div></div>'+
  '<div class="card"><h2>Management agreements</h2><p class="fineprint">Record authority against a landlord Party and selected properties. Mark signed only when you have evidence and the date.</p><div class="grid2"><label class="field"><span>Landlord Party</span><select id="management-landlord">'+landlordOptions+'</select></label><label class="field"><span>Properties (select multiple with Ctrl/Cmd)</span><select id="management-properties" multiple>'+propOptions+'</select></label><label class="field"><span>Agreement type</span><select id="management-type"><option value="full_management">Full management</option><option value="let_only">Let only</option></select></label><label class="field"><span>Management fee (%)</span><input id="management-fee" type="number" min="0" max="100" step="0.01" value="10"></label><label class="field"><span>Spending limit for each selected property (£)</span><input id="management-spending-limit" type="number" min="0" max="1000000" step="0.01" value="150" required></label></div><p class="fineprint">Choose properties with the same limit. For different limits, use separate agreements. The limit applies only after signing and activation.</p><button class="btn primary" onclick="createManagementAgreement(this)">Create draft agreement</button></div>'+
