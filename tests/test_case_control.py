@@ -125,6 +125,28 @@ class CaseControlTests(unittest.TestCase):
         self.assertEqual(self.replies[-1][0]["cases"][0]["internal_notes"][0]["text"],
                          "Private landlord dispute: do not disclose")
 
+    def test_job_transitions_update_one_authoritative_next_actor(self):
+        cid=self.report()["case_id"]
+        job={"id":"job-1","case_id":cid,"property_id":"home-1",
+             "assigned_to_party_id":"trades-1"}
+        self.stage["jobs"].append(job)
+        for status,role in [
+            ("quote_requested","trades"),("quoted","agent"),
+            ("awaiting_prework_approval","landlord"),("assigned","trades"),
+            ("in_progress","trades"),("invoice_submitted","agent"),
+            ("invoice_approved","tenant")
+        ]:
+            job["status"]=status
+            self.h.update_case_from_job(self.stage,job)
+            self.assertEqual(self.stage["cases"][0]["next_actor"],role,status)
+            self.assertTrue(self.stage["cases"][0]["next_action"])
+            self.assertTrue(self.stage["cases"][0]["next_due_at"])
+        self.stage["cases"][0]["status"]="closed"
+        self.h.case_next(self.stage["cases"][0],None,None,None)
+        job["status"]="quoted"
+        self.h.update_case_from_job(self.stage,job)
+        self.assertIsNone(self.stage["cases"][0]["next_actor"])
+
     def test_undone_repair_cannot_be_falsely_reopened_as_completed(self):
         cid=self.report()["case_id"]
         self.call("tenant","handle_case_action",409,id=cid,action="reopen_unresolved",
