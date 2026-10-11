@@ -248,7 +248,7 @@ function renderAttentionBoard(){
   const now=Date.now(),week=now+7*86400000,props=stage.properties||[],needs=[],waiting=[],upcoming=[],overdue=[];
   const propertyName=id=>{const p=props.find(x=>x.id===id);return p?p.title+' · '+(p.area||''):id||'No property linked';};
   const add=(list,label,detail,view,id,tag)=>list.push({label,detail,view,id,tag});
-  (stage.cases||[]).filter(c=>activeRecord(c)&&(c.status==='new'||c.status==='reported'||Number(c.triage?.urgency)>=2)).sort((a,b)=>(Number(b.triage?.urgency)||0)-(Number(a.triage?.urgency)||0)||String(b.submitted_at||'').localeCompare(String(a.submitted_at||''))).forEach(c=>add(needs,'Case #'+c.id+' · '+(c.type||'case'),propertyName(c.property_id)+' · '+(c.name||'Unidentified person'),'cases','case-'+c.id,Number(c.triage?.urgency)>=2?'urgent':c.status));
+  (stage.cases||[]).filter(c=>activeRecord(c)&&(c.status==='new'||c.status==='reported'||c.next_actor==='agent'||Number(c.triage?.urgency)>=2)).sort((a,b)=>(Number(b.triage?.urgency)||0)-(Number(a.triage?.urgency)||0)||String(b.submitted_at||'').localeCompare(String(a.submitted_at||''))).forEach(c=>add(needs,'Case #'+c.id+' · '+(c.type||'case'),propertyName(c.property_id)+' · '+(c.name||'Unidentified person'),'cases','case-'+c.id,Number(c.triage?.urgency)>=2?'urgent':c.status));
   (stage.jobs||[]).filter(j=>['open','quoted','pending_verification'].includes(j.status)).forEach(j=>add(needs,'Job '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,j.status));
   // Invoices originate from the tradesperson's completed work order.
   // Small invoices auto-settled under authority remain in Finance, not the action queue.
@@ -264,12 +264,15 @@ function renderAttentionBoard(){
   (stage.registrations||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,(x.role||'registration')+' application · '+(x.name||x.id),x.email||'Needs review','registrations','reg-'+x.id,'pending'));
   (window._docs||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,'Verify document · '+(x.title||x.file_name||x.id),propertyName(x.property_id),'overview','doc-'+x.id,'pending'));
   (window.complianceRecords||[]).filter(x=>!['superseded','current'].includes(x.status)||x.reminder_due).forEach(x=>add(needs,x.status==='missing'?'Missing compliance · '+x.requirement_type.replace(/_/g,' '):x.status==='expired'?'Expired compliance · '+x.requirement_type.replace(/_/g,' '):'Compliance reminder · '+x.requirement_type.replace(/_/g,' '),propertyName(x.property_id)+(x.expiry_date?' · expires '+x.expiry_date:''),'compliance',x.id,x.status==='expired'?'overdue':'compliance'));
+  (stage.cases||[]).filter(c=>activeRecord(c)&&c.next_actor&&c.next_actor!=='agent').forEach(c=>
+    add(waiting,'Case #'+c.id+' · waiting for '+c.next_actor,
+      propertyName(c.property_id)+' · '+(c.next_action||'Action pending')+(c.next_due_at?' · due '+c.next_due_at:''),'cases','case-'+c.id,'pending'));
   (stage.approvals||[]).filter(x=>x.status==='pending').forEach(x=>add(waiting,'Landlord approval · '+(x.id||'request'),propertyName(x.property_id)+' · '+money(x.amount_pence),'jobs',x.job_id?'job-'+x.job_id:'','landlord'));
   (stage.jobs||[]).filter(j=>['quote_requested','assigned','in_progress'].includes(j.status)).forEach(j=>add(waiting,j.status==='quote_requested'?'Quote requested · '+j.id:'Work with trades · '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,'trades'));
   (window._appts||[]).filter(a=>a.status==='proposed').forEach(a=>add(waiting,'Appointment awaiting reply · '+(a.title||a.id),propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'invitee'));
   (window._tasks||[]).filter(t=>activeRecord(t)&&t.due_date&&Number.isFinite(Date.parse(t.due_date))&&Date.parse(t.due_date)<=week).forEach(t=>add(t.priority==='urgent'||Date.parse(t.due_date)<now?needs:upcoming,'Task · '+(t.title||t.id),propertyName(t.property_id)+' · due '+fmtDate(t.due_date),'tasks','task-'+t.id,t.priority||'normal'));
   (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)>=now&&Date.parse(a.start_time)<=week).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time)).forEach(a=>add(upcoming,a.title||'Appointment',propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'confirmed'));
-  const deadline=x=>x.due_at||x.next_action_at||x.follow_up_at||'';
+  const deadline=x=>x.next_due_at||x.due_at||x.next_action_at||x.follow_up_at||'';
   const over=(rows,view,prefix,labelFn,detailFn)=>{(rows||[]).forEach(x=>{const d=deadline(x);if(activeRecord(x)&&d&&Number.isFinite(Date.parse(d))&&Date.parse(d)<now)add(overdue,labelFn(x),detailFn(x)+' · due '+fmtDate(d),view,prefix(x),'overdue');});};
   over(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id,x=>propertyName(x.property_id));over(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id,x=>propertyName(x.property_id));over(stage.registrations,'registrations',x=>'reg-'+x.id,x=>'Application · '+(x.name||x.id),x=>x.email||'');over(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>propertyName(x.property_id));over(window._tasks,'tasks',x=>'task-'+x.id,x=>x.title||'Task',x=>propertyName(x.property_id));
   (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)<now).forEach(a=>add(overdue,'Appointment outcome needs recording · '+(a.title||a.id),propertyName(a.property_id)+' · was '+fmtDate(a.start_time),'overview','appointment-'+a.id,'check'));
@@ -540,6 +543,9 @@ function renderCases(){
       <div class="cardtop"><h3>#${c.id} · ${esc(c.type||'case')}</h3><span class="badge ${esc(c.status)}">${esc(c.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${when(c.submitted_at)}</div>
       <div class="details">${esc(c.message)}</div>
+      ${c.next_actor?`<div class="triage-line"><b>Next: ${esc(c.next_actor)}</b> · ${esc(c.next_action||'Action needed')}${c.next_due_at?' · internal target '+esc(c.next_due_at):' · no date set'}</div>`:c.status!=='closed'?'<div class="triage-line hot">No next step — assign an owner and date.</div>':''}
+      ${c.status!=='closed'?'<div class="actions"><button class="btn" onclick="setCaseNext(this,'+JSON.stringify(String(c.id))+')">Set next person and deadline</button></div>':''}
+      ${(c.internal_notes||[]).length?'<details class="msgs"><summary>Agency-only notes · '+c.internal_notes.length+'</summary>'+c.internal_notes.map(n=>'<div class="thread">'+esc(n.text)+'</div>').join('')+'</details>':''}
       ${triageLine(c.triage)}${threadFor(c)}${msgThread(c)}
       ${c.closed_reason?`<div class="fineprint">Closed: ${esc(c.closed_reason)}</div>`:''}
       ${c.type==='issue'&&['reported','new'].includes(c.status)&&!(stage.jobs||[]).some(j=>String(j.case_id)===String(c.id))?`<div class="actions"><button class="btn primary" onclick="dispatchRepairCase(this,${c.id},'${esc(c.triage?.trade||'general')}')">Review &amp; open repair job</button><span class="fineprint">The agent must review before contractors see the job.</span></div>`:''}
@@ -558,6 +564,26 @@ function renderCases(){
       </div>`:
       `<div class="actions"><button class="btn" onclick="reopenCase(this,${c.id})">Reopen case</button></div>`}
     </div>`).join(''):'<div class="empty">Case book is empty — tenant reports land here the moment they arrive, emergencies first.</div>');
+}
+async function setCaseNext(btn,id){
+  const current=(stage.cases||[]).find(c=>String(c.id)===String(id))||{};
+  const actor=prompt('Who must act next? (agent / tenant / landlord / trades)',current.next_actor||'agent');
+  if(actor===null)return;
+  const next_actor=actor.trim().toLowerCase();
+  if(!['agent','tenant','landlord','trades'].includes(next_actor)){toast('Choose agent, tenant, landlord or trades.','bad');return;}
+  const message=prompt('What exactly needs to happen next?',current.next_action||'');
+  if(message===null)return;
+  const next_action=message.trim();
+  if(!next_action){toast('A next action is required.','bad');return;}
+  const suggested=new Date(Date.now()+86400000).toISOString().slice(0,10);
+  const due=prompt('Internal target date (YYYY-MM-DD)',current.next_due_at||suggested);
+  if(due===null)return;
+  const next_due_at=due.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(next_due_at)){toast('Enter a valid YYYY-MM-DD date.','bad');return;}
+  await busy(btn,async()=>{try{
+    await post('/api/case-action',{id,action:'set_next_action',next_actor,next_action,next_due_at});
+    toast('Next person, task and target saved.');load();
+  }catch(e){toast(e.message||'Could not update case.','bad');}});
 }
 async function dispatchRepairCase(btn,id,suggestedTrade){
  const triage_note=(prompt('Agent triage note: why should this become a repair job?')||'').trim();
