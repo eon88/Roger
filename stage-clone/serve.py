@@ -89,6 +89,7 @@ def storage_write_lock():
         elif backend == "file":
             lock_path = os.path.join(DATA_DIR, ".roger-write.lock")
             with open(lock_path, "a+b") as handle:
+                os.chmod(lock_path, 0o600)
                 if os.name == "nt":
                     import msvcrt
                     handle.seek(0)
@@ -859,13 +860,8 @@ class H(SimpleHTTPRequestHandler):
             return False
 
     def do_POST(self):
-        try:
-            with storage_write_lock():
-                return self._do_POST_with_write_lock()
-        except AgencyBoundaryError:
-            return self._json({"error": "agency data isolation check failed; contact the administrator"}, 409)
-
-    def _do_POST_with_write_lock(self):
+        # Validate and fully read client input BEFORE locking; slow network
+        # uploads must not block other writers. Re-authenticate under the lock.
         path = self.path.split("?")[0]
         self.user = None
         if not self.valid_csrf_origin():
@@ -972,9 +968,20 @@ class H(SimpleHTTPRequestHandler):
             "/api/task-action": self.handle_task_action,
             "/api/notification-action": self.handle_notification_action,
         }
-        if path in handlers:
-            return handlers[path](data)
-        self._json({"error": "unknown endpoint"}, 404)
+        if path not in handlers:
+            return self._json({"error": "unknown endpoint"}, 404)
+        try:
+            with storage_write_lock():
+                # A revoked session must not finish an in-flight modification
+                # after another request has disabled that account.
+                if not self.is_public(path) and path not in self.PUBLIC_POST:
+                    fresh = self.require(self.ROLE_API.get(path))
+                    if not fresh:
+                        return
+                    self.user = fresh
+                return handlers[path](data)
+        except AgencyBoundaryError:
+            return self._json({"error": "agency data isolation check failed; contact the administrator"}, 409)
 
     # ---------- shared helpers ----------
     def _json(self, obj, code=200):
