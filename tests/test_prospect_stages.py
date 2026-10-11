@@ -561,9 +561,16 @@ class ProspectStageTests(unittest.TestCase):
         created = self.stage["cases"][-1]
         self.assertEqual(created["document_ids"], ["doc-1"])
         self.assertEqual(self.stage["documents"][0]["document_type"], "maintenance_evidence")
-        self.assertEqual(self.stage["jobs"][0]["evidence_document_ids"], ["doc-1"])
+        self.assertEqual(self.stage["jobs"], [])  # agent has not reviewed the report
         self.assertEqual(self.responses[-1][0]["document_ids"], ["doc-1"])
         self.assertEqual(self.responses[-1][1], 200)
+        self.handler.user = {"username": "agent", "display_name": "Agent", "role": "agent"}
+        serve.H.handle_case_action(self.handler, {
+            "id": created["id"], "action": "dispatch_repair",
+            "triage_note": "Water leak needs a plumber", "required_trade": "plumbing",
+        })
+        self.assertEqual(self.responses[-1][1], 200)
+        self.assertEqual(self.stage["jobs"][0]["evidence_document_ids"], ["doc-1"])
 
     def test_tenant_can_confirm_or_reopen_resolved_repair(self):
         self.handler.user = {"username": "tenant", "display_name": "Prospect", "role": "tenant"}
