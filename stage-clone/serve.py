@@ -2190,7 +2190,10 @@ class H(SimpleHTTPRequestHandler):
         role = user.get("role")
         if role not in ("agent", "landlord"):
             return self._json({"error": "not authorised"}, 403)
-
+        prework = appr.get("approval_type") == "prework_quote"
+        # A costly quote must be explicitly approved by the correct landlord.
+        if prework and role != "landlord":
+            return self._json({"error": "landlord approval required before work starts"}, 403)
         if role == "landlord":
             ids = self.account_party_ids(stage, user, "landlord")
             prop = self.find_prop(stage, appr.get("property_id"))
@@ -2205,42 +2208,69 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "action must be approve|reject"}, 400)
         reason = str(data.get("reason", "")).strip()[:300]
         if action == "reject" and not reason:
-            return self._json(
-                {"error": "a reason is required when rejecting"}, 400
-            )
-        appr["status"] = (
-            "approved" if action == "approve" else "rejected"
-        )
+            return self._json({"error": "a reason is required when rejecting"}, 400)
+        job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
+        if prework:
+            if (not job or job.get("status") != "awaiting_prework_approval"
+                    or job.get("approved_quote_pence") != appr.get("amount_pence")
+                    or not any(
+                        q.get("status") == "pending_landlord"
+                        and q.get("pence") == appr.get("amount_pence")
+                        and q.get("at") == appr.get("quote_at")
+                        for q in job.get("quotes", [])
+                    )):
+                return self._json({"error": "this quote approval is no longer valid"}, 409)
+        appr["status"] = "approved" if action == "approve" else "rejected"
         appr["reason_given"] = reason if action == "reject" else None
         appr["decided_at"] = now()
-        job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
-        if job:
-            self.post_msg(stage, next((j["case_id"] for j in stage["jobs"] if j["id"] == job["id"]), None) or -1,
-                          ("The landlord approved " if appr["status"] == "approved" else "The landlord declined the invoice — ")
-                          + f"£{appr['amount_pence']/100:.2f}" + (f". Reason: {appr['reason_given']}" if appr.get("reason_given") else "."),
+        if job and prework:
+            for quote in job.get("quotes", []):
+                if quote.get("status") == "pending_landlord" and quote.get("at") == appr.get("quote_at"):
+                    quote["status"] = "approved" if action == "approve" else "declined"
+            if action == "approve":
+                job["status"] = "assigned"
+                job["work_authorised_at"] = now()
+                job["work_authorised_by"] = user.get("username", "landlord")
+                self.post_msg(stage, job["case_id"],
+                              "The landlord approved the quoted cost BEFORE work. The contractor may now arrange a visit.",
+                              to=("tenant", "landlord", "trades"))
+            else:
+                job["status"] = "quote_requested"
+                job.pop("approved_quote_pence", None)
+                self.post_msg(stage, job["case_id"],
+                              "The landlord declined the quote. No work is authorised; the agent must arrange a new price.",
+                              to=("tenant", "landlord", "trades"))
+            self.sync_case(stage, job["case_id"], "dispatched")
+        elif job:
+            self.post_msg(stage, job["case_id"],
+                          ("The landlord approved the invoice — " if action == "approve"
+                           else "The landlord declined the invoice — ")
+                          + f"£{appr['amount_pence']/100:.2f}"
+                          + (f". Reason: {reason}" if reason else ".")
+                          + " No payment is recorded by this decision.",
                           to=("tenant", "trades", "landlord"))
-            if appr["status"] == "approved":
+            if action == "approve":
                 job["status"] = "invoice_approved"
                 job["invoice_approved_at"] = now()
-                job["invoice_approved_by"] = user.get("display_name", "Landlord")
-                # Bill approval is NOT proof of payment, nor proof of repair quality.
+                job["invoice_approved_by"] = user.get("username", "landlord")
             else:
                 job["status"] = "rejected"
-                # An invoice dispute never cancels or closes the underlying repair.
-                # P1: rejection creates agent work, never a silent death
+                # Invoice rejection does not cancel the repair or confirm it failed.
                 stage.setdefault("cases", []).append({
                     "id": stage.get("next_case_id", 490),
                     "type": "agent_task",
                     "property_id": appr.get("property_id"),
                     "role": "agent",
                     "name": "System",
-                    "message": f"Landlord declined {job['id']} (£{appr['amount_pence']/100:.2f}): {appr['reason_given']}. Decide next step with the tradesperson and tenant.",
-                    "status": "new",
-                    "submitted_at": now(),
+                    "message": f"Landlord declined {job['id']} (£{appr['amount_pence']/100:.2f}): {reason}. Decide next step.",
+                    "status": "new", "submitted_at": now(),
                 })
                 stage["next_case_id"] = stage.get("next_case_id", 490) + 1
-        self.audit(stage, {"actor": appr["landlord"], "action": f"invoice_{appr['status']}",
-                           "target": appr["id"], "note": appr.get("reason_given")})
+        self.audit(stage, {
+            "actor": user.get("display_name", "Landlord"),
+            "action": ("prework_quote_" if prework else "invoice_") + appr["status"],
+            "target": appr["id"], "note": reason or None
+        })
         save_stage(stage)
         self._json({"success": True, "approval": appr})
 
