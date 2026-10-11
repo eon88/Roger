@@ -89,7 +89,7 @@ function render(){
       ${j.triage?`<div class="triage-line ${j.triage.urgency>=2?'hot':''}">Triage: <b>${u}</b>${j.triage.safety>=0.5?' · possible danger — trust the agent on this one':' · low risk'}</div>`:''}
       ${termsNote()}
       <div class="actions"><button class="btn primary" onclick="accept(this,'${esc(j.id)}')">Take this job</button></div></div>`;}).join('')
-    :`<div class="empty">No open jobs right now. The agent posts work here as tenant reports come in — worth a look each morning.</div>`;
+    :`<div class="empty">No open jobs right now. New reports go to the agent for review; only authorised jobs appear here.</div>`;
 
   const foryou=jobs.filter(j=>['assigned','quote_requested','quoted','awaiting_prework_approval'].includes(j.status)&&j.assigned_to===ME).slice().reverse();
   document.getElementById('foryou-jobs').innerHTML=foryou.length?foryou.map(j=>{
@@ -118,7 +118,7 @@ function render(){
       return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · yours since ${when(j.created_at)}</h3></div>
       <div class="meta">${prop(j.property_id)}</div>
       <div class="details">${esc(j.message)}</div>
-      <div class="meta">Contact through the office: <a href="tel:+441214960123">0121 496 0123</a> — they confirm who's home and access${c.email?' · reporter email: '+esc(c.email):''}.</div>
+      <div class="meta">Arrange access through the agent. Do not assume the tenant has agreed to a visit, and do not use the report as permission to enter.</div>
       <div class="field" style="margin-top:10px"><label for="inv-${esc(j.id)}">Invoice amount (£)</label>
         <input type="number" id="inv-${esc(j.id)}" min="0" step="0.01" placeholder="0.00" autocomplete="off" style="max-width:140px"></div>
       <div class="actions"><button class="btn primary" onclick="complete(this,'${esc(j.id)}')">Job done — submit invoice</button>
