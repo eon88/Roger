@@ -1909,6 +1909,15 @@ class H(SimpleHTTPRequestHandler):
             if action == "start" and (not job.get("work_authorised_at")
                                       or not job.get("approved_quote_pence")):
                 return self._json({"error": "work not authorised"}, 409)
+        if action == "complete" and job.get("requires_prework_quote"):
+            try:
+                proposed_invoice = int(data.get("invoice_pence", 0))
+            except (ValueError, TypeError):
+                return self._json({"error": "valid invoice amount required"}, 400)
+            quoted_amount = job.get("approved_quote_pence")
+            if (proposed_invoice <= 0 or not isinstance(quoted_amount, int)
+                    or proposed_invoice > quoted_amount):
+                return self._json({"error": "invoice exceeds authorised work; get a variation approved first"}, 409)
         if action == "approve_invoice":
             if job.get("status") != "invoice_submitted":
                 return self._json({"error": "invoice must be submitted before agency approval"}, 409)
@@ -2118,7 +2127,18 @@ class H(SimpleHTTPRequestHandler):
             job["invoice_pence"] = max(0, int(data.get("invoice_pence", 0)))
             job["completed_at"] = now()
             limit = stage.get("authority", {}).get("standing_limit_pence", 15000)
-            if job["invoice_pence"] > limit:
+            # New jobs were authorised at the quoted price BEFORE work.
+            # Do not ask for a second landlord approval for that same cost;
+            # an invoice still needs the agent's explicit review and payment.
+            if job.get("requires_prework_quote"):
+                job["status"] = "invoice_submitted"
+                self.sync_case(stage, job["case_id"], "awaiting_confirmation")
+                self.post_msg(stage, job["case_id"],
+                              "Work submitted. Please confirm whether it is fixed; the agent is reviewing the invoice.",
+                              to=("tenant", "trades"))
+                self.audit(stage, {"actor": actor, "action": "invoice_submitted",
+                                   "target": job["id"], "note": "Pre-approved amount; awaiting agent review"})
+            elif job["invoice_pence"] > limit:
                 prop = self.find_prop(stage, job["property_id"]) or {}
                 stage.setdefault("approvals", [])
                 appr = {
