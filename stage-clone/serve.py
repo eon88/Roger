@@ -203,11 +203,12 @@ class H(SimpleHTTPRequestHandler):
             users["sessions"].pop(tok, None)
             save_users(users)
             return None
-        return next((u for u in users["users"] if u["username"] == sess["username"]), None)
+        user = next((u for u in users["users"] if u["username"] == sess["username"]), None)
+        return user if user and not user.get("disabled_at") else None
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -258,6 +259,8 @@ class H(SimpleHTTPRequestHandler):
             h = hashlib.scrypt(password.encode(), salt=bytes.fromhex(u["salt"]), n=2**14, r=8, p=1).hex()
             if not hmac.compare_digest(h, u["hash"]):
                 u = None
+        if u and u.get("disabled_at"):
+            u = None
         if not u:
             login_note(ip, ok=False)
             return self._json({"error": "wrong username or password"}, 401)
@@ -840,6 +843,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/registration-action": self.handle_registration_action,
             "/api/contractor-verification": self.handle_contractor_verification,
             "/api/office-settings": self.handle_office_settings,
+            "/api/access-revoke": self.handle_access_revoke,
             "/api/prospect-action": self.handle_prospect_action,
             "/api/property-action": self.handle_property_action,
             "/api/landlord/property-submission": self.handle_landlord_property_submission,
@@ -4117,6 +4121,57 @@ class H(SimpleHTTPRequestHandler):
         self.audit(stage, {"actor": actor, "action": f"task_{action}", "target": task["id"], "note": task.get("title", "")})
         save_stage(stage)
         return self._json({"success": True, "task": task})
+
+    def handle_access_revoke(self, data):
+        """Disable a linked non-agent account and kill all its sessions immediately.
+
+        This action is deliberately one-way: reactivation requires a separate,
+        reviewed process. Never revoke a person's tenancy or property records.
+        """
+        u = self.user or {}
+        if u.get("role") != "agent":
+            return self._json({"error": "only an agent may revoke accounts"}, 403)
+        if data.get("action") != "revoke":
+            return self._json({"error": "only revoke is supported"}, 400)
+        reason = str(data.get("reason") or "").strip()[:500]
+        if not reason:
+            return self._json({"error": "record why access is being revoked"}, 400)
+        stage = load_stage()
+        party = next((p for p in stage.get("parties", []) if p.get("id") == data.get("party_id")), None)
+        if not party or party.get("status") != "active" or not party.get("account_id"):
+            return self._json({"error": "active linked account Party required"}, 409)
+        if "agent" in party.get("roles", []):
+            return self._json({"error": "agent account revocation requires separate administrator control"}, 403)
+        aid = party["account_id"]
+        linked = [p for p in stage.get("parties", []) if p.get("account_id") == aid]
+        if any("agent" in p.get("roles", []) for p in linked):
+            return self._json({"error": "cannot revoke an account with agent rights here"}, 403)
+        users = load_users()
+        matching = [person for person in users.get("users", []) if person.get("account_id") == aid]
+        if not matching or any(person.get("role") == "agent" for person in matching):
+            return self._json({"error": "cannot identify a non-agent portal login for this account"}, 409)
+        when = now()
+        for person in matching:
+            person["disabled_at"] = when
+            person["disabled_by"] = u.get("username", "agent")
+        usernames = {person["username"] for person in matching}
+        sessions = users.get("sessions") or {}
+        users["sessions"] = {token: session for token, session in sessions.items()
+                             if session.get("username") not in usernames}
+        # Save disabled users and dead sessions BEFORE the less-security-critical stage updates.
+        save_users(users)
+        for linked_party in linked:
+            if linked_party.get("status") == "active":
+                linked_party["status"] = "revoked"
+                linked_party["access_revoked_at"] = when
+                linked_party["access_revoked_reason"] = reason
+        self.audit(stage, {"actor": u.get("username", "agent"),
+                           "action": "portal_account_revoked",
+                           "target": party["id"],
+                           "note": "all sessions invalidated for account; reason: " + reason})
+        save_stage(stage)
+        return self._json({"success": True, "revoked_party_ids": [p["id"] for p in linked],
+                           "sessions_closed": len(sessions)-len(users["sessions"])})
 
     # ---------- office policy and real contacts ----------
     @staticmethod
