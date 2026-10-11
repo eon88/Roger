@@ -142,11 +142,9 @@ def save_stage(data):
                     tuple(values),
                 )
 
-# Demo tradesperson credential store. In the real product: verified at
-# registration (Gas Safe lookup), carried on the profile.
-TRADE_PROFILES = {
-    "R. Doyle Gas & Heat": {"trades": ["gas", "plumbing", "heating"], "gas_safe": "VERIFIED-DEMO"},
-}
+# Legacy compatibility only. Never ship a fake "verified" trade to production.
+# New repair work checks persistent registration, Party ownership and insurance.
+TRADE_PROFILES = {}
 # Trades that legally need a specific verified certificate before booking
 CERT_REQUIRED = {"gas": "Gas Safe"}
 
