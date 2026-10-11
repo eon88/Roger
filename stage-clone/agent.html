@@ -600,6 +600,7 @@ function renderJobs(){
       ${j.gate_reason?`<div class="fineprint hot">Blocked: ${esc(j.gate_reason)} — booked by ${esc(j.requested_by)}</div>
         <div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','verify_approve')">Allow anyway</button>
         <button class="btn danger" onclick="jobAct(this,'${esc(j.id)}','verify_decline')">Send back</button></div>`:''}
+      ${j.status==='triaged'?`<div class="actions"><span>${poolPicker(j.id,j.id)}</span><button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Request quote before work</button></div>`:''}
       ${['open'].includes(j.status)?`<div class="actions"><span>${poolPicker(j.id,j.id)}</span>
         <button class="btn" onclick="pickAct(this,'${esc(j.id)}','assign')">Assign directly</button>
         <button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask for quote first</button></div>`:''}
@@ -611,6 +612,8 @@ function renderJobs(){
     </div>`;
   const sec=(list,title,note,none)=>`<h2>${title}</h2>${note?`<p class="fineprint">${note}</p>`:''}${list.length?list.map(card).join(''):`<div class="empty">${none}</div>`}`;
   document.getElementById('view-jobs').innerHTML=`<div class="move">jobs — who took what</div>`+
+    sec(g('triaged'),'Agent reviewed — get a quote','Contractors cannot start these jobs until a price is approved.','No reports awaiting a quote request.')+
+    sec(g('awaiting_prework_approval'),'Landlord must approve before work','No work is authorised until the landlord accepts the quote.','No quotes waiting for landlord approval.')+
     sec(g('quoted'),'Quotes waiting on you','approve a price before anyone visits, or decline and ask again','No quotes in. When a trade replies with a price, it lands here for your yes or no.')+
     sec(g('pending_verification'),'Needs verification','credential mismatch — your call before anyone visits','Nothing held back. A booking appears here only when the trade\'s credentials need your eye.')+
     sec(g('open'),'Unassigned','assign a trusted trade, ask for a quote first, or leave it on the board','No unassigned repair jobs. Review new tenant reports in Cases before opening a job.')+
@@ -630,7 +633,7 @@ async function pickAct(btn,id,action){ const sel=document.getElementById('pool-'
 async function jobAct(btn,id,action,tradesperson){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:tradesperson||'agent'});
   const say={verify_approve:'Booking released to the tradesperson.',verify_decline:'Booking sent back — it returns to the open board.',
     assign:'Assigned — they see it on their board now.',request_quote:'Quote requested — it waits on their price.',
-    approve_quote:'Quote approved — work is green-lit.',decline_quote:'Quote declined; they\'ve been asked to re-quote or stand down.',
+    approve_quote:'Quote reviewed; high quotes wait for landlord approval.',decline_quote:'Quote declined; they\'ve been asked to re-quote or stand down.',
     send_to_landlord:'Invoice sent to the landlord for sign-off.',
     approve_invoice:'Invoice approved. External payment has NOT been made.'}[action]||'Done.';
   toast(say); load(); }catch(e){} }); }
@@ -645,7 +648,7 @@ async function recordJobPayment(btn,id,amountPence){
  }catch(e){toast(e.message||'Could not record payment.','bad');}});
 }
 function quoteAct(btn,id,action){ const reason=action==='decline_quote'?prompt('Reason for the trade (kept on record):')||'price not right':undefined;
-  busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote approved — work is green-lit.':'Quote declined and sent back.'); load(); }catch(e){} }); }
+  busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote reviewed. If above the spending limit, landlord approval is needed before work.':'Quote declined and sent back.'); load(); }catch(e){} }); }
 
 const PROSPECT_STAGES={
  tenant:['enquiry','viewing','application','referencing','approved','offer','converted','closed'],
