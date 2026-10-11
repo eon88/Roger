@@ -200,6 +200,7 @@ class AtomicStorageTests(unittest.TestCase):
             "parties": [{
                 "id": "party-landlord-fixture",
                 "account_id": "account-landlord-fixture",
+                "email": "landlord@example.test",
                 "roles": ["landlord"],
                 "status": "active",
             }],
@@ -221,7 +222,8 @@ class AtomicStorageTests(unittest.TestCase):
                 "due_at": "2027-02-01T09:00:00Z",
             })
             note = stage["notifications"][0]
-            serve.H.handle_notification_action(handler, {"id": note["id"], "action": "sent"})
+            serve.H.handle_notification_action(handler, {"id": note["id"], "action": "sent",
+                "delivery_reference": "TEST-SMTP-MSG-001", "delivery_source": "manual evidence"})
         self.assertEqual(response[0][1], 200)
         self.assertEqual(note["notification_type"], "landlord_approval_request")
         self.assertEqual(note["recipient_role"], "landlord")
