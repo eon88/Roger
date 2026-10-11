@@ -38,6 +38,13 @@ These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` a
   - [ ] Remaining: independent supplier/VAT evidence review, concurrency-safe accounting and duplicate prevention, bank reconciliation and fully populated finance browser pilot.
   - **Status: PARTIAL — code-tested but not a live payment or bookkeeping system.**
 - [ ] **04 Contractor evidence** — independently checked certificates, uploads, expiry and coverage. *(R1, S2)*
+  - [x] New repair authorisation requires a current agent-attested independent verification tied to two distinct, verified contractor documents plus an active approved account.
+  - [x] Recorded insurer and qualification source/reference, verified trade list, checked service area, review expiry and revocation/renewal history.
+  - [x] Distinct regulated gas evidence/lookup reference required; claimed numbers and legacy booking bypass cannot authorise gas jobs.
+  - [x] Dispatch, quote/start, prework/variation approval and trade picker enforce expiry, Party/doc links and exact checked locality; Agent Desk flags missing or soon-expiring proof.
+  - [x] Added synthetic permissions, expiry, source references, changed trade, Gas Safe, document replacement and service-area tests.
+  - [ ] Still needed: genuine external issuer checks by a trained operator, policy/licence scope review, contractor self-upload and expiry notifications, dedicated browser journey and transactional storage protection.
+  - **Status: PARTIAL — built and code-tested, NOT automatically checked against external registers and NOT live.**
 - [ ] **05 Office settings and delivery** — real contacts/out-of-hours policy, alerts/retries, audit, user revocation and restore. *(S2, S3, T1)*
 - [ ] **06 Database and tenant isolation** — safe concurrent writes and two-agency/two-tenancy API/document denial tests; PostgreSQL development must remain isolated until reviewed. *(S1, S4)*
 - [ ] **07 Full populated browser pilot** — exercise real clicks across Agent, Tenant, Landlord and Trades for report → approval → trade visit → tenant result → invoice/external payment record. *(All P0 items)*
