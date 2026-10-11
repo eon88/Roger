@@ -1115,6 +1115,25 @@ class H(SimpleHTTPRequestHandler):
         save_stage(stage)
         return self._json({"success": True, "party": party})
 
+    def repair_authority(self, stage, property_id):
+        """Return active, signed per-property mandate with an explicit spend cap."""
+        matches = [
+            a for a in stage.get("management_agreements", [])
+            if a.get("status") == "active"
+            and a.get("signed_at")
+            and property_id in a.get("property_ids", [])
+            and type(a.get("spending_limit_pence")) is int
+            and 0 <= a["spending_limit_pence"] <= 100000000
+        ]
+        if len(matches) != 1:
+            return None
+        a = matches[0]
+        return {
+            "agreement_id": a["id"],
+            "limit_pence": a["spending_limit_pence"],
+            "mandate_version": a.get("updated_at"),
+        }
+
     def handle_management_agreement_action(self, data):
         """Create or advance a dated management agreement for a landlord and properties."""
         transitions = {
@@ -1150,12 +1169,20 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "management fee must be an integer basis point value"}, 400)
             if fee_bps < 0 or fee_bps > 10000:
                 return self._json({"error": "management fee must be between 0 and 10000 basis points"}, 400)
+            raw_limit = data.get("spending_limit_pence")
+            try:
+                spend_limit = None if raw_limit in (None, "") else int(raw_limit)
+            except (TypeError, ValueError):
+                return self._json({"error": "spending limit must be an integer amount in pence"}, 400)
+            if spend_limit is not None and not (0 <= spend_limit <= 100000000):
+                return self._json({"error": "spending limit must be between £0 and £1,000,000"}, 400)
             agreement_num = int(stage.get("next_management_agreement_id", 1))
             aid = "management-" + str(agreement_num)
             at = now()
             agreement = {
                 "id": aid, "landlord_party_id": landlord_id, "property_ids": property_ids,
                 "agreement_type": agreement_type, "management_fee_bps": fee_bps,
+                "spending_limit_pence": spend_limit,
                 "status": "draft", "signed_at": None, "ended_at": None,
                 "evidence_note": str(data.get("evidence_note", "")).strip()[:1000],
                 "created_at": at, "updated_at": at,
