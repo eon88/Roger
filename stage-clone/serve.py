@@ -1100,9 +1100,15 @@ class H(SimpleHTTPRequestHandler):
         if registration_id:
             registration = next((r for r in stage.get("registrations", [])
                                  if str(r.get("id")) == registration_id), None)
-            if (kind != "person" or "landlord" not in party["roles"] or not registration
-                    or registration.get("role") != "landlord" or registration.get("status") != "approved"):
-                return self._json({"error": "link only an approved landlord registration to a landlord Party"}, 409)
+            if (not registration
+                    or registration.get("role") not in ("landlord", "trades")
+                    or registration.get("role") not in party["roles"]
+                    or registration.get("status") != "approved"
+                    or (registration.get("role") == "landlord" and kind != "person")
+                    or (registration.get("role") == "trades"
+                        and (not registration.get("credentials_checked_at")
+                             or registration.get("prospect_stage") in ("suspended", "rejected")))):
+                return self._json({"error": "link only a matching approved registration to this Party"}, 409)
             if registration.get("party_id"):
                 return self._json({"error": "this registration is already linked to a Party"}, 409)
             party["source_registration_id"] = registration_id
@@ -1830,6 +1836,41 @@ class H(SimpleHTTPRequestHandler):
                     "document_ids": [d["id"] for d in docs] if docs else []})
 
     # ---------- trades: BOOK → complete → settle or escalate ----------
+    def verified_contractor_for_new_repair(self, stage, party_id, required_trade):
+        """Check a persistent, linked approval; never trust demo credential names."""
+        party = next((p for p in stage.get("parties", [])
+                      if p.get("id") == party_id and p.get("status") == "active"
+                      and "trades" in p.get("roles", []) and p.get("account_id")), None)
+        if not party:
+            return False
+        reg_id = party.get("source_registration_id")
+        reg = next((r for r in stage.get("registrations", [])
+                    if r.get("id") == reg_id
+                    and r.get("party_id") == party_id
+                    and r.get("role") == "trades"
+                    and r.get("name") == party.get("display_name")
+                    and r.get("status") == "approved"
+                    and r.get("credentials_checked_at")
+                    and r.get("prospect_stage") not in ("rejected", "suspended")), None)
+        if not reg:
+            return False
+        expiry = reg.get("insurance_expiry") or ""
+        try:
+            if datetime.strptime(expiry, "%Y-%m-%d").date() < datetime.now(timezone.utc).date():
+                return False
+        except (ValueError, TypeError):
+            return False
+        trades = set(str(t).lower() for t in reg.get("trades", []))
+        if required_trade and required_trade not in trades:
+            return False
+        # A claimed Gas Safe number alone is not proof of a verified listing.
+        # Until explicit verified evidence is recorded, refuse gas dispatch.
+        if required_trade == "gas" and not (reg.get("gas_safe_number")
+                                               and reg.get("gas_safe_verified_at")
+                                               and reg.get("gas_safe_verification_reference")):
+            return False
+        return True
+
     def credential_check(self, job, tradesperson):
         """P2: gate jobs whose required trade needs a verified certificate."""
         req = job.get("required_trade")
@@ -1924,6 +1965,12 @@ class H(SimpleHTTPRequestHandler):
                 return self._json(
                     {"error": "contractor identity mismatch"}, 409
                 )
+            if (job.get("requires_prework_quote") and
+                    not self.verified_contractor_for_new_repair(
+                        stage, selected_party_id, job.get("required_trade"))):
+                return self._json({
+                    "error": "contractor must have an approved linked registration, valid checked credentials, and current insurance for this trade"
+                }, 409)
 
         if (action == "verify_approve"
                 and job.get("status") == "pending_verification"):
