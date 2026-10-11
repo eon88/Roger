@@ -323,6 +323,34 @@ class ProspectStageTests(unittest.TestCase):
         self.assertEqual(len(statement["maintenance_lines"]), 1)
         self.saved.assert_called_once_with(self.stage)
 
+    def test_statement_uses_actual_partial_external_references_not_supplier_credits(self):
+        self.stage["parties"] = [{"id": "owner-statement", "roles": ["landlord"], "status": "active"}]
+        self.stage["management_agreements"] = [{
+            "id": "management-statement", "landlord_party_id": "owner-statement",
+            "property_ids": ["home-1"], "status": "active",
+        }]
+        self.stage["rent_ledger_entries"] = []
+        self.stage["jobs"] = [{
+            "id": "job-statement", "property_id": "home-1", "status": "partially_paid",
+            "invoice_pence": 17000,
+            "payments": [
+                {"date": "2026-10-06", "amount_pence": 5000, "reference": "TEST-BANK-1"},
+                {"date": "2026-11-03", "amount_pence": 2000, "reference": "TEST-BANK-2"},
+            ],
+            "credit_notes": [{"number": "CREDIT-TEST", "amount_pence": 1000,
+                              "reason": "Corrected bill"}],
+        }]
+        serve.H.handle_landlord_statement_action(self.handler, {
+            "landlord_party_id": "owner-statement",
+            "period_start": "2026-10-01", "period_end": "2026-10-31",
+        })
+        self.assertEqual(self.responses[-1][1], 200)
+        statement = self.stage["landlord_statements"][0]
+        self.assertEqual(statement["maintenance_pence"], 5000)
+        self.assertEqual(len(statement["maintenance_lines"]), 1)
+        self.assertEqual(statement["maintenance_lines"][0]["external_reference"], "TEST-BANK-1")
+        self.assertEqual(statement["net_payout_pence"], -5000)
+
     def test_rent_schedule_is_built_from_signed_tenancy_and_is_idempotent(self):
         self.stage["tenancies"] = [{
             "id": "tenancy-1", "property_id": "home-1", "status": "active",
