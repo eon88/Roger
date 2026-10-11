@@ -15,7 +15,7 @@ class PreworkCostApprovalTests(unittest.TestCase):
     def setUp(self):
         self.stage = {
             "parties": [
-                {"id": "trade-a", "account_id": "account-trade", "roles": ["trades"],
+                {"id": "trade-a", "account_id": "account-trade", "source_registration_id": "trade-reg-1", "roles": ["trades"],
                  "display_name": COMPANY, "status": "active"},
                 {"id": "owner-a", "account_id": "account-owner", "roles": ["landlord"],
                  "display_name": "Example Owner", "status": "active"},
@@ -29,6 +29,12 @@ class PreworkCostApprovalTests(unittest.TestCase):
                       "requires_prework_quote": True, "required_trade": None,
                       "assigned_to": None, "invoice_pence": None}],
             "approvals": [],
+            "registrations": [{
+                "id": "trade-reg-1", "role": "trades", "name": COMPANY,
+                "status": "approved", "prospect_stage": "available",
+                "party_id": "trade-a", "credentials_checked_at": "2026-10-01T10:00:00Z",
+                "trades": ["plumbing"], "insurance_expiry": "2099-12-31",
+            }],
             "management_agreements": [{
                 "id": "management-a", "agreement_type": "full_management", "landlord_party_id": "owner-a",
                 "property_ids": ["home-a"], "status": "active",
