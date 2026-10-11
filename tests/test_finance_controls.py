@@ -119,11 +119,17 @@ class FinanceControlsTests(PreworkCostApprovalTests):
         self.assertEqual(job["invoice_net_pence"], 10000)
         self.assertEqual(job["invoice_vat_pence"], 2000)
         self.assertEqual(self.job_action("agent", "approve_invoice"), 200)
-        second = dict(job, id="job-2", status="in_progress", case_id=10, invoice_pence=None)
+        second = dict(job, id="job-2", status="in_progress", case_id=10,
+                      invoice_pence=None, invoice_number=None)
         self.stage["jobs"].append(second)
         self.handler.user = self.users["trade"]
-        self.assertEqual(self.job_action("trade", "complete", invoice_pence=12000,
-                                        invoice_number="INV-01"), 409)
+        self.handler.handle_job_action({
+            "id": "job-2", "action": "complete", "invoice_pence": 12000,
+            "invoice_number": "INV-01",
+        })
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertIn("duplicate", self.responses[-1][0]["error"])
+        self.assertEqual(second["status"], "in_progress")
 
     def test_partial_payment_and_credit_do_not_pretend_money_was_sent(self):
         job = self.approved_job(12000)
