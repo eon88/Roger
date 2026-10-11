@@ -1960,6 +1960,64 @@ class H(SimpleHTTPRequestHandler):
             return {"ok": False, "reason": f"credentials list {', '.join(prof['trades']) or 'nothing'} — job needs {req}"}
         return {"ok": True, "reason": None}
 
+    @staticmethod
+    def money_lines(lines):
+        """Validate VAT-inclusive totals using integer pence. Nothing inferred from VAT rules."""
+        if not isinstance(lines, list) or not 1 <= len(lines) <= 25:
+            raise ValueError("provide between 1 and 25 itemised lines")
+        result = []
+        for item in lines:
+            if not isinstance(item, dict):
+                raise ValueError("each line must be an object")
+            desc = item.get("description")
+            net = item.get("net_pence")
+            rate = item.get("vat_rate_bps")
+            if not isinstance(desc, str) or not 2 <= len(desc.strip()) <= 200:
+                raise ValueError("a 2-200 character line description is required")
+            if type(net) is not int or not 1 <= net <= 1000000000:
+                raise ValueError("net_pence must be a positive integer")
+            if type(rate) is not int or rate not in (0, 500, 2000):
+                raise ValueError("VAT must be explicitly marked 0%, 5%, or 20%; Roger does not decide the tax rate")
+            vat = (net * rate + 5000) // 10000
+            result.append({"description": desc.strip(), "net_pence": net,
+                           "vat_rate_bps": rate, "vat_pence": vat,
+                           "gross_pence": net + vat})
+        total = sum(x["gross_pence"] for x in result)
+        if total > 1000000000:
+            raise ValueError("total exceeds the supported maximum")
+        return {"lines": result, "net_pence": sum(x["net_pence"] for x in result),
+                "vat_pence": sum(x["vat_pence"] for x in result), "gross_pence": total}
+
+    @staticmethod
+    def invoice_balance(job):
+        """Manual external money entries only; never infer bank settlement from approval."""
+        invoice = job.get("invoice_pence") or 0
+        if not isinstance(invoice, int) or invoice < 0:
+            raise ValueError("invoice amount is invalid")
+        paid = sum(p["amount_pence"] for p in job.get("payments", []) if isinstance(p, dict))
+        credited = sum(c["amount_pence"] for c in job.get("credit_notes", []) if isinstance(c, dict))
+        return {"invoice_pence": invoice, "paid_pence": paid,
+                "credited_pence": credited, "outstanding_pence": invoice - paid - credited}
+
+    def approve_job_variation(self, stage, job, variation, actor):
+        """Only approved extra work raises authorised gross cost; never overwrite base quote."""
+        extra = variation["extra_pence"]
+        before = job["approved_quote_pence"]
+        after = before + extra
+        job["approved_quote_pence"] = after
+        variation["status"] = "approved"
+        variation["approved_at"] = now()
+        variation["approved_by"] = actor
+        variation["total_authorised_pence"] = after
+        job.setdefault("approved_variations", []).append(dict(variation))
+        job.pop("pending_variation", None)
+        self.audit(stage, {"actor": actor, "action": "variation_approved",
+                           "target": job["id"], "note": f"+{extra}p total {after}p"})
+        self.post_msg(stage, job["case_id"],
+                      "Additional work was approved before that extra work starts. "
+                      f"Revised maximum authorised amount £{after/100:.2f}.",
+                      to=("tenant", "landlord", "trades"))
+
     def handle_job_action(self, data):
         stage = load_stage()
         action = data.get("action")
