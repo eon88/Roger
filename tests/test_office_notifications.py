@@ -211,7 +211,6 @@ class AccountRevocationTests(unittest.TestCase):
         self.assertEqual(result["revoked_party_ids"],["tenant-party","landlord-other-role"])
         self.assertEqual(self.stage["parties"][0]["status"],"revoked")
         self.assertEqual(self.stage["parties"][1]["status"],"revoked")
-        self.assertIn("tenant-session",{"revoked":"tenant-session"})
         self.assertNotIn("tenant-session",self.accounts["sessions"])
         self.assertIn("agent-session",self.accounts["sessions"])
         self.assertTrue(self.accounts["users"][0]["disabled_at"])
