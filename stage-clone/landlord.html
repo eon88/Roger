@@ -181,7 +181,7 @@ function render(){
   document.getElementById('my-approvals').innerHTML=pend.length?pend.map(a=>{
     const job=jobs.find(j=>j.id===a.job_id)||{};
     const lim=(stage.authority?.standing_limit_pence||15000)/100;
-    return `<div class="card flagged"><div class="cardtop"><h3>${money(a.amount_pence)} — repair sign-off</h3><span class="meta">${when(a.requested_at)}</span></div>
+    return `<div class="card flagged"><div class="cardtop"><h3>${money(a.amount_pence)} — invoice approval (not payment)</h3><span class="meta">${when(a.requested_at)}</span></div>
       <div class="meta">${pTitle(a.property_id)}</div>
       <div class="details">“${esc(a.reason)}”</div>
       <table class="evidence">
@@ -210,7 +210,7 @@ function render(){
   const rentMo=props.reduce((s,p)=>s+p.rent,0);
   document.getElementById('statement').innerHTML=`<div class="card"><div class="grid2" style="gap:0">
     <div><div class="label">Scheduled monthly rent (your ${props.length} properties)</div><div class="money">${money(rentMo)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div></div>
-    <div><div class="label">Repairs paid all-time</div><div class="money">${money(paidTotal)}</div><div class="meta">${paid.length} invoice${paid.length===1?'':'s'}${underLimit.length?` · ${underLimit.length} auto-settled under your limit`:''}</div></div>
+    <div><div class="label">Repairs paid all-time</div><div class="money">${money(paidTotal)}</div><div class="meta">${paid.length} recorded external payment${paid.length===1?'':'s'}; agent enters references manually</div></div>
     <div><div class="label">Awaiting decision</div><div class="money">${awaiting.length?money(awaiting.reduce((s,j)=>s+(j.invoice_pence||0),0)):'—'}</div><div class="meta">${awaiting.length?awaiting.map(j=>esc(j.id)).join(', '):'nothing waiting'}</div></div>
     <div><div class="label">Standing authority</div><div class="money">£${((stage.authority?.standing_limit_pence||15000)/100).toFixed(0)}</div><div class="actions" style="margin-top:6px"><button class="btn ghost" onclick="changeLimit()">Change limit</button></div></div>
   </div>
