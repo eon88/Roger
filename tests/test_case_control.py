@@ -59,6 +59,20 @@ class CaseControlTests(unittest.TestCase):
         return self.call(who,"handle_tenant_issue",expected,
                          property_id=property_id,message=message,request_id=request_id)
 
+    def test_urgent_report_gets_one_in_app_agent_alert_not_email_or_contractors(self):
+        self.h.triage = lambda message: {"category":"maintenance","trade":"plumbing",
+                                          "urgency":2,"safety":1}
+        first=self.report()
+        second=self.report()
+        self.assertEqual(first["case_id"],second["case_id"])
+        alerts=self.stage["notifications"]
+        self.assertEqual(len(alerts),1)
+        self.assertEqual(alerts[0]["recipient_role"],"agent")
+        self.assertEqual(alerts[0]["channels"],["in_app"])
+        self.assertIsNone(alerts[0]["email_status"])
+        self.assertEqual(alerts[0]["case_id"],first["case_id"])
+        self.assertEqual(self.stage["jobs"],[])
+
     def test_new_report_starts_with_one_agent_and_internal_due_date(self):
         payload=self.report()
         case=self.stage["cases"][0]
