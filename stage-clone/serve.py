@@ -2137,40 +2137,82 @@ class H(SimpleHTTPRequestHandler):
                 if not self.verified_contractor_for_new_repair(
                         stage, job.get("assigned_to_party_id"), job.get("required_trade")):
                     return self._json({"error": "contractor approval or insurance expired; work cannot start"}, 409)
-        if action == "complete" and job.get("requires_prework_quote"):
+        if action == "complete":
+            if job.get("pending_variation"):
+                return self._json({"error": "resolve outstanding extra-work request before invoicing"}, 409)
             try:
                 proposed_invoice = int(data.get("invoice_pence", 0))
             except (ValueError, TypeError):
                 return self._json({"error": "valid invoice amount required"}, 400)
+            if proposed_invoice <= 0 or type(data.get("invoice_pence")) not in (int, str):
+                return self._json({"error": "positive amount in pence required"}, 400)
             quoted_amount = job.get("approved_quote_pence")
-            if (proposed_invoice <= 0 or not isinstance(quoted_amount, int)
-                    or proposed_invoice > quoted_amount):
-                return self._json({"error": "invoice exceeds authorised work; get a variation approved first"}, 409)
+            if job.get("requires_prework_quote") and (
+                    not isinstance(quoted_amount, int) or proposed_invoice > quoted_amount):
+                return self._json({"error": "invoice exceeds authorised work; approve a variation first"}, 409)
+            invoice_number = str(data.get("invoice_number") or "").strip().upper()
+            if invoice_number and (len(invoice_number) > 80
+                                   or not re.fullmatch(r"[A-Z0-9][A-Z0-9 /_.-]*", invoice_number)):
+                return self._json({"error": "invoice number contains unsupported characters"}, 400)
+            if invoice_number and any(
+                    other.get("id") != job["id"]
+                    and other.get("assigned_to_party_id") == job.get("assigned_to_party_id")
+                    and other.get("invoice_number") == invoice_number
+                    for other in stage.get("jobs", [])):
+                return self._json({"error": "duplicate supplier invoice number"}, 409)
+            if "line_items" in data:
+                try:
+                    invoice_items = self.money_lines(data["line_items"])
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
+                if invoice_items["gross_pence"] != proposed_invoice:
+                    return self._json({"error": "invoice lines plus VAT must equal invoice amount"}, 409)
+            else:
+                invoice_items = None
         if action == "approve_invoice":
             if job.get("status") != "invoice_submitted":
-                return self._json({"error": "invoice must be submitted before agency approval"}, 409)
+                return self._json({"error": "invoice must be submitted before approval"}, 409)
             amount = job.get("invoice_pence")
             if not isinstance(amount, int) or amount <= 0:
-                return self._json({"error": "valid invoice amount required"}, 409)
+                return self._json({"error": "valid invoice required"}, 409)
             quoted = job.get("approved_quote_pence")
             if isinstance(quoted, int) and amount > quoted:
-                return self._json({"error": "invoice exceeds approved quote; obtain a variation approval"}, 409)
-        if action == "record_payment":
-            if job.get("status") != "invoice_approved":
-                return self._json({"error": "invoice approval required before recording payment"}, 409)
-            reference = str(data.get("payment_reference", "")).strip()[:120]
-            payment_date = str(data.get("payment_date", "")).strip()
-            try:
-                parsed_date = datetime.strptime(payment_date, "%Y-%m-%d").date()
-                payment_amount = int(data.get("payment_amount_pence", 0))
-            except (ValueError, TypeError):
-                return self._json({"error": "valid payment date and pence amount required"}, 400)
-            if not reference or not reference.strip():
-                return self._json({"error": "external payment reference is required"}, 400)
-            if parsed_date > datetime.now(timezone.utc).date():
-                return self._json({"error": "payment date cannot be in the future"}, 400)
-            if payment_amount <= 0 or payment_amount != job.get("invoice_pence"):
-                return self._json({"error": "payment amount must match the approved invoice"}, 409)
+                return self._json({"error": "invoice exceeds approved quote"}, 409)
+        if action in ("record_payment", "record_credit"):
+            if job.get("status") not in ("invoice_approved", "partially_paid"):
+                return self._json({"error": "approved invoice required before manual settlements"}, 409)
+            balances = self.invoice_balance(job)
+            if balances["outstanding_pence"] <= 0:
+                return self._json({"error": "invoice is settled"}, 409)
+            if action == "record_payment":
+                reference = str(data.get("payment_reference") or "").strip()[:120]
+                payment_date = str(data.get("payment_date") or "").strip()
+                try:
+                    parsed_date = datetime.strptime(payment_date, "%Y-%m-%d").date()
+                    payment_amount = int(data.get("payment_amount_pence", 0))
+                except (ValueError, TypeError):
+                    return self._json({"error": "valid external payment date and amount required"}, 400)
+                if not reference or parsed_date > datetime.now(timezone.utc).date():
+                    return self._json({"error": "real external reference and a non-future date required"}, 400)
+                if payment_amount <= 0 or payment_amount > balances["outstanding_pence"]:
+                    return self._json({"error": "payment exceeds outstanding invoice"}, 409)
+                if any(p.get("reference") == reference for p in job.get("payments", [])):
+                    return self._json({"error": "duplicate external payment reference"}, 409)
+            else:
+                credit_number = str(data.get("credit_note_number") or "").strip().upper()[:80]
+                credit_reason = str(data.get("credit_reason") or "").strip()[:500]
+                try:
+                    credit_amount = int(data.get("credit_amount_pence", 0))
+                except (ValueError, TypeError):
+                    return self._json({"error": "valid credit amount required"}, 400)
+                if not credit_reason or not re.fullmatch(r"[A-Z0-9][A-Z0-9 /_.-]*", credit_number):
+                    return self._json({"error": "supplier credit note number and reason required"}, 400)
+                if credit_amount <= 0 or credit_amount > balances["outstanding_pence"]:
+                    return self._json({"error": "credit exceeds outstanding invoice"}, 409)
+                if any(c.get("number") == credit_number for j in stage.get("jobs", [])
+                       if j.get("assigned_to_party_id") == job.get("assigned_to_party_id")
+                       for c in j.get("credit_notes", [])):
+                    return self._json({"error": "duplicate supplier credit number"}, 409)
 
         if action == "accept":
             chk = self.credential_check(job, actor)
