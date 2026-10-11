@@ -3764,6 +3764,14 @@ class H(SimpleHTTPRequestHandler):
             if not eligible["tenant"].intersection(selected_ids) or not eligible["trades"].intersection(selected_ids):
                 return self._json({"error": "a linked tenant and assigned trade are required"}, 409)
         appts = stage.setdefault("appointments", [])
+        if appt_type == "contractor_visit":
+            if not case:
+                return self._json({"error": "the assigned job must link to a real repair case"}, 409)
+            if any(a.get("job_id") == job_id
+                   and a.get("status") in ("proposed", "confirmed", "change_requested",
+                                           "no_access", "parts_delay")
+                   for a in appts):
+                return self._json({"error": "an open visit already exists for this job; reschedule it"}, 409)
         nums = [int(a["id"].split("-")[1]) for a in appts
                 if isinstance(a.get("id"), str) and re.fullmatch(r"appt-\d+", a["id"])]
         appt = {
@@ -3825,6 +3833,13 @@ class H(SimpleHTTPRequestHandler):
         if contractor and action in ("confirm", "decline") and role != "tenant":
             return self._json({"error": "only the linked tenant can agree contractor access"}, 403)
         current = appt.get("status")
+        if contractor and action in ("confirm", "reschedule"):
+            job = next((j for j in stage.get("jobs", [])
+                        if j.get("id") == appt.get("job_id")), None)
+            if (not job or job.get("property_id") != appt.get("property_id")
+                    or job.get("status") not in ("assigned", "in_progress")
+                    or (job.get("requires_prework_quote") and not job.get("work_authorised_at"))):
+                return self._json({"error": "the repair is no longer authorised for a visit"}, 409)
         if action in ("confirm", "decline") and current != "proposed":
             return self._json({"error": "only a proposed appointment can be answered"}, 409)
         if action in ("complete", "miss", "no_access", "parts_delay") and current != "confirmed":
