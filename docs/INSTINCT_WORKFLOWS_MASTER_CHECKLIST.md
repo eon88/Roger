@@ -19,6 +19,10 @@
 These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` and must be treated as **not done** until checked off:
 
 - [ ] **01 Appointments and access** — offer/accept/change/cancel visit; no-access and parts delay; scoped contact/key handling. *(R4, T3, A2)*
+  - [x] Development code: assigned trade proposals, tenant confirmations/change requests, agent diary, no-access/parts-delay reasons, consent scoping and status safeguards.
+  - [x] Python regression suite and existing general four-role browser smoke passing at development commits.
+  - [ ] Run the new dedicated full browser visit test (`node tests/visit_browser_smoke.cjs`) and link successful evidence.
+  - [ ] Office-approved secure access/key handover procedure and acceptance check; **do not mark Task 01 done yet**.
 - [ ] **02 Case control** — next person/action and due date, duplicate prevention, notes visibility, reopen/dispute rules. *(A1, S2, T2, T3)*
 - [ ] **03 Financial controls** — itemised/VAT quotes, versioned approvals, variations, unique invoice numbers, part payments, credit/reconciliation. *(A2, L2, R3, R5)*
 - [ ] **04 Contractor evidence** — independently checked certificates, uploads, expiry and coverage. *(R1, S2)*
