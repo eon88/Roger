@@ -88,6 +88,7 @@ input,textarea,select{accent-color:#2b6045}
         <div class="mvp-more-menu">
           <a href="#" class="tab" data-view="communications">Communications</a>
           <a href="#" class="tab" data-view="notifications">Notifications</a>
+           <a href="#" class="tab" data-view="office">Office contacts &amp; emergencies</a>
           <a href="#" class="tab" data-view="tasks">Tasks</a>
           <a href="#" class="tab" data-view="compliance">Compliance</a>
           <a href="#" class="tab" data-view="appointments">Appointments</a>
@@ -107,6 +108,7 @@ input,textarea,select{accent-color:#2b6045}
     <section id="view-jobs" style="display:none"></section>
     <section id="view-communications" style="display:none"></section>
     <section id="view-notifications" style="display:none"></section>
+     <section id="view-office" style="display:none"></section>
     <section id="view-tasks" style="display:none"></section>
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
@@ -195,6 +197,7 @@ async function load(manual){
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
     try{ const t=await api('/api/tasks'); window._tasks=t.tasks||[] }catch(e){ window._tasks=[] }
     try{ const n=await api('/api/notifications'); window._notifications=n.notifications||[] }catch(e){ window._notifications=[] }
+    try{ const o=await api('/api/office-settings'); window._office=o.office||{} }catch(e){ window._office={} }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
     try{ window.landlordStatements=(await api('/api/landlord-statements')).statements||[] }catch(e){ window.landlordStatements=[] }
@@ -208,7 +211,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderOffice(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -428,6 +431,53 @@ async function emailCommunicationReply(btn,id){
  const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
  if(!textValue){toast('Type a reply first.','bad');return;}
  await busy(btn,async()=>{try{await post('/api/email-reply',{id,text:textValue});input.value='';window.commQuery='';toast('Email sent and recorded on the case timeline.');load();}catch(e){}});
+}
+function renderOffice(){
+  const o=window._office||{},data={
+    'office_name':o.office_name||'','phone':o.phone||'','email':o.email||'',
+    'opening_hours':o.opening_hours||'','out_of_hours_phone':o.out_of_hours_phone||'',
+    'out_of_hours_instructions':o.out_of_hours_instructions||'',
+    'emergency_policy':o.emergency_policy||''
+  };
+  const items=[
+    ['office_name','Real office name','text'],['phone','Verified office phone','tel'],
+    ['email','Verified office email','email'],['opening_hours','Office opening hours','textarea'],
+    ['out_of_hours_phone','Out-of-hours telephone (optional)','tel'],
+    ['out_of_hours_instructions','What people should do outside hours','textarea'],
+    ['emergency_policy','Reviewed emergency policy and limitations','textarea']
+  ];
+  const fields=items.map(([key,label,type])=>'<label class="field"><span>'+label+'</span>'+
+    (type==='textarea'?'<textarea id="office-'+key+'" rows="3">'+esc(data[key])+'</textarea>':
+     '<input type="'+type+'" id="office-'+key+'" value="'+esc(data[key])+'">')+'</label>').join('');
+  document.getElementById('view-office').innerHTML=
+    '<div class="move">real contact details, not demo placeholders</div><h2>Office contacts and emergency policy</h2>'+
+    '<p class="fineprint">Drafts stay hidden from tenants, landlords and trades until an agent reviews and publishes the real numbers and instructions. Never describe the portal as a 24/7 emergency line.</p>'+
+    '<div class="card"><div class="meta">Current status: <b>'+esc(o.published?'Published':'Not published')+
+    '</b>'+(o.reviewed_at?' · reviewed '+esc(o.reviewed_at.slice(0,10)):'')+' · version '+esc(o.version||0)+'</div>'+
+    '<div class="grid2">'+fields+'</div>'+
+    '<label><input id="office-checked" type="checkbox"> I personally checked the real contact numbers and email</label>'+
+    '<label><input id="office-reviewed" type="checkbox"> I reviewed the emergency and out-of-hours policy</label>'+
+    '<div class="actions"><button class="btn" onclick="saveOffice(this,\'save_draft\')">Save private draft</button>'+
+    '<button class="btn primary" onclick="saveOffice(this,\'publish\')">Publish checked contacts</button>'+
+    (o.published?'<button class="btn danger" onclick="saveOffice(this,\'unpublish\')">Unpublish contacts</button>':'')+
+    '</div></div>';
+}
+async function saveOffice(btn,action){
+  const payload={action};
+  if(action!=='unpublish'){
+    ['office_name','phone','email','opening_hours','out_of_hours_phone','out_of_hours_instructions','emergency_policy']
+      .forEach(k=>payload[k]=document.getElementById('office-'+k)?.value.trim()||'');
+    payload.checked_real_contacts=!!document.getElementById('office-checked')?.checked;
+    payload.policy_reviewed=!!document.getElementById('office-reviewed')?.checked;
+    if(action==='publish'&&(!payload.checked_real_contacts||!payload.policy_reviewed)){
+      toast('Check real contacts and review the emergency policy before publishing.','bad');return;
+    }
+  }
+  await busy(btn,async()=>{try{
+    await post('/api/office-settings',payload);
+    toast(action==='publish'?'Verified office details published':action==='unpublish'?'Contacts hidden from other roles':'Office draft saved privately');
+    await load();
+  }catch(e){toast(e.message||'Could not save office contacts.','bad');}});
 }
 const NOTIFICATION_TYPES={agent_alert:'Agent alert',landlord_approval_request:'Landlord approval request',tenant_appointment:'Tenant appointment notification',trades_job:'Trades job notification',compliance_reminder:'Compliance reminder',rent_arrears_reminder:'Rent / arrears reminder',reminder_email:'Reminder email',general:'General'};
 function notificationEntityLine(n){
