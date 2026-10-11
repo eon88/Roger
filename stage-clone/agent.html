@@ -742,6 +742,62 @@ async function saveProspectStage(btn){
  await busy(btn,async()=>{try{await post('/api/prospect-action',{kind:btn.dataset.kind,id:btn.dataset.id,stage:select.value});toast('Prospect stage updated and recorded in the audit history.');load();}catch(e){}});
 }
 
+function contractorProofPanel(reg){
+  if(reg.role!=='trades')return '';
+  const cv=reg.contractor_verification||{};
+  const verified=cv.status==='verified'&&cv.valid_until>=new Date().toISOString().slice(0,10);
+  const evidence=(docs||[]).filter(d=>d.party_id===reg.party_id&&d.document_type==='trades_document'&&d.status==='verified'&&!d.replaced_by_id);
+  const options='<option value="">Choose checked document</option>'+evidence.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.file_name||d.id)+' · '+esc(d.id)+' · expires '+esc(d.expiry_date||'not recorded')+'</option>').join('');
+  if(!reg.party_id)return '<div class="fineprint hot">Contractor not linked to an active Party/account. Approve the registration, link the contractor in People, then upload and review evidence.</div>';
+  return '<div class="card"><b>Contractor evidence status: '+esc(cv.status||'not independently checked')+'</b>'+
+    (verified?'<div class="meta">Checked by '+esc(cv.checked_by||'?')+' · expires '+esc(cv.valid_until)+' · regions '+esc((cv.service_areas||[]).join(', '))+'</div>':'<div class="fineprint hot">Not eligible for new repair work until current independent checks are recorded and evidence remains valid.</div>')+
+    '<details class="msgs"><summary>Record checks / renew (agent only)</summary>'+
+    '<p class="fineprint">First use Documents to upload TWO separate trades documents, link both to this contractor, and verify each file. Independently confirm insurance and qualifications with the issuer; then record how you checked. This form does NOT contact an insurer or Gas Safe.</p>'+
+    '<div class="grid2"><label class="field"><span>Insurance evidence</span><select id="cv-ins-'+esc(reg.id)+'">'+options+'</select></label>'+
+    '<label class="field"><span>Qualification evidence</span><select id="cv-qual-'+esc(reg.id)+'">'+options+'</select></label>'+
+    '<label class="field"><span>Insurer / check source</span><input id="cv-ins-src-'+esc(reg.id)+'" maxlength="100" placeholder="Insurer portal / confirmed phone call"></label>'+
+    '<label class="field"><span>Insurer check reference</span><input id="cv-ins-ref-'+esc(reg.id)+'" maxlength="160" placeholder="Provider confirmation reference"></label>'+
+    '<label class="field"><span>Qualification issuer / check source</span><input id="cv-src-'+esc(reg.id)+'" maxlength="100" placeholder="Trade register / awarding body"></label>'+
+    '<label class="field"><span>Qualification check reference</span><input id="cv-ref-'+esc(reg.id)+'" maxlength="160" placeholder="Register lookup / issuer confirmation"></label>'+
+    '<label class="field"><span>Verified trade categories (comma separated)</span><input id="cv-trades-'+esc(reg.id)+'" value="'+esc((cv.verified_trades||reg.trades||[]).join(', '))+'"></label>'+
+    '<label class="field"><span>Checked service areas or postcode outward codes</span><input id="cv-areas-'+esc(reg.id)+'" value="'+esc((cv.service_areas||[]).join(', '))+'" placeholder="Leeds, LS1, LS2"></label>'+
+    '<label class="field"><span>Review expiry (must not exceed evidence expiry)</span><input type="date" id="cv-exp-'+esc(reg.id)+'" value="'+esc(cv.valid_until||'')+'"></label>'+
+    '<label class="field"><span>Gas Safe evidence, if approving gas</span><select id="cv-gas-'+esc(reg.id)+'">'+options+'</select></label>'+
+    '<label class="field"><span>Gas Safe independent register check ref, if approving gas</span><input id="cv-gas-ref-'+esc(reg.id)+'" maxlength="160"></label></div>'+
+    '<div class="actions"><button class="btn primary" onclick="recordContractorChecks(this,\''+esc(reg.id)+'\')">Record independent checks</button></div></details>'+
+    (cv.status==='verified'?'<div class="actions"><button class="btn danger" onclick="revokeContractorChecks(this,\''+esc(reg.id)+'\')">Revoke contractor checks</button></div>':'')+
+    '</div>';
+}
+async function recordContractorChecks(btn,id){
+  const v=s=>document.getElementById('cv-'+s+'-'+id)?.value.trim()||'';
+  const verification={
+    registration_id:id,action:'verify',insurance_document_id:v('ins'),
+    qualification_document_id:v('qual'),insurance_check_source:v('ins-src'),
+    insurance_check_reference:v('ins-ref'),check_source:v('src'),
+    external_check_reference:v('ref'),valid_until:v('exp'),
+    verified_trades:v('trades').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean),
+    service_areas:v('areas').split(',').map(x=>x.trim()).filter(Boolean),
+    gas_document_id:v('gas'),gas_register_reference:v('gas-ref')
+  };
+  if(!verification.insurance_document_id||!verification.qualification_document_id||
+     !verification.external_check_reference||!verification.insurance_check_reference||
+     !verification.valid_until||!verification.service_areas.length){
+    toast('Select evidence and enter issuer references, service area and review expiry.','bad');return;
+  }
+  await busy(btn,async()=>{try{
+    await post('/api/contractor-verification',verification);
+    toast('Manual independent checks recorded. Dispatch restrictions now use this evidence.');load();
+  }catch(e){toast(e.message||'Could not verify contractor.','bad');}});
+}
+async function revokeContractorChecks(btn,id){
+  const reason=prompt('Why revoke this contractor verification?');
+  if(reason===null)return;
+  if(!reason.trim()){toast('A revocation reason is required.','bad');return;}
+  await busy(btn,async()=>{try{
+    await post('/api/contractor-verification',{registration_id:id,action:'revoke',reason:reason.trim()});
+    toast('Contractor verification revoked; new repair dispatch is blocked.');load();
+  }catch(e){toast(e.message||'Could not revoke contractor checks.','bad');}});
+}
 function renderRegs(){
   const all=stage.registrations||[]; const pend=all.filter(r=>r.status==='pending');
   const decided=all.filter(r=>r.status!=='pending').slice().reverse();
@@ -751,6 +807,7 @@ function renderRegs(){
     <div class="details">${esc(r.details)}</div>
     ${r.role==='trades'?`<div class="meta">trades: ${esc((r.trades||['not stated']).join(', '))}${r.gas_safe_number?' · Gas Safe '+esc(r.gas_safe_number):' · <span class="hot">no Gas Safe number</span>'}${r.insurance_expiry?' · insurance to '+esc(r.insurance_expiry):''}${r.coverage?' · covers '+esc(r.coverage):''}</div>`:''}
     ${r.property_address?`<div class="meta">${esc(r.property_address)}${r.units?' · '+esc(r.units)+' unit(s)':''}</div>`:''}
+    ${r.role==='trades'?contractorProofPanel(r):''}
     ${r.status==='pending'?`<div class="actions"><input placeholder="note for the record (optional)" id="rn-${esc(r.id)}" autocomplete="off" style="max-width:240px" onkeydown="if(event.key==='Enter')regAct(this,'${esc(r.id)}','approve')">
       <button class="btn primary" onclick="regAct(this,'${esc(r.id)}','approve')">Approve</button>
       <button class="btn danger" onclick="regAct(this,'${esc(r.id)}','reject')">Reject</button></div>`:
@@ -761,7 +818,7 @@ function renderRegs(){
     (decided.length?`<h2>Decided</h2>`+decided.map(reg).join(''):'');
 }
 async function regAct(btn,id,action){ await busy(btn,async()=>{ try{ const n=document.getElementById('rn-'+id); const note=n?n.value.trim():'';
-  await post('/api/registration-action',{id,action,note}); toast(action==='approve'?'Approved — they can be booked now':'Rejected, with your note on record'); load(); }catch(e){} }); }
+  await post('/api/registration-action',{id,action,note}); toast(action==='approve'?'Registration approved. Contractor still needs independent proof checks before new repair work.':'Rejected with your note on record'); load(); }catch(e){} }); }
 
 const PROPERTY_TRANSITIONS={
  prospect:['onboarding','offboarded'],onboarding:['ready_to_market','offboarded'],
