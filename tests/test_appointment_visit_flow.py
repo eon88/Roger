@@ -166,6 +166,20 @@ class RepairAppointmentTests(unittest.TestCase):
                  end_time="2099-05-20T09:00:00Z")
         self.assertEqual(self.stage["appointments"], [])
 
+    def test_duplicate_visits_and_revoked_work_authority_are_blocked(self):
+        aid = self.propose()["id"]
+        self.act("trade", "handle_appointment", expected=409,
+                 property_id="home-1", job_id="job-10",
+                 appointment_type="contractor_visit",
+                 start_time="2099-05-21T09:00:00Z")
+        self.assertEqual(len(self.stage["appointments"]), 1)
+        self.stage["jobs"][0].pop("work_authorised_at")
+        self.act("tenant", "handle_appointment_action", expected=409,
+                 id=aid, action="confirm")
+        self.act("trade", "handle_appointment_action", expected=409,
+                 id=aid, action="reschedule", start_time="2099-05-22T09:00:00Z")
+        self.assertEqual(self.stage["appointments"][0]["status"], "proposed")
+
     def test_non_repair_viewing_tenant_can_confirm_and_agent_can_cancel(self):
         visit = self.act("agent", "handle_appointment", property_id="home-1",
                          appointment_type="viewing", start_time="2099-06-01T11:00:00Z")["appointment"]
