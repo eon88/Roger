@@ -546,6 +546,8 @@ class ProspectStageTests(unittest.TestCase):
             "tenant_party_id": "party-fixture-tenant",
         }]
         self.stage["jobs"] = []
+        # Avoid collision with the existing enquiry fixture (case #490).
+        self.stage["next_case_id"] = 491
         self.handler.triage = lambda message: {
             "category": "maintenance", "trade": "plumbing", "urgency": 1, "safety": 0.2,
         }
