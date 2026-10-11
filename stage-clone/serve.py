@@ -2976,6 +2976,22 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "invalid next due date"}, 400)
             if parsed_due < datetime.now(timezone.utc).date():
                 return self._json({"error": "next due date cannot be in the past"}, 400)
+            if actor in ("tenant", "landlord"):
+                prop = self.find_prop(stage, c.get("property_id"))
+                linked = set()
+                if prop:
+                    one = prop.get(actor + "_party_id")
+                    many = prop.get(actor + "_party_ids")
+                    if isinstance(one, str):
+                        linked.add(one)
+                    if isinstance(many, list):
+                        linked.update(x for x in many if isinstance(x, str))
+                if not any(p.get("id") in linked
+                           and p.get("status") == "active"
+                           and p.get("account_id")
+                           and actor in p.get("roles", [])
+                           for p in stage.get("parties", []) if isinstance(p, dict)):
+                    return self._json({"error": "no linked " + actor + " available for this case"}, 409)
             if actor == "trades" and not any(
                     str(j.get("case_id")) == str(c.get("id"))
                     and j.get("assigned_to_party_id")
@@ -3094,7 +3110,8 @@ class H(SimpleHTTPRequestHandler):
             self.audit(stage, {"actor": u.get("display_name", "tenant"), "action": "tenant_confirmed_resolution",
                                "target": c["id"]})
         elif action == "reopen_unresolved":
-            if c.get("status") not in ("resolved", "awaiting_confirmation", "closed"):
+            if (c.get("type") != "issue"
+                    or c.get("status") not in ("resolved", "awaiting_confirmation", "closed")):
                 return self._json({"error": "only a completed or closed repair may be disputed here"}, 409)
             reason = str(data.get("text", "")).strip()[:1000]
             if not reason:
