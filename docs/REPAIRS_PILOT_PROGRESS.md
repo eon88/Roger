@@ -91,6 +91,28 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 
 **Release policy:** Draft development branch only. The user previously chose to defer the optional full appointment journey; this contractor browser journey remains a future acceptance gate.
 
+## Task 05 — real office contacts, notifications and access revocation (11 October 2026)
+
+**Status: PARTIAL / code-tested in the development branch. No live release.**
+
+- [x] Agent-only Office contacts screen, saved private draft, explicit publish/unpublish with agent attestations that the telephone/email are real and the out-of-hours/emergency rules were reviewed; version and audit records. Without publication, other roles see a safe generic message referring to signed paperwork, NOT fabricated contacts.
+- [x] Tenant, Landlord and Trades pages display only published office phone, email/hours, out-of-hours number/instructions and the reviewed emergency policy. Every page warns that Roger is not a 24/7 emergency response service.
+- [x] Notification creation checks account-linked, active recipient Parties; an external email destination must match that recipient's linked Party email (agent outbox uses the published office address). Retry submissions can be deduplicated by request ID.
+- [x] Manual email outbox states: queued, externally recorded sent (requires independent message ID/source), failed (record reason and schedule retry), exhausted (three failures), and retry only after its due time. The record includes an audit event and original messages are not cloned during retry.
+- [x] High-priority tenant repair reports create one agent-only in-app alert (never an email or an emergency attendance promise); repeated report requests do not create duplicate alerts.
+- [x] An agent can disable a linked non-agent portal account and all its active sessions, blocking future login while retaining tenancy/case data. The action is audited and prevents revoking agent rights through this simplified route.
+- [x] Synthetic office publishing/denial, notification scoping, manual delivery evidence, retry exhaustion, account revocation and urgent-report tests; standard unit and general four-role browser workflows.
+
+**Still open for full acceptance:**
+
+- [ ] Actually enter and independently check the real agency phone, office hours, out-of-hours provider and reviewed emergency policy. No contact details were invented or published automatically.
+- [ ] Integrate a real provider or securely operated mail worker with delivery receipts, failure callbacks and automated retries. **The current outbox is manual only: Roger does NOT send the queued messages.** Failure/retry recording alone is not an email service.
+- [ ] Live operational reminders, emergency escalation and human response rota, notification retention/privacy policies, full staff/administrator MFA and recovery.
+- [ ] End-to-end disaster backup/restore drill on a disposable clone (including uploaded document files, users and exact state) and transaction-safe/concurrent writes, still needed before production release.
+- [ ] Dedicated role-populated browser acceptance test for office settings, failed mail retries and session revocation. The existing general browser smoke does not exercise these journeys.
+
+**Do not deploy without:** backup + restore evidence, real office contacts, operational emergency procedures and user approval.
+
 ## Next P0 tasks (NOT DONE)
 1. Appointments and access: propose/accept/reschedule/cancel/no-access, contact consent, key instructions and a parts-delay branch. Block misleading “scheduled” statuses.
 2. Case control: single next person/action and due date, duplicate reporting/idempotency, internal/private vs shared notes, disputes, reopening after completed work.
