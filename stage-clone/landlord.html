@@ -50,6 +50,7 @@ body{background:var(--paper)}
     </nav>
   </header>
   <main id="main" aria-busy="true">
+  <div id="office-contact" class="banner" aria-live="polite">Office contact details are not yet confirmed. Use your signed paperwork.</div>
   <section class="section">
     <div class="move">bring a property into Roger</div>
     <h2>Submit a property for approval</h2>
@@ -153,7 +154,7 @@ async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh. We will try again with the next update.','bad'); } }
 async function loadExtras(){
   try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
@@ -166,7 +167,21 @@ function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.
 
 function pTitle(id){const p=(stage.properties||[]).find(x=>x.id===id);return p?`${esc(p.title)} · ${esc(p.area)}`:'a property you own';}
 
-function render(){
+function renderOfficeContacts(){
+  const box=document.getElementById('office-contact');
+  if(!box)return;
+  const o=window.rogerOffice||{};
+  if(!o.published){
+    box.textContent='Office contact details are not confirmed in Roger. Use the contacts in your tenancy or agency paperwork. This portal is not an emergency service.';
+    return;
+  }
+  const numbers=[o.phone?'<a href="tel:'+esc(o.phone.replace(/[^+\d]/g,''))+'">'+esc(o.phone)+'</a>':'',
+                 o.out_of_hours_phone?'<a href="tel:'+esc(o.out_of_hours_phone.replace(/[^+\d]/g,''))+'">'+esc(o.out_of_hours_phone)+'</a>':''];
+  box.innerHTML='<b>'+esc(o.office_name||'Agency office')+'</b> · Office: '+numbers[0]+' · '+esc(o.opening_hours||'')+
+    '<div>Outside hours: '+(numbers[1]||'No separate emergency telephone provided')+' · '+esc(o.out_of_hours_instructions||'')+'</div>'+
+    '<div class="fineprint">'+esc(o.emergency_policy||'')+' This portal is not monitored continuously.</div>';
+}
+function render(){ renderOfficeContacts();
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
   const props=stage.properties||[];
