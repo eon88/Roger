@@ -6,6 +6,8 @@
 <link rel="stylesheet" href="/dash.css">
 <style>
 /* Roger showcase MVP shell — visual enhancement only; existing APIs and auth remain intact */
+#view-properties .card .review-note{width:100%;min-height:80px}
+#view-properties details.card>summary{cursor:pointer;font-weight:700;margin-bottom:12px}
 :root{
  --paper:#f3f5f1;--card:#fff;--ink:#1b3026;--muted:#687a70;
  --line:#e2e9e2;--line-soft:#edf1eb;--line-strong:#b9cbbb;
@@ -226,6 +228,9 @@ function renderDeskSearch(q){
   const needle=deskSearch.trim().toLowerCase(),found=[];const prop=id=>(stage.properties||[]).find(p=>p.id===id);
   const add=(rows,view,idFn,labelFn,detailFn)=>{for(const x of rows||[]){const detail=detailFn?detailFn(x):'';if((deskSearchText(x)+' '+detail).toLowerCase().includes(needle))found.push({label:labelFn(x),detail,view,id:idFn? idFn(x):''});}};
   add(stage.properties,'properties',x=>'property-'+x.id,x=>x.title||x.id,x=>x.area||'');
+  add(stage.property_submissions,'properties',x=>'submission-'+x.id,
+    x=>'Property application · '+(x.address||x.id),
+    x=>[x.area,x.postcode,x.status,x.description].filter(Boolean).join(' · '));
   add(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id+' · '+(x.type||'case'),x=>[prop(x.property_id)?.title,x.name,x.email,x.status,x.message].filter(Boolean).join(' · '));
   add(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id+' · case #'+x.case_id,x=>[prop(x.property_id)?.title,x.status,x.assigned_to,x.message].filter(Boolean).join(' · '));
   add(stage.cases,'communications',x=>'comm-case-'+x.id,x=>'Conversation · case #'+x.id,x=>[prop(x.property_id)?.title,x.name,x.email,x.message,(x.thread||[]).map(m=>m.text).join(' ')].filter(Boolean).join(' · '));
@@ -252,6 +257,10 @@ function renderAttentionBoard(){
     'Trades invoice · '+money(j.invoice_pence)+' · '+(j.assigned_to||'Contractor'),
     propertyName(j.property_id)+' · '+(j.status==='rejected'?'Landlord declined — agent follow-up':'Waiting for landlord approval'),
     'jobs','job-'+j.id,j.status==='rejected'?'overdue':'pending'));
+  (stage.property_submissions||[]).filter(x=>x.status==='pending').forEach(x=>
+    add(needs,'Property approval · '+x.address,
+      [x.area,x.postcode,x.beds+' bed',money(x.rent_pence)].join(' · '),
+      'properties','submission-'+x.id,'pending'));
   (stage.registrations||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,(x.role||'registration')+' application · '+(x.name||x.id),x.email||'Needs review','registrations','reg-'+x.id,'pending'));
   (window._docs||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,'Verify document · '+(x.title||x.file_name||x.id),propertyName(x.property_id),'overview','doc-'+x.id,'pending'));
   (window.complianceRecords||[]).filter(x=>!['superseded','current'].includes(x.status)||x.reminder_due).forEach(x=>add(needs,x.status==='missing'?'Missing compliance · '+x.requirement_type.replace(/_/g,' '):x.status==='expired'?'Expired compliance · '+x.requirement_type.replace(/_/g,' '):'Compliance reminder · '+x.requirement_type.replace(/_/g,' '),propertyName(x.property_id)+(x.expiry_date?' · expires '+x.expiry_date:''),'compliance',x.id,x.status==='expired'?'overdue':'compliance'));
@@ -675,9 +684,44 @@ const PROPERTY_TRANSITIONS={
  notice_given:['occupied','checkout'],checkout:['void'],void:['remarketing','offboarded'],
  remarketing:['advertised','onboarding','offboarded'],offboarded:[]
 };
+function renderPropertySubmissionReviews(){
+ const submissions=(stage.property_submissions||[]).slice().reverse();
+ const pending=submissions.filter(s=>s.status==='pending');
+ const renderItem=s=>{
+   const state=s.status||'pending', note=s.agent_note||'';
+   return `<div class="card" id="submission-${esc(s.id)}">
+     <div class="cardtop"><h3>${esc(s.address||'New property')}</h3><span class="badge ${esc(state)}">${esc(state.replace(/_/g,' '))}</span></div>
+     <div class="meta">${esc(s.area||'')} · ${esc(s.postcode||'')} · ${esc(s.property_type||'Property')} · ${esc(s.beds)} bed · ${money(s.rent_pence)} pcm</div>
+     <div class="meta">Landlord: ${esc((stage.parties||[]).find(p=>p.id===s.landlord_party_id)?.display_name||'Landlord')} · Submitted ${when(s.submitted_at)}</div>
+     ${s.description?`<div class="details">${esc(s.description)}</div>`:''}
+     ${note?`<div class="fineprint">Latest review: ${esc(note)}</div>`:''}
+     ${state==='pending'?`<label class="field"><span>Agent message (required for changes or decline)</span>
+       <textarea class="review-note" rows="2" maxlength="1000" placeholder="Any questions, missing information or reason for declining"></textarea></label>
+       <div class="actions">
+         <button class="btn primary" data-submission-id="${esc(s.id)}" onclick="reviewSubmission(this,'approve')">Approve for onboarding</button>
+         <button class="btn" data-submission-id="${esc(s.id)}" onclick="reviewSubmission(this,'request_changes')">We need to talk</button>
+         <button class="btn danger" data-submission-id="${esc(s.id)}" onclick="reviewSubmission(this,'decline')">Decline</button>
+       </div>`:s.property_id?`<div class="meta">Onboarded as property ${esc(s.property_id)}. Advertising requires a separate agent action.</div>`:''}
+   </div>`;
+ };
+ return '<div class="move">new landlord submissions</div>'+
+    '<p class="fineprint">Approval puts a property into onboarding. It does not publish an advert. Check management terms, documents and compliance separately.</p>'+
+    (pending.length?pending.map(renderItem).join(''):'<div class="empty">No property submissions waiting for review.</div>')+
+    (submissions.some(s=>s.status!=='pending')?'<details class="card"><summary>Previous property decisions</summary>'+
+      submissions.filter(s=>s.status!=='pending').slice(0,20).map(renderItem).join('')+'</details>':'');
+}
+async function reviewSubmission(btn,action){
+ const card=btn.closest('.card'),note=card?.querySelector('.review-note')?.value.trim()||'';
+ if(action!=='approve'&&!note){toast('Please explain what the landlord needs to change or why it was declined.','bad');return;}
+ await busy(btn,async()=>{try{
+   await post('/api/agent/property-submission',{submission_id:btn.dataset.submissionId,action,note});
+   toast(action==='approve'?'Approved for onboarding — not advertised.':action==='request_changes'?'Questions sent to landlord.':'Application declined.');
+   await load();
+ }catch(e){}});
+}
 function renderProps(){
  const rows=stage.properties||[];
- document.getElementById('view-properties').innerHTML='<div class="move">your properties</div>'+
+ document.getElementById('view-properties').innerHTML=renderPropertySubmissionReviews()+'<div class="move">your properties</div>'+
  '<p class="fineprint">Move each property through its lifecycle. Only properties marked Advertised with a public description appear on the lettings site.</p><div class="grid2">'+
  (rows.length?rows.map(p=>{
    const current=p.lifecycle_status||'onboarding';
