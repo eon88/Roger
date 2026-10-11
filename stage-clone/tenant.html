@@ -134,20 +134,17 @@ function render(){
     `<div class="card"><h3>Documents</h3>${myDocs.length?myDocs.map(d=>`<div class="docrow"><a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a><div class="docmeta">${capType(d.document_type)}${d.verified_at?` · ${esc(d.status)}`:''}</div></div>`).join(''):`<div class="meta">Nothing filed yet — your agreement and deposit receipt will appear here once the office uploads them.</div>`}</div>`
   ].join(''):'';
 
-  // Appointments — upcoming first
-  const active=appts.length?appts.slice().sort((a,b)=>a.start_time.localeCompare(b.start_time)):[];
+  // Proposed repair visits require the resident's explicit agreement.
+  const active=appts.length?appts.slice().sort((a,b)=>String(a.start_time).localeCompare(String(b.start_time))):[];
   const pending=active.filter(a=>a.status==='proposed');
   const later=active.filter(a=>a.status!=='proposed');
   document.getElementById('my-appts').innerHTML=active.length?
-    (pending.length?`<div class="card">${pending.map(ap=>`<div class="appt">
-        <div><div class="date">${fmtDate(ap.start_time)}</div><div class="because">${esc(ap.title)}${ap.location?' · '+esc(ap.location):''}${ap.notes?' · '+esc(ap.notes):''}</div></div>
-        <div class="actions"><button class="btn primary" onclick="apptAct(this,'${esc(ap.id)}','confirm')">I can make it</button><button class="btn danger" onclick="apptAct(this,'${esc(ap.id)}','decline')">No good for me</button></div>
-      </div>`).join('')}</div>`:'')+
-    `<div class="card">${later.map(ap=>`<div class="appt">
-        <div><div class="date">${fmtDate(ap.start_time)}</div><div class="because">${esc(ap.title)}${ap.location?' · '+esc(ap.location):''}</div></div>
-        <span class="badge ${esc(ap.status)}">${esc(ap.status)}</span>
-      </div>`).join('')}</div>`
-    :`<div class="empty">Nothing scheduled. When the office books something — a viewing, an inspection, the key handover — it lands here for your yes or no.</div>`;
+    (pending.length?'<div class="card">'+pending.map(ap=>'<div class="appt">'+
+      '<div><div class="date">'+fmtDate(ap.start_time)+'</div><div class="because">'+esc(ap.title)+(ap.location?' · '+esc(ap.location):'')+'</div>'+
+      (ap.appointment_type==='contractor_visit'?'<div class="fineprint">Please agree the visit before the contractor arrives. Never enter key codes or passwords here.</div><label class="field"><span>Access preference (optional)</span><input id="access-'+esc(ap.id)+'" maxlength="160" placeholder="e.g. ring the bell"></label><label class="field"><input type="checkbox" id="consent-'+esc(ap.id)+'"> Share this access preference with the assigned contractor</label>':'')+'</div>'+
+      '<div class="actions"><button class="btn primary" onclick="apptAct(this,\''+esc(ap.id)+'\',\'confirm\')">Confirm visit</button><button class="btn danger" onclick="apptAct(this,\''+esc(ap.id)+'\',\'decline\')">Request a different time</button></div></div>').join('')+'</div>':'')+
+    (later.length?'<div class="card">'+later.map(ap=>'<div class="appt"><div><div class="date">'+fmtDate(ap.start_time)+'</div><div class="because">'+esc(ap.title)+(ap.location?' · '+esc(ap.location):'')+'</div>'+(ap.notes?'<div class="fineprint">Update: '+esc(ap.notes)+'</div>':'')+(['no_access','parts_delay','change_requested'].includes(ap.status)?'<div class="fineprint">The office and contractor need to arrange the next step.</div>':'')+'</div><span class="badge '+esc(ap.status)+'">'+esc(ap.status.replace(/_/g,' '))+'</span></div>').join('')+'</div>':'')
+    :'<div class="empty">Nothing scheduled. If a contractor offers a visit, you can confirm or request a different time here.</div>';
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
@@ -159,9 +156,20 @@ function plainTriage(c){
 }
 function fmtDate(iso){ if(!iso) return '—'; const s=new Date(iso); return s.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
-async function apptAct(btn,id,action){ if(btn&&btn.dataset.busy)return; if(btn)btn.dataset.busy='1';
-  try{ await post('/api/appointment-action',{id,action}); toast(action==='confirm'?'That is noted — the office will confirm.':'Thanks for letting them know — the office will rearrange.'); await load(); }
-  catch(e){ toast('Could not update — try again.','bad'); } finally{ if(btn)delete btn.dataset.busy; } }
+async function apptAct(btn,id,action){ if(btn&&btn.dataset.busy)return;
+  const isVisit=appts.find(a=>a.id===id)?.appointment_type==='contractor_visit';
+  let note='';
+  if(action==='decline'){const reason=prompt('Why does this time not work? (optional)');if(reason===null)return;note=reason;}
+  const payload={id,action,note};
+  if(action==='confirm'&&isVisit){
+    payload.access_preference=document.getElementById('access-'+id)?.value.trim()||'';
+    payload.contact_consent=Boolean(document.getElementById('consent-'+id)?.checked);
+  }
+  if(btn)btn.dataset.busy='1';
+  try{await post('/api/appointment-action',payload);
+    toast(action==='confirm'?'Visit confirmed — the office can see your reply.':'Change requested — the office will arrange another proposal.');await load();}
+  catch(e){toast('Could not update the appointment — try again.','bad');}finally{if(btn)delete btn.dataset.busy;}
+}
 /* form friction: blur hints + Enter submits from the email field */
 const msg=document.getElementById('issue-msg'), email=document.getElementById('issue-email');
 msg.addEventListener('focus',()=>{ msg.dataset.touched='1'; });
