@@ -2025,12 +2025,62 @@ class H(SimpleHTTPRequestHandler):
             if not pend:
                 return self._json({"error": "no pending quote"}, 400)
             q = max(pend, key=lambda x: x.get("at", ""))
-            q["status"] = "approved"
-            job["approved_quote_pence"] = q["pence"]
-            job["status"] = "in_progress"
-            self.sync_case(stage, job["case_id"], "in_progress")
-            self.post_msg(stage, job["case_id"], f"Quote of £{q['pence']/100:.2f} approved — {job['assigned_to']} can start.", to=("tenant", "trades"))
-            self.audit(stage, {"actor": "agent", "action": "quote_approved", "target": job["id"], "note": f"£{q['pence']/100:.2f}"})
+            if job.get("requires_prework_quote"):
+                limit = int(stage.get("authority", {}).get("standing_limit_pence", 15000))
+                if q["pence"] > limit:
+                    prop = self.find_prop(stage, job.get("property_id"))
+                    landlord_id = (prop or {}).get("landlord_party_id")
+                    eligible = any(
+                        p.get("id") == landlord_id
+                        and p.get("status") == "active"
+                        and "landlord" in p.get("roles", [])
+                        and p.get("account_id")
+                        for p in stage.get("parties", [])
+                    )
+                    if not eligible:
+                        return self._json({"error": "active linked landlord account required for approval"}, 409)
+                    q["status"] = "pending_landlord"
+                    job["approved_quote_pence"] = q["pence"]
+                    job["status"] = "awaiting_prework_approval"
+                    stage.setdefault("approvals", [])
+                    stage["approvals"].append({
+                        "id": "appr-" + str(len(stage["approvals"]) + 1),
+                        "approval_type": "prework_quote",
+                        "job_id": job["id"], "property_id": job["property_id"],
+                        "landlord": prop.get("landlord", "Landlord"),
+                        "landlord_party_id": landlord_id,
+                        "landlord_party_ids": prop.get("landlord_party_ids", []),
+                        "amount_pence": q["pence"], "reason": job.get("message", ""),
+                        "quote_at": q["at"], "scope": q.get("note", ""),
+                        "evidence": {"tradesperson": job.get("assigned_to"),
+                                     "job_created": job.get("created_at")},
+                        "status": "pending", "requested_at": now(),
+                    })
+                    self.sync_case(stage, job["case_id"], "awaiting_prework_approval")
+                    self.post_msg(stage, job["case_id"],
+                                  "Landlord quote approval is required before work starts.",
+                                  to=("tenant", "landlord", "trades"))
+                    self.audit(stage, {"actor": actor, "action": "prework_landlord_approval_requested",
+                                       "target": job["id"], "note": str(q["pence"]) + "p"})
+                else:
+                    q["status"] = "approved"
+                    job["approved_quote_pence"] = q["pence"]
+                    job["status"] = "assigned"
+                    job["work_authorised_at"] = now()
+                    job["work_authorised_by"] = actor
+                    self.sync_case(stage, job["case_id"], "dispatched")
+                    self.post_msg(stage, job["case_id"],
+                                  f"Quote of £{q['pence']/100:.2f} authorised. The contractor can now arrange work.",
+                                  to=("tenant", "trades"))
+                    self.audit(stage, {"actor": actor, "action": "prework_quote_authorised",
+                                       "target": job["id"], "note": str(q["pence"]) + "p"})
+            else:
+                q["status"] = "approved"
+                job["approved_quote_pence"] = q["pence"]
+                job["status"] = "in_progress"
+                self.sync_case(stage, job["case_id"], "in_progress")
+                self.post_msg(stage, job["case_id"], f"Quote of £{q['pence']/100:.2f} approved — {job['assigned_to']} can start.", to=("tenant", "trades"))
+                self.audit(stage, {"actor": "agent", "action": "quote_approved", "target": job["id"], "note": f"£{q['pence']/100:.2f}"})
         elif action == "decline_quote" and self.user["role"] == "agent" and job["status"] == "quoted":
             for q in job.get("quotes", []):
                 if q["status"] == "pending":
