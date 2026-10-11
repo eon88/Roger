@@ -622,7 +622,7 @@ function renderJobs(){
       <div class="meta">${propLine(j.property_id)}${j.required_trade?` · needs <b>${esc(j.required_trade)}</b>`:''} · ${when(j.created_at)}</div>
       <div class="details">${esc(j.message)}</div>
       ${j.assigned_to?`<div class="meta">${j.status==='quote_requested'?'quote requested from':j.status==='assigned'?'assigned to':'by'} <b>${esc(j.assigned_to)}</b></div>`:''}
-      ${j.status==='quoted'&&j.quotes?`<table class="evidence">${j.quotes.map(q=>`<tr><td>${esc(q.tradesperson)} · ${when(q.at)}</td><td><b>${money(q.pence)}</b> ${q.note?esc(q.note):''}</td><td>${q.status==='pending'?`<button class="btn primary" onclick="quoteAct(this,'${esc(j.id)}','approve_quote')">Approve</button> <button class="btn danger" onclick="quoteAct(this,'${esc(j.id)}','decline_quote')">Decline</button>`:esc(q.status)}</td></tr>`).join('')}</table>`:''}
+      ${j.status==='quoted'&&j.quotes?`<table class="evidence">${j.quotes.map(q=>`<tr><td>${esc(q.tradesperson)} · v${esc(q.version||'?')} · ${when(q.at)}</td><td><b>${money(q.pence)}</b> ${q.vat_pence!=null?' · net '+money(q.net_pence)+' + VAT '+money(q.vat_pence):' · lump sum (not itemised)'} ${q.note?esc(q.note):''}</td><td>${q.status==='pending'?`<button class="btn primary" onclick="quoteAct(this,'${esc(j.id)}','approve_quote')">Approve</button> <button class="btn danger" onclick="quoteAct(this,'${esc(j.id)}','decline_quote')">Decline</button>`:esc(q.status)}</td></tr>`).join('')}</table>`:''}
       ${j.gate_reason?`<div class="fineprint hot">Blocked: ${esc(j.gate_reason)} — booked by ${esc(j.requested_by)}</div>
         <div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','verify_approve')">Allow anyway</button>
         <button class="btn danger" onclick="jobAct(this,'${esc(j.id)}','verify_decline')">Send back</button></div>`:''}
@@ -631,10 +631,12 @@ function renderJobs(){
         <button class="btn" onclick="pickAct(this,'${esc(j.id)}','assign')">Assign directly</button>
         <button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask for quote first</button></div>`:''}
       ${j.status==='assigned'&&j.assigned_to?`<div class="actions"><button class="btn primary" data-party-id="${esc(j.assigned_to_party_id||'')}" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask them to quote first</button></div>`:''}
-      ${j.invoice_pence!=null?`<div class="meta">invoice ${money(j.invoice_pence)}${j.approved_quote_pence!=null&&j.invoice_pence>j.approved_quote_pence?` · <span class="amber">above approved quote of ${money(j.approved_quote_pence)}</span>`:''}</div>`:''}
+      ${j.pending_variation?`<div class="triage-line hot"><b>Additional work NOT yet authorised</b> · +${money(j.pending_variation.extra_pence)} · ${esc(j.pending_variation.scope)} · ${esc(j.pending_variation.status.replace(/_/g,' '))}</div>${j.pending_variation.status==='pending_agent'?`<div class="actions"><button class="btn primary" onclick="variationAct(this,'${esc(j.id)}','approve_variation')">Review extra-work cost</button><button class="btn danger" onclick="variationAct(this,'${esc(j.id)}','decline_variation')">Decline extras</button></div>`:''}`:''}
+      ${j.approved_variations?.length?`<div class="meta">Approved extras: ${j.approved_variations.map(v=>esc(v.scope)+' +'+money(v.extra_pence)).join(' · ')}</div>`:''}
+      ${j.invoice_pence!=null?`<div class="meta">Invoice ${esc(j.invoice_number||'number missing (legacy)')} · ${money(j.invoice_pence)}${j.invoice_vat_pence!=null?' (net '+money(j.invoice_net_pence)+' + VAT '+money(j.invoice_vat_pence)+')':' (not itemised)'}${j.balance_due_pence!=null?' · balance '+money(j.balance_due_pence):''}</div>`:''}
       ${j.status==='invoice_submitted'?`<div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','approve_invoice')">Approve invoice</button><button class="btn ghost" onclick="jobAct(this,'${esc(j.id)}','send_to_landlord')">Ask landlord to review</button></div>`:''}
-      ${j.status==='invoice_approved'?`<div class="actions"><button class="btn primary" onclick="recordJobPayment(this,'${esc(j.id)}',${j.invoice_pence})">Record external payment</button><span class="fineprint">Only after checking the bank/payment record.</span></div>`:''}
-      ${j.status==='paid'?`<div class="meta">External payment recorded: ${esc(j.payment_reference||'legacy record — no reference')} ${j.payment_recorded_at?' · '+when(j.payment_recorded_at):''}</div>`:''}
+      ${['invoice_approved','partially_paid'].includes(j.status)?`<div class="actions"><button class="btn primary" onclick="recordJobPayment(this,'${esc(j.id)}',${j.balance_due_pence??j.invoice_pence})">Record verified external payment</button><button class="btn" onclick="recordJobCredit(this,'${esc(j.id)}',${j.balance_due_pence??j.invoice_pence})">Record supplier credit note</button><span class="fineprint">Outstanding: ${money(j.balance_due_pence??j.invoice_pence)}. Manual records; Roger transfers nothing.</span></div>`:''}
+      ${['paid','credited'].includes(j.status)?`<div class="meta">Invoice settled: external payments ${money((j.payments||[]).reduce((v,p)=>v+p.amount_pence,0))} · supplier credits ${money((j.credit_notes||[]).reduce((v,c)=>v+c.amount_pence,0))}. ${j.status==='credited'?'No bank payment recorded.':''}</div>`:''}
     </div>`;
   const sec=(list,title,note,none)=>`<h2>${title}</h2>${note?`<p class="fineprint">${note}</p>`:''}${list.length?list.map(card).join(''):`<div class="empty">${none}</div>`}`;
   document.getElementById('view-jobs').innerHTML=`<div class="move">jobs — who took what</div>`+
@@ -649,6 +651,8 @@ function renderJobs(){
     sec(g('invoice_submitted'),'Invoice needs review','Review against the job and approved quote before approving.','No invoices awaiting review.')+
     sec(g('awaiting_approval'),'Waiting on landlord','','No invoices are waiting on a landlord.')+
     sec(g('invoice_approved'),'Approved, not yet paid','Check the actual external payment before recording it here.','No approved unpaid invoices.')+
+    sec(g('partially_paid'),'Part-paid contractor invoices','Outstanding balances require reconciliation.','No partial payments outstanding.')+
+    sec(g('credited'),'Fully credited invoices','A supplier credit is not a bank payment.','No fully credited invoices.')+
     sec(g('paid'),'External payments recorded','These have a manually entered payment reference; Roger does not send money.','No external payments recorded yet.')+
     sec(g('rejected'),'Declined by landlord','','No landlord has declined an invoice.');
 }
@@ -664,15 +668,41 @@ async function jobAct(btn,id,action,tradesperson,trades_party_id){ await busy(bt
     send_to_landlord:'Invoice sent to the landlord for sign-off.',
     approve_invoice:'Invoice approved. External payment has NOT been made.'}[action]||'Done.';
   toast(say); load(); }catch(e){} }); }
-async function recordJobPayment(btn,id,amountPence){
- const payment_reference=(prompt('External bank or payment reference (required):')||'').trim();
- if(!payment_reference){toast('Nothing recorded — payment reference is required.','bad');return;}
- const payment_date=prompt('Date payment was made (YYYY-MM-DD):',new Date().toISOString().slice(0,10));
- if(payment_date===null)return;
- await busy(btn,async()=>{try{
-   await post('/api/job-action',{id,action:'record_payment',payment_reference,payment_date,payment_amount_pence:amountPence});
-   toast('External payment recorded.');load();
- }catch(e){toast(e.message||'Could not record payment.','bad');}});
+async function variationAct(btn,id,action){
+  let reason='';
+  if(action==='decline_variation'){
+    const entry=prompt('Why was this extra work declined?');
+    if(entry===null)return;reason=entry.trim();
+    if(!reason){toast('Please record a reason.','bad');return;}
+  }
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action,reason});
+    toast(action==='approve_variation'?'Extra work reviewed. Above the mandate limit, landlord approval is still required.':'Extra work declined.');load();
+  }catch(e){toast(e.message||'Could not decide extra work.','bad');}});
+}
+async function recordJobPayment(btn,id,balance){
+  const amountText=prompt('Amount actually paid outside Roger (£). Remaining due: '+money(balance),(balance/100).toFixed(2));
+  if(amountText===null)return;
+  const amountPence=Math.round(Number(amountText)*100);
+  if(!Number.isInteger(amountPence)||amountPence<=0||amountPence>balance){toast('Payment must be positive and no more than the balance.','bad');return;}
+  const payment_reference=(prompt('External bank/payment reference (required):')||'').trim();
+  if(!payment_reference){toast('External reference required.','bad');return;}
+  const payment_date=prompt('Date bank paid (YYYY-MM-DD):',new Date().toISOString().slice(0,10));
+  if(payment_date===null)return;
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action:'record_payment',payment_reference,payment_date,payment_amount_pence:amountPence});
+    toast('External payment recorded. It was not sent by Roger.');load();}catch(e){toast(e.message||'Could not record payment.','bad');}});
+}
+async function recordJobCredit(btn,id,balance){
+  const credit_note_number=(prompt('Supplier credit note number (required):')||'').trim();
+  if(!credit_note_number)return;
+  const credit_reason=(prompt('Reason for this supplier credit:')||'').trim();
+  if(!credit_reason)return;
+  const amount=prompt('Supplier credit amount (£), up to '+money(balance),(balance/100).toFixed(2));
+  if(amount===null)return;
+  const credit_amount_pence=Math.round(Number(amount)*100);
+  if(!Number.isInteger(credit_amount_pence)||credit_amount_pence<=0||credit_amount_pence>balance){toast('Credit cannot exceed remaining balance.','bad');return;}
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action:'record_credit',
+    credit_note_number,credit_reason,credit_amount_pence});
+    toast('Supplier credit recorded. No payment was made.');load();}catch(e){toast(e.message||'Could not record credit.','bad');}});
 }
 function quoteAct(btn,id,action){ const reason=action==='decline_quote'?prompt('Reason for the trade (kept on record):')||'price not right':undefined;
   busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote reviewed. If above the spending limit, landlord approval is needed before work.':'Quote declined and sent back.'); load(); }catch(e){} }); }
@@ -921,8 +951,8 @@ async function taskAction(btn,id,action){await busy(btn,async()=>{try{await post
 
 function renderContractorInvoices(){
  const invoices=(stage.jobs||[]).filter(j=>j.invoice_pence!=null).slice().reverse();
- const action=invoices.filter(j=>["invoice_submitted","invoice_approved","awaiting_approval","rejected"].includes(j.status));
- const status=j=>j.status==="paid"?"External payment recorded":j.status==="invoice_submitted"?"Needs agent review":j.status==="invoice_approved"?"Approved — unpaid":j.status==="awaiting_approval"?"Landlord approval pending":j.status==="rejected"?"Declined — follow up":j.status;
+ const action=invoices.filter(j=>["invoice_submitted","invoice_approved","partially_paid","awaiting_approval","rejected"].includes(j.status));
+ const status=j=>j.status==="paid"?"External payment recorded":j.status==="invoice_submitted"?"Needs agent review":j.status==="invoice_approved"?"Approved — unpaid":j.status==="partially_paid"?"Part-paid; balance outstanding":j.status==="credited"?"Credited without bank payment":j.status==="awaiting_approval"?"Landlord approval pending":j.status==="rejected"?"Declined — follow up":j.status;
  const records=invoices.length?invoices.slice(0,25).map(j=>
    deskLink("Invoice "+money(j.invoice_pence)+" · "+(j.assigned_to||"Tradesperson"),
      propLine(j.property_id)+" · "+status(j)+" · Work order "+j.id,
