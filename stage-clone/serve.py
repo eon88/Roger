@@ -209,6 +209,9 @@ def save_users(data):
     atomic_json_write(USERS_FILE, data)
 
 def save_stage(data):
+    # Never persist a newly contaminated/mixed agency snapshot, even through
+    # an offline script or direct test fixture bypassing the HTTP handlers.
+    require_single_agency(data)
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") != "postgres":
         atomic_json_write(STAGE_FILE, data)
         return
