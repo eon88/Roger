@@ -28,7 +28,14 @@ class PreworkCostApprovalTests(unittest.TestCase):
                       "message": "Pipe leak", "status": "triaged",
                       "requires_prework_quote": True, "required_trade": None,
                       "assigned_to": None, "invoice_pence": None}],
-            "approvals": [], "authority": {"standing_limit_pence": 15000},
+            "approvals": [],
+            "management_agreements": [{
+                "id": "management-a", "landlord_party_id": "owner-a",
+                "property_ids": ["home-a"], "status": "active",
+                "signed_at": "2026-10-01", "updated_at": "2026-10-01T10:00:00Z",
+                "spending_limit_pence": 15000,
+            }],
+            "authority": {"standing_limit_pence": 15000},
             "audit_log": [],
         }
         self.users = {
