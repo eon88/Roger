@@ -13,7 +13,7 @@
   </header>
 
   <main id="main" aria-busy="true">
-  <div class="banner emergency"><b>Gas smell, no heat in winter, flooding, or you feel unsafe?</b> Call National Gas free on <a href="tel:+44800111999">0800 111 999</a>, 24 hours a day. For anything that can wait until morning, ring your agent on <a href="tel:+441214960123">0121 496 0123</a> or use the form below.</div>
+  <div class="banner emergency"><b>Smell gas?</b> Leave the building, avoid flames and electrical switches, and call the National Gas Emergency Service on <a href="tel:0800111999">0800 111 999</a>. <strong>Other immediate danger?</strong> Get to safety and call 999 if someone is at risk. For flooding, unsafe electrics, or loss of heat, contact your letting agent urgently using the details in your tenancy paperwork. <strong>Do not rely on this form for emergencies: it is not monitored 24/7.</strong></div>
 
   <section class="section">
     <div class="move">your home</div>
@@ -61,8 +61,8 @@
   </section>
 
   <footer class="fineprint">Your reports are kept with dates and outcomes — useful evidence at the end of a tenancy.
-    <div class="meta">Phone the office on <a href="tel:+441214960123">0121 496 0123</a> — Monday to Saturday, 8am to 8pm, and a person will answer.</div>
-    <div class="meta">Or email <a href="mailto:office@stage.example">office@stage.example</a> and we will reply within one working day.</div>
+    <div class="meta">For urgent contact details and opening hours, check your tenancy paperwork or the details your agency gave you.</div>
+    <div class="meta">Roger does not guarantee when an office will answer or send an emergency response.</div>
   </footer>
   </main>
 </div>
@@ -70,7 +70,7 @@
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let ME = "…";
-const DEMO_EMAIL = "daniel.mensah@example.com";
+// Do not fill in a made-up tenant address; ask for the current contact email.
 const STATUS_LABEL = {
   reported:"reported — the agent has it",
   new:"reported — the agent has it",
@@ -108,12 +108,12 @@ async function loadExtras(){
 function render(){
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
-  document.getElementById('issue-email').value=document.getElementById('issue-email').value||DEMO_EMAIL;
+  // Preserve the user's own email input across rerenders.
   const prop=(stage.properties||[])[0];
   document.getElementById('home-card').innerHTML=prop?`<div class="card"><h3>${esc(prop.title)}</h3>
     <div class="meta">${esc(prop.area)} · ${prop.beds} bed · managed by your agent</div>
     <div class="meta">One case book for your home: your reports, what the agent does, and when work is paid for. You only see this page.</div></div>`
-    :`<div class="empty">No home is linked to this sign-in yet. Ring the office on <a href="tel:+441214960123">0121 496 0123</a> and they will connect you to your property.</div>`;
+    :`<div class="empty">No home is linked to this sign-in yet. Contact your agency using the details in your tenancy paperwork so they can link your home.</div>`;
   const mine=(stage.cases||[]).slice().reverse();
   const flips={}; (stage.cases||[]).forEach(c=>{ const p=prevStatus[c.id]; if(p&&p!==c.status&&c.status==='resolved') flips[c.id]=1; prevStatus[c.id]=c.status; });
   document.getElementById('my-cases').innerHTML=mine.length?mine.map(c=>{
