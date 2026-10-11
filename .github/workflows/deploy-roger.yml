@@ -85,6 +85,11 @@ jobs:
             exit 1
           fi
 
+          # This public-key fingerprint is safe to show. Compare it with
+          # ssh-keygen -lf /root/.ssh/roger-github-actions.pub on Hostinger.
+          echo "GitHub SSH identity (public fingerprint):"
+          ssh-keygen -y -P '' -f "$key_file" | ssh-keygen -lf -
+
           # Derive the host label from ROGER_SSH_HOST and retain ONLY the
           # trusted ED25519 public key saved in GitHub Secrets.
           # This fixes hostname/IP alias mismatches without disabling
