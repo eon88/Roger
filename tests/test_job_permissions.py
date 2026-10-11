@@ -41,6 +41,11 @@ class JobPermissionTests(unittest.TestCase):
                 "required_trade": None,
             }],
             "approvals": [],
+            "registrations": [{
+                "id": "trade-approved", "role": "trades", "status": "approved",
+                "name": COMPANY, "trades": ["plumbing"],
+                "credentials_checked_at": "2026-10-01T10:00:00Z",
+            }],
             "audit_log": [],
             "authority": {"standing_limit_pence": 15000},
         }
