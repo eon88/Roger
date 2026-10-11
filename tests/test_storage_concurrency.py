@@ -77,6 +77,35 @@ class TransactionAndAgencyTests(unittest.TestCase):
                 with serve.storage_write_lock():
                     self.fail("unsafe mutation was allowed")
 
+    def test_post_dispatch_stays_inside_writer_lock(self):
+        h=serve.H.__new__(serve.H)
+        seen=[]
+        @contextlib.contextmanager
+        def fake_lock():
+            seen.append("acquired")
+            try:
+                yield
+            finally:
+                seen.append("released")
+        h._do_POST_with_write_lock=lambda:seen.append("handler")
+        with patch.object(serve,"storage_write_lock",fake_lock):
+            h.do_POST()
+        self.assertEqual(seen,["acquired","handler","released"])
+
+    def test_cannot_save_newly_mixed_agency_snapshot(self):
+        with tempfile.TemporaryDirectory() as root:
+            stage_file=Path(root)/"stage.json"
+            good={"agency_id":"agency-one",
+                  "properties":[{"id":"home-1","agency_id":"agency-one"}]}
+            stage_file.write_text(json.dumps(good))
+            contaminated={"agency_id":"agency-one",
+                          "properties":[{"id":"home-2","agency_id":"agency-two"}]}
+            with patch.object(serve,"STAGE_FILE",str(stage_file)), \
+                 patch.dict(os.environ,{"ROGER_STORAGE_BACKEND":"file"}):
+                with self.assertRaises(serve.AgencyBoundaryError):
+                    serve.save_stage(contaminated)
+            self.assertEqual(json.loads(stage_file.read_text()),good)
+
     def test_expired_get_session_rejected_without_mutating_user_store(self):
         h=serve.H.__new__(serve.H)
         h.parse_cookies=lambda:{"stage_session":"expired"}
@@ -195,6 +224,19 @@ class TwoTenancyIsolationTests(unittest.TestCase):
             self.h.do_GET()
             self.assertEqual(self.responses[-1][1],403)
             self.assertEqual(sent,[])
+
+    def test_foreign_tenant_cannot_post_reply_to_other_case(self):
+        with patch.object(serve,"save_stage") as save:
+            for label,foreign_case in (("A",2),("B",1),("owner-A",2),("owner-B",1)):
+                self.current=self.users[label]
+                self.h.user=self.current
+                self.h.handle_case_action({
+                    "id":foreign_case,"action":"reply","text":"forged update",
+                    "to":["agent"],
+                })
+                self.assertEqual(self.responses[-1][1],403)
+            save.assert_not_called()
+        self.assertFalse(any(c.get("thread") for c in self.stage["cases"]))
 
     def test_relinked_tenant_loses_access_to_old_case_and_document(self):
         self.current=self.users["A"]
