@@ -1902,6 +1902,13 @@ class H(SimpleHTTPRequestHandler):
                     {"error": "unverified contractor identity"}, 409
                 )
 
+        # Newly triaged repairs cannot skip quote and work authorisation.
+        if job.get("requires_prework_quote"):
+            if action in ("accept", "assign", "verify_approve"):
+                return self._json({"error": "quote approval required before assignment"}, 409)
+            if action == "start" and (not job.get("work_authorised_at")
+                                      or not job.get("approved_quote_pence")):
+                return self._json({"error": "work not authorised"}, 409)
         if action == "approve_invoice":
             if job.get("status") != "invoice_submitted":
                 return self._json({"error": "invoice must be submitted before agency approval"}, 409)
@@ -1962,7 +1969,14 @@ class H(SimpleHTTPRequestHandler):
             job.pop("gate_reason", None)
             self.audit(stage, {"actor": "agent", "action": "booking_declined", "target": job["id"]})
         elif action == "release" and job["status"] in ("in_progress", "assigned", "quote_requested"):
-            job["status"] = "open"
+            job["status"] = "triaged" if job.get("requires_prework_quote") else "open"
+            if job.get("requires_prework_quote"):
+                job.pop("work_authorised_at", None)
+                job.pop("work_authorised_by", None)
+                job.pop("approved_quote_pence", None)
+                for quote in job.get("quotes", []):
+                    if quote.get("status") == "approved":
+                        quote["status"] = "superseded"
             job["assigned_to"] = None
             job.pop("assigned_to_party_id", None)
             job.pop("requested_by", None)
@@ -1980,7 +1994,7 @@ class H(SimpleHTTPRequestHandler):
             job["assigned_to_party_id"] = selected_party_id
             c = self.post_msg(stage, job["case_id"], f"{who} has been put on this job by the agency.", to=("tenant", "trades"))
             self.audit(stage, {"actor": "agent", "action": "job_assigned", "target": job["id"], "note": who})
-        elif action in ("request_quote",) and self.user["role"] == "agent" and job["status"] in ("open", "assigned"):
+        elif action in ("request_quote",) and self.user["role"] == "agent" and job["status"] in ("triaged", "open", "assigned"):
             who = str(data.get("tradesperson", ""))[:100]
             known = {t["company"] for t in self.approved_trades(stage)}
             if who not in known:
@@ -1991,8 +2005,14 @@ class H(SimpleHTTPRequestHandler):
             self.post_msg(stage, job["case_id"], f"Quote requested from {who} — the work starts once the agency approves a price.", to=("trades",))
             self.audit(stage, {"actor": "agent", "action": "quote_requested", "target": job["id"], "note": who})
         elif action == "submit_quote" and job["status"] == "quote_requested":
+            try:
+                quote_pence = int(data.get("quote_pence", 0))
+            except (TypeError, ValueError):
+                return self._json({"error": "quote must be a positive amount in pence"}, 400)
+            if quote_pence <= 0:
+                return self._json({"error": "quote must be greater than zero"}, 400)
             job["quotes"] = job.get("quotes", [])
-            q = {"tradesperson": actor, "pence": max(0, int(data.get("quote_pence", 0))),
+            q = {"tradesperson": actor, "pence": quote_pence,
                  "note": str(data.get("note", ""))[:500], "at": now(), "status": "pending"}
             job["quotes"].append(q)
             job["status"] = "quoted"
@@ -2710,7 +2730,8 @@ class H(SimpleHTTPRequestHandler):
             job = {
                 "id": jid, "case_id": c["id"], "property_id": c["property_id"],
                 "message": c.get("message", ""), "triage": triage,
-                "required_trade": trade or None, "status": "open",
+                "required_trade": trade or None, "status": "triaged",
+                "requires_prework_quote": True,
                 "assigned_to": None, "invoice_pence": None,
                 "created_at": now(), "triaged_at": now(),
                 "triaged_by": u.get("username", "agent"), "triage_note": reason,
