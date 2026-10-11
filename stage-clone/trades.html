@@ -91,20 +91,21 @@ function render(){
       <div class="actions"><button class="btn primary" onclick="accept(this,'${esc(j.id)}')">Take this job</button></div></div>`;}).join('')
     :`<div class="empty">No open jobs right now. The agent posts work here as tenant reports come in — worth a look each morning.</div>`;
 
-  const foryou=jobs.filter(j=>['assigned','quote_requested','quoted'].includes(j.status)&&j.assigned_to===ME).slice().reverse();
+  const foryou=jobs.filter(j=>['assigned','quote_requested','quoted','awaiting_prework_approval'].includes(j.status)&&j.assigned_to===ME).slice().reverse();
   document.getElementById('foryou-jobs').innerHTML=foryou.length?foryou.map(j=>{
     const th=((stage.threads||{})[j.case_id]||[]);
     const msgs=th.length?`<details class="msgs"><summary>Conversation · ${th.length}</summary>`+th.map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> · ${when(t.at)}</span><div>${esc(t.text)}</div></div>`).join('')+`</details>`:'';
     const cta={assigned:`<button class="btn primary" onclick="jobGo(this,'${esc(j.id)}','start')">Start job</button>`,
       quote_requested:`<div class="field" style="margin:4px 0"><label for="q-${esc(j.id)}">Your quote (£)</label><input type="number" id="q-${esc(j.id)}" min="0" step="0.01" placeholder="0.00" style="max-width:140px" autocomplete="off"></div><div class="field" style="margin:0 0 6px"><label for="qn-${esc(j.id)}">Note (what's included)</label><input id="qn-${esc(j.id)}" placeholder="parts, labour, visit count" autocomplete="off" style="max-width:260px"></div><button class="btn primary" onclick="sendQuote(this,'${esc(j.id)}')">Send quote</button>`,
-      quoted:`<span class="badge quoted">quote sent — waiting for the agency to approve</span>`}[j.status];
-    const label={assigned:'assigned to you — nothing agreed on price yet',quote_requested:'the agency wants a price before work',quoted:'you quoted, agent reviewing'}[j.status];
+      quoted:`<span class="badge quoted">quote sent — waiting for the agency to approve</span>`,
+      awaiting_prework_approval:`<span class="badge pending">awaiting landlord approval before work</span>`}[j.status];
+    const label={assigned:'authorised job — you can arrange a visit',quote_requested:'the agency wants a price before work',quoted:'you quoted, agent reviewing',awaiting_prework_approval:'landlord approval needed — do not start work'}[j.status];
     return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · ${label}</h3><span class="badge ${esc(j.status)}">${esc(j.status.replace('_',' '))}</span></div>
       <div class="meta">${prop(j.property_id)} · ${when(j.created_at)}</div>
       <div class="details">${esc(j.message)}</div>
       ${j.approved_quote_pence!=null?`<div class="meta">approved quote: ${money(j.approved_quote_pence)}</div>`:''}
       ${msgs}
-      <div class="actions">${cta} <button class="btn ghost" onclick="release(this,'${esc(j.id)}')">Not me — hand back</button></div></div>`;}).join('')
+      <div class="actions">${cta} ${j.status==='awaiting_prework_approval'?'':`<button class="btn ghost" onclick="release(this,'${esc(j.id)}')">Not me — hand back</button>`}</div></div>`;}).join('')
     :'<div class="empty">Nothing addressed to you. The agent can assign jobs directly or ask you for a quote first.</div>';
 
   const mine=jobs.filter(j=>j.status==='in_progress'&&j.assigned_to===ME).slice().reverse();
