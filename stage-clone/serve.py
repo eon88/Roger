@@ -4270,7 +4270,7 @@ class H(SimpleHTTPRequestHandler):
             channels = data.get("channels") if isinstance(data.get("channels"), list) else ["in_app"]
             if not channels or any(c not in ("in_app", "email") for c in channels):
                 return self._json({"error": "choose supported notification channels"}, 400)
-            channels = sorted(set(channels))
+            channels = list(dict.fromkeys(channels))
             email_to = str(data.get("email_to", "")).strip().lower()[:254]
             if "email" in channels:
                 if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email_to):
