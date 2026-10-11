@@ -2109,6 +2109,9 @@ class H(SimpleHTTPRequestHandler):
                 return False
         if not verify.get("service_areas"):
             return False
+        submitted_trades = {str(t).strip().lower() for t in reg.get("trades", []) if isinstance(t, str)}
+        if not verify.get("verified_trades") or not set(verify["verified_trades"]).issubset(submitted_trades):
+            return False
         if required_trade:
             required_trade = str(required_trade).strip().lower()
             if required_trade not in verify.get("verified_trades", []):
