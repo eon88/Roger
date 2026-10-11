@@ -264,8 +264,8 @@ class ApprovalAppointmentTests(unittest.TestCase):
             self.stage["appointments"][0]["status"], "declined"
         )
 
-    def test_correct_contractor_can_confirm(self):
-        self.assertEqual(self.appointment("trade1"), 200)
+    def test_contractor_cannot_confirm_for_the_tenant(self):
+        self.assertEqual(self.appointment("trade1"), 403)
 
     def test_agent_can_cancel_appointment(self):
         self.assertEqual(
