@@ -22,7 +22,7 @@ class PreworkCostApprovalTests(unittest.TestCase):
                 {"id": "owner-b", "account_id": "account-owner-b", "roles": ["landlord"],
                  "display_name": "Other Owner", "status": "active"},
             ],
-            "properties": [{"id": "home-a", "landlord_party_id": "owner-a", "landlord": "Example Owner"}],
+            "properties": [{"id": "home-a", "landlord_party_id": "owner-a", "landlord": "Example Owner", "area": "Leeds"}],
             "cases": [{"id": 10, "type": "issue", "property_id": "home-a", "status": "dispatched"}],
             "jobs": [{"id": "job-1", "case_id": 10, "property_id": "home-a",
                       "message": "Pipe leak", "status": "triaged",
@@ -43,6 +43,28 @@ class PreworkCostApprovalTests(unittest.TestCase):
             }],
             "authority": {"standing_limit_pence": 15000},
             "audit_log": [],
+        }
+        # Synthetic independent check and verified, linked insurer/qualification files.
+        # The code tests do not claim an outside provider was actually contacted.
+        self.stage["documents"] = [
+            {"id": "doc-ins", "party_id": "trade-a", "document_type": "trades_document",
+             "status": "verified", "verified_at": "2026-10-01T10:00:00Z",
+             "expiry_date": "2099-12-31", "storage_key": "synthetic-insurer-file"},
+            {"id": "doc-qual", "party_id": "trade-a", "document_type": "trades_document",
+             "status": "verified", "verified_at": "2026-10-01T10:00:00Z",
+             "expiry_date": "2099-12-31", "storage_key": "synthetic-qualification-file"},
+        ]
+        self.stage["registrations"][0]["contractor_verification"] = {
+            "status": "verified", "registration_id": "trade-reg-1", "party_id": "trade-a",
+            "checked_at": "2026-10-01T10:00:00Z", "checked_by": "agent-fixture",
+            "valid_until": "2099-12-31",
+            "insurance_document_id": "doc-ins",
+            "insurance_document_verified_at": "2026-10-01T10:00:00Z",
+            "qualification_document_id": "doc-qual",
+            "qualification_document_verified_at": "2026-10-01T10:00:00Z",
+            "check_source": "synthetic-issuer", "external_check_reference": "MOCK-QUAL-123",
+            "insurance_check_source": "synthetic-insurer", "insurance_check_reference": "MOCK-INS-123",
+            "service_areas": ["LEEDS"], "verified_trades": ["plumbing"],
         }
         self.users = {
             "agent": {"role": "agent", "username": "agent",
