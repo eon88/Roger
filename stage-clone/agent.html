@@ -245,6 +245,13 @@ function renderAttentionBoard(){
   const add=(list,label,detail,view,id,tag)=>list.push({label,detail,view,id,tag});
   (stage.cases||[]).filter(c=>activeRecord(c)&&(c.status==='new'||c.status==='reported'||Number(c.triage?.urgency)>=2)).sort((a,b)=>(Number(b.triage?.urgency)||0)-(Number(a.triage?.urgency)||0)||String(b.submitted_at||'').localeCompare(String(a.submitted_at||''))).forEach(c=>add(needs,'Case #'+c.id+' · '+(c.type||'case'),propertyName(c.property_id)+' · '+(c.name||'Unidentified person'),'cases','case-'+c.id,Number(c.triage?.urgency)>=2?'urgent':c.status));
   (stage.jobs||[]).filter(j=>['open','quoted','pending_verification'].includes(j.status)).forEach(j=>add(needs,'Job '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,j.status));
+  // Invoices originate from the tradesperson's completed work order.
+  // Small invoices auto-settled under authority remain in Finance, not the action queue.
+  const followupInvoices=(stage.jobs||[]).filter(j=>j.invoice_pence!=null&&['awaiting_approval','rejected'].includes(j.status));
+  followupInvoices.forEach(j=>add(needs,
+    'Trades invoice · '+money(j.invoice_pence)+' · '+(j.assigned_to||'Contractor'),
+    propertyName(j.property_id)+' · '+(j.status==='rejected'?'Landlord declined — agent follow-up':'Waiting for landlord approval'),
+    'jobs','job-'+j.id,j.status==='rejected'?'overdue':'pending'));
   (stage.registrations||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,(x.role||'registration')+' application · '+(x.name||x.id),x.email||'Needs review','registrations','reg-'+x.id,'pending'));
   (window._docs||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,'Verify document · '+(x.title||x.file_name||x.id),propertyName(x.property_id),'overview','doc-'+x.id,'pending'));
   (window.complianceRecords||[]).filter(x=>!['superseded','current'].includes(x.status)||x.reminder_due).forEach(x=>add(needs,x.status==='missing'?'Missing compliance · '+x.requirement_type.replace(/_/g,' '):x.status==='expired'?'Expired compliance · '+x.requirement_type.replace(/_/g,' '):'Compliance reminder · '+x.requirement_type.replace(/_/g,' '),propertyName(x.property_id)+(x.expiry_date?' · expires '+x.expiry_date:''),'compliance',x.id,x.status==='expired'?'overdue':'compliance'));
@@ -282,6 +289,7 @@ function renderAttentionBoard(){
     bucket('new trades applications',newTradesApplications,'prospects',false)+
     bucket('approvals waiting',approvalsWaiting,'jobs',true)+
     bucket('quotes waiting',quotesWaiting,'jobs',true)+
+    bucket('invoice follow-ups',followupInvoices,'jobs',followupInvoices.length>0)+
     bucket('appointments today',appointmentsToday,'overview',false)+
     bucket('overdue actions',overdue,'overview',true)+
     bucket('rent arrears',rentArrears,'money',true)+
@@ -807,6 +815,17 @@ async function createTask(btn){
 }
 async function taskAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/task-action',{id,action});toast('Task updated.');load();}catch(e){}});}
 
+function renderContractorInvoices(){
+ const invoices=(stage.jobs||[]).filter(j=>j.invoice_pence!=null).slice().reverse();
+ const action=invoices.filter(j=>["awaiting_approval","rejected"].includes(j.status));
+ const status=j=>j.status==="paid"?"Paid / settled":j.status==="awaiting_approval"?"Landlord approval pending":j.status==="rejected"?"Declined — follow up":j.status;
+ const records=invoices.length?invoices.slice(0,25).map(j=>
+   deskLink("Invoice "+money(j.invoice_pence)+" · "+(j.assigned_to||"Tradesperson"),
+     propLine(j.property_id)+" · "+status(j)+" · Work order "+j.id,
+     "jobs","job-"+j.id,j.status==="awaiting_approval"?"pending":j.status==="rejected"?"overdue":"completed")
+   ).join(""):"<div class=\"empty\">No contractor invoices received yet. Completed jobs with submitted invoices appear here.</div>";
+ return `<div class="move">contractor invoices</div><div class="card"><div class="cardtop"><h3>Invoices from tradespeople</h3><span class="badge ${action.length?"pending":"completed"}">${action.length} need follow-up</span></div><p class="fineprint">Every entry links to its actual job. Roger applies the agency standing-authority rules; this screen does not transfer money.</p>${records}</div>`;
+}
 function renderMoney(){
  const eligible=(stage.tenancies||[]).filter(t=>t.agreement_status==='signed'&&['move_in_scheduled','active','renewal','notice_given'].includes(t.status));
  const tenOptions=eligible.map(t=>{const p=(stage.properties||[]).find(x=>x.id===t.property_id)||{};return '<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc(p.title||t.property_id)+' · '+money(t.rent_amount_pence)+'</option>';}).join('');
@@ -822,7 +841,7 @@ function renderMoney(){
    (x.adjustments||[]).map(a=>'<div class="thread">Adjustment '+(a.amount_pence>=0?'+':'')+money(a.amount_pence)+' · '+esc(a.reason)+'</div>').join('')+
    '<div class="actions"><input class="receipt-amount" type="number" min="0.01" step="0.01" placeholder="Receipt (£)" aria-label="Receipt amount in pounds"><input class="receipt-date" type="date" value="'+new Date().toISOString().slice(0,10)+'" aria-label="Receipt date"><button class="btn primary" data-entry-id="'+esc(x.id)+'" onclick="recordRentReceipt(this)">Record receipt</button><button class="btn" data-entry-id="'+esc(x.id)+'" onclick="adjustRentEntry(this)">Adjust charge</button></div></div>';
  }).join('');
- document.getElementById('view-money').innerHTML='<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
+ document.getElementById('view-money').innerHTML=renderContractorInvoices()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
  '<div class="stats"><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat"><div class="value">'+money(feeTotal)+'</div><div class="label">management fees recorded</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
  '<div class="card"><h2>Generate rent schedule</h2><div class="grid2"><label class="field"><span>Signed tenancy</span><select id="ledger-tenancy">'+tenOptions+'</select></label><label class="field"><span>First due date</span><input id="ledger-first-due" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label class="field"><span>Periods (max 36)</span><input id="ledger-periods" type="number" min="1" max="36" value="12"></label></div><button class="btn primary" onclick="generateRentSchedule(this)">Generate schedule</button>'+(eligible.length?'':'<div class="fineprint">A signed tenancy with move-in scheduled or active status is required.</div>')+'</div>'+
  '<div class="card"><h2>Generate landlord statement</h2><div class="grid2"><label class="field"><span>Landlord</span><select id="statement-landlord">'+landlordOptions+'</select></label><label class="field"><span>Period start</span><input id="statement-start" type="date"></label><label class="field"><span>Period end</span><input id="statement-end" type="date"></label></div><button class="btn primary" onclick="createLandlordStatement(this)">Create statement snapshot</button>'+(landlords.length?'':'<div class="fineprint">Create a landlord Party and active management authority first.</div>')+'</div>'+
