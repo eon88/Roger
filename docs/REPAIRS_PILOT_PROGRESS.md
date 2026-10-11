@@ -48,6 +48,27 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 
 **Status: PARTIAL / code-tested; not fully accepted.** Do not silently mark Task 02 DONE. The user asked to defer the extra Task 01 visit browser test and move on.
 
+## Task 03 — quote, invoice and external payment controls (11 October 2026)
+
+**Status: PARTIAL / implemented and code-tested with synthetic fixtures; NOT deployed or approved to handle client money.**
+
+- [x] Contractor portal sends labour, materials and explicitly chosen VAT rates as itemised quote lines; server validates net/VAT/gross in integer pence and refuses bad totals.
+- [x] Quotes retain versions, declared scope and frozen breakdowns. Above-limit owner approval is tied to the exact version, scope, quote amount and current management mandate.
+- [x] Extra work uses its own approval. The agent can approve within the full combined spending limit; above it the linked landlord approves the exact extra cost before that extra scope is authorised. Pending variations block invoicing.
+- [x] New trades UI asks for supplier invoice number, net amount and VAT. The server checks duplicate supplier invoice numbers for the same contractor across jobs and ensures that itemised totals agree.
+- [x] Agent records external payments in separate dated entries and can record supplier credits by number and reason. Part-payments leave a balance; all-credit settlements are credited, never falsely bank-paid.
+- [x] Agent and landlord views distinguish approved invoices, actual external payment references, credits and outstanding balances. Owner statement snapshots count external entries by payment date, not gross invoice face value.
+- [x] Python financial regression tests cover line arithmetic, quote revisions, authority, variations, duplicate numbers, credits, part-payments and statement figures.
+
+**Still required:**
+
+- [ ] Human check of supplier invoice/credit-note evidence and accounting/VAT rules. Legacy API submissions without itemisation or a supplier number are still allowed for compatibility, but flagged as incomplete.
+- [ ] Transaction-safe concurrent updates, including duplicate invoices and external receipts (Task 06). The shared JSON snapshot storage is not financial-grade.
+- [ ] A dedicated populated four-role browser finance journey, not just general login/property-submission smoke.
+- [ ] Independent reconciliation against real bank records; Roger does not verify, receive or transfer money.
+
+**Release:** Remains in draft PR #5; no live Hostinger deployment, no payments integration.
+
 ## Next P0 tasks (NOT DONE)
 1. Appointments and access: propose/accept/reschedule/cancel/no-access, contact consent, key instructions and a parts-delay branch. Block misleading “scheduled” statuses.
 2. Case control: single next person/action and due date, duplicate reporting/idempotency, internal/private vs shared notes, disputes, reopening after completed work.
