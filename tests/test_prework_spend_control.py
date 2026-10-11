@@ -134,6 +134,49 @@ class PreworkCostApprovalTests(unittest.TestCase):
         self.assertEqual(self.approve_quote(), 200)
         self.assertEqual(job["status"], "assigned")
 
+    def test_without_signed_explicit_mandate_no_spending_is_authorised(self):
+        self.stage["management_agreements"] = []
+        self.request_quote()
+        self.submit(12000)
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.approve_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_wrong_landlords_agreement_cannot_grant_spending(self):
+        self.stage["management_agreements"][0]["landlord_party_id"] = "owner-b"
+        self.request_quote()
+        self.submit(12000)
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.approve_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_let_only_agreement_is_not_full_management_authority(self):
+        self.stage["management_agreements"][0]["agreement_type"] = "let_only"
+        self.request_quote()
+        self.submit(12000)
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.approve_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_per_property_limit_replaces_global_demo_limit(self):
+        self.stage["management_agreements"][0]["spending_limit_pence"] = 5000
+        # The stale global £150 figure MUST NOT authorise this £120 job.
+        self.request_quote()
+        self.submit(12000)
+        self.assertEqual(self.approve_quote(), 200)
+        self.assertEqual(self.stage["jobs"][0]["status"], "awaiting_prework_approval")
+        self.assertEqual(self.stage["approvals"][0]["mandate_snapshot"]["limit_pence"], 5000)
+
+    def test_changed_mandate_voids_pending_owner_approval(self):
+        self.request_quote()
+        self.submit(25000)
+        self.approve_quote()
+        self.stage["management_agreements"][0]["spending_limit_pence"] = 30000
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.landlord_decides(), 409)
+        self.assertEqual(self.stage, before)
+        self.assertNotIn("work_authorised_at", self.stage["jobs"][0])
+
     def test_invoice_over_approved_quote_does_not_change_data(self):
         self.request_quote()
         self.submit(12000)
