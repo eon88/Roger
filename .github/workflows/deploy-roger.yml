@@ -67,7 +67,23 @@ jobs:
 
           key_file="$RUNNER_TEMP/roger_deploy_key"
           hosts_file="$RUNNER_TEMP/roger_known_hosts"
-          printf '%s\n' "$ROGER_KEY" > "$key_file"
+
+          # GitHub Secrets may contain a traditional multiline OpenSSH key or
+          # a one-line base64 encoding of the SAME private key. The latter
+          # prevents accidental loss of key line breaks during copy/paste.
+          if [[ "$ROGER_KEY" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
+            printf '%s\n' "$ROGER_KEY" | tr -d '\r' > "$key_file"
+          else
+            if ! printf '%s' "$ROGER_KEY" | tr -d '[:space:]' | base64 --decode > "$key_file"; then
+              echo "::error::ROGER_SSH_PRIVATE_KEY is not a valid OpenSSH key or base64-encoded private key."
+              exit 1
+            fi
+          fi
+          chmod 600 "$key_file"
+          if ! ssh-keygen -y -P '' -f "$key_file" >/dev/null 2>&1; then
+            echo "::error::Invalid ROGER_SSH_PRIVATE_KEY. On the VPS run: base64 -w0 /root/.ssh/roger-github-actions ; echo — and save the single-line output as the GitHub Actions secret."
+            exit 1
+          fi
 
           # Derive the host label from ROGER_SSH_HOST and retain ONLY the
           # trusted ED25519 public key saved in GitHub Secrets.
