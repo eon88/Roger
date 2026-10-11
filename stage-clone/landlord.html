@@ -2,8 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your properties | Stage portal</title>
+<title>Roger | Landlord portal</title>
 <link rel="stylesheet" href="/dash.css">
+<style>
+:root{--paper:#f3f5f1;--card:#fff;--ink:#1b3026;--muted:#687a70;--line:#e2e9e2;--accent:#2d6047;--accent-deep:#193e30;--accent-soft:#eaf2eb;--font-ui:Inter,"Segoe UI",system-ui,sans-serif;--font-display:Inter,"Segoe UI",system-ui,sans-serif;--r:15px}
+body{background:var(--paper)}
+.shell{max-width:1120px}
+.card{border-radius:15px;background:#fff;border-color:var(--line);box-shadow:0 4px 20px rgba(30,55,38,.035)}
+.brand h1{font-family:var(--font-display);font-weight:750;letter-spacing:-.6px}
+.rent-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.rent-stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}
+.rent-stat strong{display:block;font-size:26px;letter-spacing:-.6px}
+.rent-stat span{font-size:13px;color:var(--muted)}
+.rent-ledger-item{display:flex;gap:16px;justify-content:space-between;align-items:flex-start;padding:17px 0;border-top:1px solid var(--line)}
+.rent-ledger-item:first-child{border-top:0;padding-top:0}
+.rent-ledger-item h3{font-size:15px;font-family:var(--font-ui);font-weight:650}
+.rent-ledger-item .meta{margin:4px 0}
+.rent-ledger-right{text-align:right;flex-shrink:0}
+.rent-status{display:inline-block;border-radius:99px;padding:3px 10px;font-size:12px;font-weight:700;background:#eef0ed;color:#47604f}
+.rent-status.paid{background:#e5f2e7;color:#27643c}
+.rent-status.overdue{background:#ffe9e4;color:#9a3028}
+.rent-status.partial{background:#e6edfb;color:#315e98}
+.rent-status.due{background:#f6eddb;color:#775a22}
+.rent-receipt{font-size:12px;color:#42714e;margin-top:8px}
+@media(max-width:550px){.rent-cards{grid-template-columns:1fr}.rent-ledger-item{flex-direction:column;gap:8px}.rent-ledger-right{text-align:left}}
+</style>
 </head>
 <body>
 
@@ -24,6 +47,11 @@
   <section class="section">
     <div class="move">money in and out</div>
     <div id="statement"><div class="skel c"></div></div>
+  </section>
+
+  <section class="section">
+    <div class="move">rent payments &amp; arrears</div>
+    <div id="rent-ledger"><div class="skel c"></div></div>
   </section>
 
   <section class="section">
@@ -61,7 +89,7 @@ async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-
   const j=await r.json().catch(()=>({})); if(!r.ok){toast(j.error||'failed','bad');throw new Error(j.error);} return j;}
 function toast(m,k){const el=document.createElement('div');el.className='toast '+(k||'');el.textContent=m;
   document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
-let stage, prevStatus={}, appts=[], docs=[];
+let stage, prevStatus={}, appts=[], docs=[], rentEntries=[], rentError=false;
 async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
@@ -71,6 +99,8 @@ async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); r
 async function loadExtras(){
   try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
   try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
+  try{ const x=await api('/api/landlord/rent-ledger'); rentEntries=x.entries||[]; rentError=false; }
+  catch(e){ rentEntries=[]; rentError=true; }
 }
 function fmtDate(iso){ if(!iso) return '—'; const s=new Date(iso); return s.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
@@ -119,12 +149,13 @@ function render(){
   const awaiting=myJobs.filter(j=>j.status==='awaiting_approval');
   const rentMo=props.reduce((s,p)=>s+p.rent,0);
   document.getElementById('statement').innerHTML=`<div class="card"><div class="grid2" style="gap:0">
-    <div><div class="label">Rent in (your ${props.length} properties)</div><div class="money">${money(rentMo)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div></div>
+    <div><div class="label">Scheduled monthly rent (your ${props.length} properties)</div><div class="money">${money(rentMo)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div></div>
     <div><div class="label">Repairs paid all-time</div><div class="money">${money(paidTotal)}</div><div class="meta">${paid.length} invoice${paid.length===1?'':'s'}${underLimit.length?` · ${underLimit.length} auto-settled under your limit`:''}</div></div>
     <div><div class="label">Awaiting decision</div><div class="money">${awaiting.length?money(awaiting.reduce((s,j)=>s+(j.invoice_pence||0),0)):'—'}</div><div class="meta">${awaiting.length?awaiting.map(j=>esc(j.id)).join(', '):'nothing waiting'}</div></div>
     <div><div class="label">Standing authority</div><div class="money">£${((stage.authority?.standing_limit_pence||15000)/100).toFixed(0)}</div><div class="actions" style="margin-top:6px"><button class="btn ghost" onclick="changeLimit()">Change limit</button></div></div>
   </div>
-  <div class="fineprint">Receipts, management-fee breakdown and monthly digests are on the roadmap — the data model already carries every figure shown here.</div></div>`;
+  <div class="fineprint">Scheduled rent is not the same as rent received. Actual payment dates, balances and arrears are shown below.</div></div>`;
+  renderRentLedger(props);
 
   // Cases on my properties (live vocabulary)
   const cases=(stage.cases||[]).filter(c=>pids.includes(c.property_id)).slice().reverse();
@@ -159,6 +190,32 @@ function render(){
     :`<div class="empty">Nothing on file yet. Tenancy agreements and deposit receipts for your properties appear here once the office uploads them.</div>`;
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
+}
+function renderRentLedger(props){
+  const host=document.getElementById("rent-ledger");
+  if(!host)return;
+  if(rentError){host.innerHTML='<div class="card">Rent records could not be loaded. Please try again.</div>';return;}
+  const propertyIds=new Set(props.map(p=>p.id));
+  const items=rentEntries.filter(x=>propertyIds.has(x.property_id)).slice().sort((a,b)=>String(b.due_date||"").localeCompare(String(a.due_date||"")));
+  if(!items.length){host.innerHTML='<div class="card"><div class="meta">No rent payments scheduled yet. Your agent will create the rent schedule once a tenancy is signed.</div></div>';return;}
+  const sum=(list,key)=>list.reduce((total,x)=>total+Math.max(0,Number(x[key])||0),0);
+  const today=new Date().toISOString().slice(0,10);
+  const collected=sum(items,"amount_received_pence");
+  const overdue=sum(items.filter(x=>x.status==="overdue"),"balance_pence");
+  const upcoming=sum(items.filter(x=>x.due_date>=today && x.status!=="paid"),"balance_pence");
+  const d=iso=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(String(iso)))return iso||"—";const [y,m,day]=iso.split("-");return day+"/"+m+"/"+y;};
+  host.innerHTML=`<div class="rent-cards">
+    <div class="rent-stat"><strong>${money(collected)}</strong><span>Rent received</span></div>
+    <div class="rent-stat"><strong>${money(overdue)}</strong><span>Overdue balance</span></div>
+    <div class="rent-stat"><strong>${money(upcoming)}</strong><span>Upcoming / due</span></div>
+  </div><div class="card"><div class="cardtop"><h3>Rent payment history</h3><span class="meta">${items.length} scheduled period${items.length===1?"":"s"}</span></div>
+  <p class="fineprint">Payments are recorded by your agent; bank settlement is not automatically verified.</p>
+  ${items.map(x=>{
+    const property=props.find(p=>p.id===x.property_id);
+    const status=["paid","partial","overdue","due"].includes(x.status)?x.status:"due";
+    const receipts=(x.payments||[]).filter(p=>p.received_date).map(p=>`<div class="rent-receipt">Received ${esc(d(p.received_date))} · ${money(p.amount_pence)}</div>`).join("");
+    return `<div class="rent-ledger-item"><div><h3>${esc(property?.title||"Your property")}</h3><div class="meta">Due ${esc(d(x.due_date))} · ${money(x.amount_due_pence)} scheduled</div><div class="meta">Received ${money(x.amount_received_pence)} · Remaining ${money(x.balance_pence)}</div>${receipts}</div><div class="rent-ledger-right"><span class="rent-status ${status}">${status==="due"?"Due":status==="overdue"?"Overdue":status==="partial"?"Part-paid":"Paid"}</span></div></div>`;
+  }).join("")}</div>`;
 }
 function cMsgs(c){ const th=c.thread||[]; if(!th.length) return '';
   return `<details class="msgs"><summary>Conversation · ${th.length}</summary>`+
