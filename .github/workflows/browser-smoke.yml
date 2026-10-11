@@ -157,7 +157,12 @@ jobs:
                       'prospects', 'people', 'properties', 'history'
                     ];
                     for (const view of views) {
-                      await page.locator('nav a[data-view="' + view + '"]').click();
+                      const link = page.locator('nav a[data-view="' + view + '"]');
+                      if (await link.locator('xpath=ancestor::details').count()) {
+                        // V5 navigation keeps secondary tools in an accessible disclosure.
+                        await page.locator('nav details.mvp-more summary').click();
+                      }
+                      await link.click();
                     }
                   }
                   if (errors.length) throw new Error('Uncaught page errors: ' + errors.join(' | '));
@@ -175,12 +180,60 @@ jobs:
                   await context.close();
                 }
               }
+              // Landlord property wizard -> Agent approval -> Landlord sees decision.
+              const portal = async role => {
+                const context=await browser.newContext();
+                const page=await context.newPage();
+                await page.goto(base+'/login');
+                await page.locator('#u').fill('lab-'+role);
+                await page.locator('#p').fill(password);
+                await Promise.all([
+                  page.waitForURL(base+'/'+role,{timeout:12000}),
+                  page.locator('#go').click()
+                ]);
+                await page.locator('#main[aria-busy="false"]').waitFor({timeout:12000});
+                return {context,page};
+              };
+              const landlordA=await portal('landlord');
+              try {
+                const page=landlordA.page;
+                await page.locator('#prop-address').fill('12 Example Road');
+                await page.locator('#prop-postcode').fill('TW9 1AA');
+                await page.locator('#prop-area').fill('Richmond');
+                await page.locator('#wizard-next').click();
+                await page.locator('#prop-beds').fill('2');
+                await page.locator('#prop-rent').fill('2250');
+                await page.locator('#wizard-next').click();
+                await page.locator('#wizard-next').click();
+                await page.locator('#wizard-send').click();
+                await page.locator('#my-submissions').getByText('Awaiting agent review').waitFor({timeout:12000});
+                console.log('PASS landlord: property submitted from four-step wizard');
+              } finally { await landlordA.context.close(); }
+              const agentA=await portal('agent');
+              try {
+                const page=agentA.page;
+                await page.locator('nav a[data-view="properties"]').click();
+                await page.locator('#view-properties #submission-submission-1').waitFor({timeout:12000});
+                await page.locator('#view-properties button[data-submission-id="submission-1"]').first().click();
+                await page.locator('#view-properties #property-onboarded-1').waitFor({timeout:12000});
+                const publicListings=await page.evaluate(async()=> (await (await fetch('/api/public')).json()).properties);
+                assert.equal(publicListings.length,0);
+                console.log('PASS agent: reviewed and approved for onboarding without publishing');
+              } finally { await agentA.context.close(); }
+              const landlordB=await portal('landlord');
+              try {
+                await landlordB.page.locator('#my-submissions').getByText('Approved for onboarding').waitFor({timeout:12000});
+                assert.equal(await landlordB.page.locator('#my-props .card').count(),1);
+                console.log('PASS landlord: decision and property persist across logins');
+              } finally { await landlordB.context.close(); }
             } finally {
               await browser.close();
             }
             console.log('FOUR-ROLE BROWSER SMOKE PASSED');
           })().catch(err => { console.error(err.stack || err); process.exitCode = 1; });
           JS
+      - name: Exercise full role-based repair journey with Chromium
+        run: node tests/full_repair_browser.cjs
       - name: Upload browser failure screenshots
         if: failure()
         uses: actions/upload-artifact@v4

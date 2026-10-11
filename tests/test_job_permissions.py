@@ -41,6 +41,11 @@ class JobPermissionTests(unittest.TestCase):
                 "required_trade": None,
             }],
             "approvals": [],
+            "registrations": [{
+                "id": "trade-approved", "role": "trades", "status": "approved",
+                "name": COMPANY, "trades": ["plumbing"],
+                "credentials_checked_at": "2026-10-01T10:00:00Z",
+            }],
             "audit_log": [],
             "authority": {"standing_limit_pence": 15000},
         }
@@ -144,8 +149,56 @@ class JobPermissionTests(unittest.TestCase):
         self.assertEqual(
             self.act(user="trade1", action="complete"), 200
         )
-        self.assertEqual(self.job["status"], "paid")
+        self.assertEqual(self.job["status"], "invoice_submitted")
+        self.assertNotIn("paid_at", self.job)
         self.saved.assert_called_once()
+
+    def test_agent_approval_is_not_payment(self):
+        self.assertEqual(self.act(user="trade1", action="complete"), 200)
+        self.assertEqual(self.act(user="agent", action="approve_invoice"), 200)
+        self.assertEqual(self.job["status"], "invoice_approved")
+        self.assertNotIn("paid_at", self.job)
+
+    def test_partial_payment_keeps_balance_open_and_requires_external_reference(self):
+        from datetime import datetime, timezone
+        self.job.update(status="invoice_approved", invoice_pence=1000)
+        date = datetime.now(timezone.utc).date().isoformat()
+        self.denied(expected=400, user="agent", action="record_payment",
+                    payment_amount_pence=1000, payment_date=date)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment", payment_reference="BANK-PART-1",
+            payment_amount_pence=999, payment_date=date), 200)
+        self.assertEqual(self.job["status"], "partially_paid")
+        self.assertEqual(self.job["balance_due_pence"], 1)
+        self.assertEqual(len(self.job["payments"]), 1)
+        self.saved.reset_mock()
+        self.denied(expected=409, user="agent", action="record_payment",
+                    payment_reference="BANK-PART-1", payment_amount_pence=1, payment_date=date)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment", payment_reference="BANK-PART-2",
+            payment_amount_pence=1, payment_date=date), 200)
+        self.assertEqual(self.job["status"], "paid")
+        self.assertEqual(self.job["balance_due_pence"], 0)
+
+    def test_payment_recorded_once_after_approval(self):
+        from datetime import datetime, timezone
+        self.job.update(status="invoice_approved", invoice_pence=1000)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment",
+            payment_reference="BANK-123", payment_amount_pence=1000,
+            payment_date=datetime.now(timezone.utc).date().isoformat()), 200)
+        self.assertEqual(self.job["status"], "paid")
+        self.assertEqual(self.job["payment_reference"], "BANK-123")
+        self.assertEqual(self.job["payment_amount_pence"], 1000)
+        self.assertEqual(self.act(
+            user="agent", action="record_payment",
+            payment_reference="BANK-123", payment_amount_pence=1000,
+            payment_date=datetime.now(timezone.utc).date().isoformat()), 409)
+
+    def test_invoice_above_approved_quote_needs_variation(self):
+        self.job.update(status="invoice_submitted", invoice_pence=25000,
+                        approved_quote_pence=20000)
+        self.denied(expected=409, user="agent", action="approve_invoice")
 
     def test_own_job_release_allowed(self):
         self.assertEqual(

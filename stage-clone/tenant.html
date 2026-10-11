@@ -13,7 +13,8 @@
   </header>
 
   <main id="main" aria-busy="true">
-  <div class="banner emergency"><b>Gas smell, no heat in winter, flooding, or you feel unsafe?</b> Call National Gas free on <a href="tel:+44800111999">0800 111 999</a>, 24 hours a day. For anything that can wait until morning, ring your agent on <a href="tel:+441214960123">0121 496 0123</a> or use the form below.</div>
+  <div id="office-contact" class="banner" aria-live="polite">Office contact details are not yet confirmed. Use your signed paperwork.</div>
+  <div class="banner emergency"><b>Smell gas?</b> Leave the building, avoid flames and electrical switches, and call the National Gas Emergency Service on <a href="tel:0800111999">0800 111 999</a>. <strong>Other immediate danger?</strong> Get to safety and call 999 if someone is at risk. For flooding, unsafe electrics, or loss of heat, contact your letting agent urgently using the details in your tenancy paperwork. <strong>Do not rely on this form for emergencies: it is not monitored 24/7.</strong></div>
 
   <section class="section">
     <div class="move">your home</div>
@@ -61,8 +62,8 @@
   </section>
 
   <footer class="fineprint">Your reports are kept with dates and outcomes — useful evidence at the end of a tenancy.
-    <div class="meta">Phone the office on <a href="tel:+441214960123">0121 496 0123</a> — Monday to Saturday, 8am to 8pm, and a person will answer.</div>
-    <div class="meta">Or email <a href="mailto:office@stage.example">office@stage.example</a> and we will reply within one working day.</div>
+    <div class="meta">For urgent contact details and opening hours, check your tenancy paperwork or the details your agency gave you.</div>
+    <div class="meta">Roger does not guarantee when an office will answer or send an emergency response.</div>
   </footer>
   </main>
 </div>
@@ -70,14 +71,16 @@
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let ME = "…";
-const DEMO_EMAIL = "daniel.mensah@example.com";
+// Do not fill in a made-up tenant address; ask for the current contact email.
 const STATUS_LABEL = {
   reported:"reported — the agent has it",
   new:"reported — the agent has it",
   dispatched:"a job is open for it",
   in_progress:"someone is on it",
-  awaiting_approval:"fixed — waiting on the landlord to approve the bill",
-  resolved:"sorted — paid",
+  awaiting_approval:"invoice under review — you can still report unresolved work",
+  awaiting_prework_approval:"landlord reviewing the quote — work is not authorised yet",
+  resolved:"repair finished — please confirm",
+  awaiting_confirmation:"work submitted — please confirm it is fixed",
   declined:"the landlord declined that quote — your agent will come back to you",
   closed:"closed",
   open:"reported — the agent has it"
@@ -95,7 +98,7 @@ async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh your cases. We will try again with the next update.','bad'); } }
 let appts=[], docs=[];
 async function loadExtras(){
@@ -103,15 +106,29 @@ async function loadExtras(){
   try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
 }
 
-function render(){
+function renderOfficeContacts(){
+  const box=document.getElementById('office-contact');
+  if(!box)return;
+  const o=window.rogerOffice||{};
+  if(!o.published){
+    box.textContent='Office contact details are not confirmed in Roger. Use the contacts in your tenancy or agency paperwork. This portal is not an emergency service.';
+    return;
+  }
+  const numbers=[o.phone?'<a href="tel:'+esc(o.phone.replace(/[^+\d]/g,''))+'">'+esc(o.phone)+'</a>':'',
+                 o.out_of_hours_phone?'<a href="tel:'+esc(o.out_of_hours_phone.replace(/[^+\d]/g,''))+'">'+esc(o.out_of_hours_phone)+'</a>':''];
+  box.innerHTML='<b>'+esc(o.office_name||'Agency office')+'</b> · Office: '+numbers[0]+' · '+esc(o.opening_hours||'')+
+    '<div>Outside hours: '+(numbers[1]||'No separate emergency telephone provided')+' · '+esc(o.out_of_hours_instructions||'')+'</div>'+
+    '<div class="fineprint">'+esc(o.emergency_policy||'')+' This portal is not monitored continuously.</div>';
+}
+function render(){ renderOfficeContacts();
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
-  document.getElementById('issue-email').value=document.getElementById('issue-email').value||DEMO_EMAIL;
+  // Preserve the user's own email input across rerenders.
   const prop=(stage.properties||[])[0];
   document.getElementById('home-card').innerHTML=prop?`<div class="card"><h3>${esc(prop.title)}</h3>
     <div class="meta">${esc(prop.area)} · ${prop.beds} bed · managed by your agent</div>
     <div class="meta">One case book for your home: your reports, what the agent does, and when work is paid for. You only see this page.</div></div>`
-    :`<div class="empty">No home is linked to this sign-in yet. Ring the office on <a href="tel:+441214960123">0121 496 0123</a> and they will connect you to your property.</div>`;
+    :`<div class="empty">No home is linked to this sign-in yet. Contact your agency using the details in your tenancy paperwork so they can link your home.</div>`;
   const mine=(stage.cases||[]).slice().reverse();
   const flips={}; (stage.cases||[]).forEach(c=>{ const p=prevStatus[c.id]; if(p&&p!==c.status&&c.status==='resolved') flips[c.id]=1; prevStatus[c.id]=c.status; });
   document.getElementById('my-cases').innerHTML=mine.length?mine.map(c=>{
@@ -120,7 +137,7 @@ function render(){
     const th=(c.thread||[]).map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> · ${ago(t.at)}</span><div>${esc(t.text)}</div></div>`).join('');
     const thread=th?`<details class="msgs" open><summary>Conversation · ${(c.thread||[]).length}</summary>${th}</details>`:(['closed','resolved','declined'].includes(c.status)?'':'<div class="fineprint">No messages yet — you can add one below.</div>');
     const reply=c.status==='closed'?'':`<div class="actions"><input placeholder="ask something or add detail…" id="trp-${c.id}" autocomplete="off" onkeydown="if(event.key==='Enter')tenantReply(${c.id},this)"><button class="btn" onclick="tenantReply(${c.id},this)">Send to office</button></div>`;
-    const resolution=c.status==='resolved'?`<div class="actions"><button class="btn primary" onclick="confirmResolution(this,${c.id})">This is fixed</button><button class="btn danger" onclick="reopenUnresolved(this,${c.id})">Still not fixed</button></div>`:'';
+    const resolution=['resolved','awaiting_confirmation'].includes(c.status)?`<div class="actions"><button class="btn primary" onclick="confirmResolution(this,${c.id})">This is fixed</button><button class="btn danger" onclick="reopenUnresolved(this,${c.id})">Still not fixed</button></div>`:'';
     return `<div class="card ${flips[c.id]?'flash-once':''}"><h3>#${c.id}</h3>
       <div class="meta">${when(c.status_at||c.submitted_at)} · <span class="badge ${esc(c.status)}">${esc(STATUS_LABEL[c.status]||c.status)}</span></div>
       <div class="details">${esc(c.message)}</div>
@@ -132,39 +149,48 @@ function render(){
     `<div class="card"><h3>Documents</h3>${myDocs.length?myDocs.map(d=>`<div class="docrow"><a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a><div class="docmeta">${capType(d.document_type)}${d.verified_at?` · ${esc(d.status)}`:''}</div></div>`).join(''):`<div class="meta">Nothing filed yet — your agreement and deposit receipt will appear here once the office uploads them.</div>`}</div>`
   ].join(''):'';
 
-  // Appointments — upcoming first
-  const active=appts.length?appts.slice().sort((a,b)=>a.start_time.localeCompare(b.start_time)):[];
+  // Proposed repair visits require the resident's explicit agreement.
+  const active=appts.length?appts.slice().sort((a,b)=>String(a.start_time).localeCompare(String(b.start_time))):[];
   const pending=active.filter(a=>a.status==='proposed');
   const later=active.filter(a=>a.status!=='proposed');
   document.getElementById('my-appts').innerHTML=active.length?
-    (pending.length?`<div class="card">${pending.map(ap=>`<div class="appt">
-        <div><div class="date">${fmtDate(ap.start_time)}</div><div class="because">${esc(ap.title)}${ap.location?' · '+esc(ap.location):''}${ap.notes?' · '+esc(ap.notes):''}</div></div>
-        <div class="actions"><button class="btn primary" onclick="apptAct(this,'${esc(ap.id)}','confirm')">I can make it</button><button class="btn danger" onclick="apptAct(this,'${esc(ap.id)}','decline')">No good for me</button></div>
-      </div>`).join('')}</div>`:'')+
-    `<div class="card">${later.map(ap=>`<div class="appt">
-        <div><div class="date">${fmtDate(ap.start_time)}</div><div class="because">${esc(ap.title)}${ap.location?' · '+esc(ap.location):''}</div></div>
-        <span class="badge ${esc(ap.status)}">${esc(ap.status)}</span>
-      </div>`).join('')}</div>`
-    :`<div class="empty">Nothing scheduled. When the office books something — a viewing, an inspection, the key handover — it lands here for your yes or no.</div>`;
+    (pending.length?'<div class="card">'+pending.map(ap=>'<div class="appt">'+
+      '<div><div class="date">'+fmtDate(ap.start_time)+'</div><div class="because">'+esc(ap.title)+(ap.location?' · '+esc(ap.location):'')+'</div>'+
+      (ap.appointment_type==='contractor_visit'?'<div class="fineprint">Please agree the visit before the contractor arrives. Never enter key codes or passwords here.</div><label class="field"><span>Access preference (optional)</span><input id="access-'+esc(ap.id)+'" maxlength="160" placeholder="e.g. ring the bell"></label><label class="field"><input type="checkbox" id="consent-'+esc(ap.id)+'"> Share this access preference with the assigned contractor</label>':'')+'</div>'+
+      '<div class="actions"><button class="btn primary" onclick="apptAct(this,\''+esc(ap.id)+'\',\'confirm\')">Confirm visit</button><button class="btn danger" onclick="apptAct(this,\''+esc(ap.id)+'\',\'decline\')">Request a different time</button></div></div>').join('')+'</div>':'')+
+    (later.length?'<div class="card">'+later.map(ap=>'<div class="appt"><div><div class="date">'+fmtDate(ap.start_time)+'</div><div class="because">'+esc(ap.title)+(ap.location?' · '+esc(ap.location):'')+'</div>'+(ap.notes?'<div class="fineprint">Update: '+esc(ap.notes)+'</div>':'')+(['no_access','parts_delay','change_requested'].includes(ap.status)?'<div class="fineprint">The office and contractor need to arrange the next step.</div>':'')+'</div><span class="badge '+esc(ap.status)+'">'+esc(ap.status.replace(/_/g,' '))+'</span>'+(ap.appointment_type==='contractor_visit'&&ap.status==='confirmed'?'<button class="btn" onclick="apptAct(this,\''+esc(ap.id)+'\',\'decline\')">Request a different time</button>':'')+'</div>').join('')+'</div>':'')
+    :'<div class="empty">Nothing scheduled. If a contractor offers a visit, you can confirm or request a different time here.</div>';
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
 function plainTriage(c){
   const t=c.triage||{};
-  if(t.urgency>=2) return `<div class="triage-line hot">We're treating this as an emergency. Expect contact within 4 hours.</div>`;
+  if(t.urgency>=2) return `<div class="triage-line hot">Marked urgent. Call the agency or appropriate emergency service now; this portal is not monitored 24/7.</div>`;
   if(t.urgency===1) return `<div class="triage-line warm">We've marked this as needing attention soon — usually sorted within a few days.</div>`;
   return `<div class="triage-line">No rush — we'll reply when it's convenient, usually within a week.</div>`;
 }
 function fmtDate(iso){ if(!iso) return '—'; const s=new Date(iso); return s.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
-async function apptAct(btn,id,action){ if(btn&&btn.dataset.busy)return; if(btn)btn.dataset.busy='1';
-  try{ await post('/api/appointment-action',{id,action}); toast(action==='confirm'?'That is noted — the office will confirm.':'Thanks for letting them know — the office will rearrange.'); await load(); }
-  catch(e){ toast('Could not update — try again.','bad'); } finally{ if(btn)delete btn.dataset.busy; } }
+async function apptAct(btn,id,action){ if(btn&&btn.dataset.busy)return;
+  const isVisit=appts.find(a=>a.id===id)?.appointment_type==='contractor_visit';
+  let note='';
+  if(action==='decline'){const reason=prompt('Why does this time not work? (optional)');if(reason===null)return;note=reason;}
+  const payload={id,action,note};
+  if(action==='confirm'&&isVisit){
+    payload.access_preference=document.getElementById('access-'+id)?.value.trim()||'';
+    payload.contact_consent=Boolean(document.getElementById('consent-'+id)?.checked);
+  }
+  if(btn)btn.dataset.busy='1';
+  try{await post('/api/appointment-action',payload);
+    toast(action==='confirm'?'Visit confirmed — the office can see your reply.':'Change requested — the office will arrange another proposal.');await load();}
+  catch(e){toast('Could not update the appointment — try again.','bad');}finally{if(btn)delete btn.dataset.busy;}
+}
+let pendingReportId=null; // reused on retry, regenerated only when report changes or succeeds
 /* form friction: blur hints + Enter submits from the email field */
 const msg=document.getElementById('issue-msg'), email=document.getElementById('issue-email');
 msg.addEventListener('focus',()=>{ msg.dataset.touched='1'; });
 msg.addEventListener('blur',()=>{ document.getElementById('issue-hint').classList.toggle('show',msg.dataset.touched==='1'&&!msg.value.trim()); });
-msg.addEventListener('input',()=>{ if(msg.value.trim()) document.getElementById('issue-hint').classList.remove('show'); });
+msg.addEventListener('input',()=>{ pendingReportId=null; if(msg.value.trim()) document.getElementById('issue-hint').classList.remove('show'); });
 function emailBad(){ return !!email.value && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email.value.trim()); }
 email.addEventListener('blur',()=>{ const bad=emailBad();
   email.setAttribute('aria-invalid',bad?'true':'false');
@@ -200,15 +226,18 @@ async function report(){
   if(!text){ toast('Tell us what is going on first.','bad'); msg.focus();
     document.getElementById('issue-hint').classList.add('show'); return; }
   if(emailBad()){ toast('Check the email address so we can reply.','bad'); email.focus(); return; }
-  const btn=document.getElementById('report-btn'); btn.disabled=true; btn.textContent='Sending…';
+  const btn=document.getElementById('report-btn'); if(btn.disabled)return;
+  pendingReportId=pendingReportId||(crypto.randomUUID?crypto.randomUUID():'report-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+  btn.disabled=true; btn.textContent='Sending…';
   document.getElementById('report-note').textContent='Sending…';
   try{
     const prop=(stage.properties||[])[0];
     const files=Array.from(document.getElementById('issue-files').files||[]).slice(0,4);
     const attachments=await Promise.all(files.map(fileAttachment));
-    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments});
+    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments,request_id:pendingReportId});
+    pendingReportId=null;
     msg.value=''; document.getElementById('issue-files').value='';
-    toast(`Logged as #${res.case_id}. ${res.document_ids?.length?res.document_ids.length+' evidence file(s) saved. ':''}${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
+    toast(`${res.already_received?'Already received':'Logged'} as #${res.case_id}. ${res.document_ids?.length?res.document_ids.length+' evidence file(s) saved. ':''}${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
     await load();
   }catch(e){ toast(e.message&&e.message!=='failed'?e.message:'Could not send — try again or ring the office.','bad'); }
   finally{ btn.disabled=false; btn.textContent='Send report'; document.getElementById('report-note').textContent=''; }

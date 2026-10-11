@@ -4,28 +4,101 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agent Desk | Stage</title>
 <link rel="stylesheet" href="/dash.css">
+<style>
+/* Roger showcase MVP shell — visual enhancement only; existing APIs and auth remain intact */
+#view-properties .card .review-note{width:100%;min-height:80px}
+#view-properties details.card>summary{cursor:pointer;font-weight:700;margin-bottom:12px}
+:root{
+ --paper:#f3f5f1;--card:#fff;--ink:#1b3026;--muted:#687a70;
+ --line:#e2e9e2;--line-soft:#edf1eb;--line-strong:#b9cbbb;
+ --accent:#2d6047;--accent-deep:#193e30;--accent-soft:#eaf2eb;
+ --r:16px;--r-sm:10px;
+ --font-ui:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;
+ --font-display:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;
+}
+body{background:var(--paper);font-family:var(--font-ui)}
+.shell{max-width:1320px;padding:0 28px 72px}
+.mvp-head.header{display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px 24px;margin:0 0 32px;padding:19px 0 12px;border-bottom:0;background:var(--paper)}
+.mvp-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.mvp-brand-mark{display:grid;place-items:center;background:#244a38;color:#f7fbf6;font-size:24px;font-weight:800;border-radius:14px;width:46px;height:46px;line-height:1}
+.mvp-brand-title h1{font-family:var(--font-display);font-weight:800;font-size:23px;letter-spacing:-1px;line-height:1.1}
+.mvp-brand-dot{color:#6e9d76}
+.mvp-brand-title>span{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.mvp-userbar{display:flex;align-items:center;gap:14px;justify-content:flex-end;flex-wrap:wrap}
+.mvp-userbar .who{font-size:12px;max-width:260px}
+.mvp-site-link{font-size:13px;color:var(--accent-deep);font-weight:600}
+.mvp-signout{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:9px;background:white;color:var(--ink);padding:9px 13px;cursor:pointer}
+.mvp-signout:hover{background:#e9f1eb}
+.mvp-nav.tabs{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #e2e9e2;background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(26,49,34,.04)}
+.mvp-nav.tabs>a.tab,.mvp-more>summary,.mvp-more-menu>a.tab{font:inherit;font-size:13px;font-weight:600;text-decoration:none;min-height:42px;padding:11px 15px;border:0;border-radius:10px;background:transparent;color:#62796d;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap}
+.mvp-nav.tabs>a.tab:hover,.mvp-more>summary:hover,.mvp-more-menu>a.tab:hover{background:#eff4ee;color:#214b35}
+.mvp-nav.tabs>a.tab.on,.mvp-more-menu>a.tab.on{background:#eaf3e9;color:#245a3d;border:0}
+.mvp-more{position:relative;margin-left:auto}
+.mvp-more>summary{list-style:none;gap:9px}
+.mvp-more>summary::-webkit-details-marker{display:none}
+.mvp-more-menu{position:absolute;z-index:90;right:0;top:calc(100% + 10px);min-width:235px;max-height:min(70vh,520px);overflow:auto;display:grid;gap:2px;background:#fff;border:1px solid var(--line);padding:9px;border-radius:13px;box-shadow:0 16px 42px rgba(23,46,31,.17)}
+.mvp-more-menu>a.tab{display:block;padding:11px 14px;min-height:unset}
+main{padding-top:2px}
+.card{border:1px solid var(--line);background:#fff;border-radius:18px;box-shadow:0 4px 18px rgba(32,57,39,.035)}
+.card h3{font-family:var(--font-display);font-weight:750;color:#243d2f}
+.move{color:#3e7653;font-weight:750;letter-spacing:.09em}
+.stats .stat,.stat{border-radius:12px}
+.btn.primary{background:#2b6045;border-color:#2b6045}
+.btn.primary:hover{background:#1a4833}
+input,textarea,select{accent-color:#2b6045}
+:focus-visible{outline:3px solid #96bd92!important;outline-offset:2px}
+@media(max-width:870px){
+ .mvp-head.header{grid-template-columns:1fr}
+ .mvp-userbar{justify-content:flex-start}
+ .mvp-nav.tabs{overflow:visible;gap:4px}
+ .mvp-nav.tabs>a.tab{padding:10px 11px}
+ .mvp-more{margin-left:0}
+}
+@media(max-width:560px){
+ .shell{padding:0 13px 60px}
+ .mvp-head.header{padding-top:12px;gap:12px;margin-bottom:20px}
+ .mvp-userbar .who{flex-basis:100%;max-width:none}
+ .mvp-nav.tabs{padding:6px;border-radius:13px}
+ .mvp-nav.tabs>a.tab,.mvp-more>summary{font-size:12px;padding:10px}
+ .mvp-more-menu{right:auto;left:0;min-width:220px}
+ .card{border-radius:13px}
+}
+</style>
 </head>
 <body>
 <div class="shell">
-  <header class="header stuck">
-    <div class="brand"><h1>Agent Desk</h1><span class="who" id="stamp">…</span></div>
-    <nav class="tabs">
-      <a href="#" class="tab on" data-view="overview">Overview</a>
-      <a href="#" class="tab" data-view="cases">Cases</a>
-      <a href="#" class="tab" data-view="jobs">Jobs</a>
-      <a href="#" class="tab" data-view="communications">Communications</a>
-      <a href="#" class="tab" data-view="notifications">Notifications</a>
-      <a href="#" class="tab" data-view="tasks">Tasks</a>
-      <a href="#" class="tab" data-view="money">Money</a>
-      <a href="#" class="tab" data-view="compliance">Compliance</a>
-      <a href="#" class="tab" data-view="appointments">Appointments</a>
-      <a href="#" class="tab" data-view="documents">Documents</a>
-      <a href="#" class="tab" data-view="registrations">Registrations</a>
-      <a href="#" class="tab" data-view="prospects">Prospects</a>
-      <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
+  <header class="header stuck mvp-head">
+    <div class="mvp-brand">
+      <span class="mvp-brand-mark" aria-hidden="true">r.</span>
+      <div class="mvp-brand-title"><h1>Roger<span class="mvp-brand-dot">.</span></h1><span>Agent workspace</span></div>
+    </div>
+    <div class="mvp-userbar">
+      <span class="who" id="stamp">Connecting to Roger…</span>
+      <a class="mvp-site-link" href="/">Public website ↗</a>
+      <form action="/logout" method="POST"><input type="hidden" name="intent" value="logout"><button class="mvp-signout" type="submit">Log out</button></form>
+    </div>
+    <nav class="tabs mvp-nav" aria-label="Agent workspace">
+      <a href="#" class="tab on" data-view="overview">Today &amp; inbox</a>
+      <a href="#" class="tab" data-view="cases">Cases &amp; messages</a>
+      <a href="#" class="tab" data-view="jobs">Work orders</a>
       <a href="#" class="tab" data-view="properties">Properties</a>
-      <a href="#" class="tab" data-view="history">History</a>
-      <a href="/" class="tab out">Lettings site</a><form action="/logout" method="POST" style="display:contents"><input type="hidden" name="intent" value="logout"><button class="tab out" type="submit">Log out</button></form>
+      <a href="#" class="tab" data-view="money">Finance</a>
+      <details class="mvp-more">
+        <summary>More tools <span aria-hidden="true">⌄</span></summary>
+        <div class="mvp-more-menu">
+          <a href="#" class="tab" data-view="communications">Communications</a>
+          <a href="#" class="tab" data-view="notifications">Notifications</a>
+           <a href="#" class="tab" data-view="office">Office contacts &amp; emergencies</a>
+          <a href="#" class="tab" data-view="tasks">Tasks</a>
+          <a href="#" class="tab" data-view="compliance">Compliance</a>
+          <a href="#" class="tab" data-view="appointments">Appointments</a>
+          <a href="#" class="tab" data-view="documents">Documents</a>
+          <a href="#" class="tab" data-view="registrations">Registrations</a>
+          <a href="#" class="tab" data-view="prospects">Prospects</a>
+          <a href="#" class="tab" data-view="people">People &amp; tenancies</a>
+          <a href="#" class="tab" data-view="history">Activity history</a>
+        </div>
+      </details>
     </nav>
   </header>
   <div id="api-error" class="banner danger" style="display:none">Couldn't reach the portal. <button class="btn" onclick="load(true)">Try again</button></div>
@@ -35,6 +108,7 @@
     <section id="view-jobs" style="display:none"></section>
     <section id="view-communications" style="display:none"></section>
     <section id="view-notifications" style="display:none"></section>
+     <section id="view-office" style="display:none"></section>
     <section id="view-tasks" style="display:none"></section>
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
@@ -123,6 +197,7 @@ async function load(manual){
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
     try{ const t=await api('/api/tasks'); window._tasks=t.tasks||[] }catch(e){ window._tasks=[] }
     try{ const n=await api('/api/notifications'); window._notifications=n.notifications||[] }catch(e){ window._notifications=[] }
+    try{ const o=await api('/api/office-settings'); window._office=o.office||{} }catch(e){ window._office={} }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
     try{ window.landlordStatements=(await api('/api/landlord-statements')).statements||[] }catch(e){ window.landlordStatements=[] }
@@ -136,7 +211,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderOffice(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -156,6 +231,9 @@ function renderDeskSearch(q){
   const needle=deskSearch.trim().toLowerCase(),found=[];const prop=id=>(stage.properties||[]).find(p=>p.id===id);
   const add=(rows,view,idFn,labelFn,detailFn)=>{for(const x of rows||[]){const detail=detailFn?detailFn(x):'';if((deskSearchText(x)+' '+detail).toLowerCase().includes(needle))found.push({label:labelFn(x),detail,view,id:idFn? idFn(x):''});}};
   add(stage.properties,'properties',x=>'property-'+x.id,x=>x.title||x.id,x=>x.area||'');
+  add(stage.property_submissions,'properties',x=>'submission-'+x.id,
+    x=>'Property application · '+(x.address||x.id),
+    x=>[x.area,x.postcode,x.status,x.description].filter(Boolean).join(' · '));
   add(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id+' · '+(x.type||'case'),x=>[prop(x.property_id)?.title,x.name,x.email,x.status,x.message].filter(Boolean).join(' · '));
   add(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id+' · case #'+x.case_id,x=>[prop(x.property_id)?.title,x.status,x.assigned_to,x.message].filter(Boolean).join(' · '));
   add(stage.cases,'communications',x=>'comm-case-'+x.id,x=>'Conversation · case #'+x.id,x=>[prop(x.property_id)?.title,x.name,x.email,x.message,(x.thread||[]).map(m=>m.text).join(' ')].filter(Boolean).join(' · '));
@@ -173,17 +251,41 @@ function renderAttentionBoard(){
   const now=Date.now(),week=now+7*86400000,props=stage.properties||[],needs=[],waiting=[],upcoming=[],overdue=[];
   const propertyName=id=>{const p=props.find(x=>x.id===id);return p?p.title+' · '+(p.area||''):id||'No property linked';};
   const add=(list,label,detail,view,id,tag)=>list.push({label,detail,view,id,tag});
-  (stage.cases||[]).filter(c=>activeRecord(c)&&(c.status==='new'||c.status==='reported'||Number(c.triage?.urgency)>=2)).sort((a,b)=>(Number(b.triage?.urgency)||0)-(Number(a.triage?.urgency)||0)||String(b.submitted_at||'').localeCompare(String(a.submitted_at||''))).forEach(c=>add(needs,'Case #'+c.id+' · '+(c.type||'case'),propertyName(c.property_id)+' · '+(c.name||'Unidentified person'),'cases','case-'+c.id,Number(c.triage?.urgency)>=2?'urgent':c.status));
+  (stage.cases||[]).filter(c=>activeRecord(c)&&(c.status==='new'||c.status==='reported'||c.next_actor==='agent'||Number(c.triage?.urgency)>=2)).sort((a,b)=>(Number(b.triage?.urgency)||0)-(Number(a.triage?.urgency)||0)||String(b.submitted_at||'').localeCompare(String(a.submitted_at||''))).forEach(c=>add(needs,'Case #'+c.id+' · '+(c.type||'case'),propertyName(c.property_id)+' · '+(c.name||'Unidentified person'),'cases','case-'+c.id,Number(c.triage?.urgency)>=2?'urgent':c.status));
   (stage.jobs||[]).filter(j=>['open','quoted','pending_verification'].includes(j.status)).forEach(j=>add(needs,'Job '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,j.status));
+  (stage.registrations||[]).filter(r=>r.role==='trades'&&r.status==='approved'&&r.party_id).forEach(r=>{
+    const v=r.contractor_verification||{},date=String(v.valid_until||'');
+    const deadline=date?Date.parse(date+'T00:00:00Z'):0;
+    const eligible=pool.some(t=>t.party_id===r.party_id&&t.ready_for_new_repairs);
+    if(!eligible)add(needs,'Contractor check needed · '+(r.name||r.id),
+      'Missing, expired, revoked or invalid evidence — new work blocked',
+      'registrations','reg-'+r.id,'urgent');
+    else if(deadline&&deadline<=now+30*86400000)add(upcoming,'Contractor renewal · '+(r.name||r.id),
+      'Independent proof check expires '+date,'registrations','reg-'+r.id,'pending');
+  });
+  // Invoices originate from the tradesperson's completed work order.
+  // Small invoices auto-settled under authority remain in Finance, not the action queue.
+  const followupInvoices=(stage.jobs||[]).filter(j=>j.invoice_pence!=null&&['awaiting_approval','rejected'].includes(j.status));
+  followupInvoices.forEach(j=>add(needs,
+    'Trades invoice · '+money(j.invoice_pence)+' · '+(j.assigned_to||'Contractor'),
+    propertyName(j.property_id)+' · '+(j.status==='rejected'?'Landlord declined — agent follow-up':'Waiting for landlord approval'),
+    'jobs','job-'+j.id,j.status==='rejected'?'overdue':'pending'));
+  (stage.property_submissions||[]).filter(x=>x.status==='pending').forEach(x=>
+    add(needs,'Property approval · '+x.address,
+      [x.area,x.postcode,x.beds+' bed',money(x.rent_pence)].join(' · '),
+      'properties','submission-'+x.id,'pending'));
   (stage.registrations||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,(x.role||'registration')+' application · '+(x.name||x.id),x.email||'Needs review','registrations','reg-'+x.id,'pending'));
   (window._docs||[]).filter(x=>x.status==='pending').forEach(x=>add(needs,'Verify document · '+(x.title||x.file_name||x.id),propertyName(x.property_id),'overview','doc-'+x.id,'pending'));
   (window.complianceRecords||[]).filter(x=>!['superseded','current'].includes(x.status)||x.reminder_due).forEach(x=>add(needs,x.status==='missing'?'Missing compliance · '+x.requirement_type.replace(/_/g,' '):x.status==='expired'?'Expired compliance · '+x.requirement_type.replace(/_/g,' '):'Compliance reminder · '+x.requirement_type.replace(/_/g,' '),propertyName(x.property_id)+(x.expiry_date?' · expires '+x.expiry_date:''),'compliance',x.id,x.status==='expired'?'overdue':'compliance'));
+  (stage.cases||[]).filter(c=>activeRecord(c)&&c.next_actor&&c.next_actor!=='agent').forEach(c=>
+    add(waiting,'Case #'+c.id+' · waiting for '+c.next_actor,
+      propertyName(c.property_id)+' · '+(c.next_action||'Action pending')+(c.next_due_at?' · due '+c.next_due_at:''),'cases','case-'+c.id,'pending'));
   (stage.approvals||[]).filter(x=>x.status==='pending').forEach(x=>add(waiting,'Landlord approval · '+(x.id||'request'),propertyName(x.property_id)+' · '+money(x.amount_pence),'jobs',x.job_id?'job-'+x.job_id:'','landlord'));
   (stage.jobs||[]).filter(j=>['quote_requested','assigned','in_progress'].includes(j.status)).forEach(j=>add(waiting,j.status==='quote_requested'?'Quote requested · '+j.id:'Work with trades · '+j.id,propertyName(j.property_id)+' · case #'+j.case_id,'jobs','job-'+j.id,'trades'));
   (window._appts||[]).filter(a=>a.status==='proposed').forEach(a=>add(waiting,'Appointment awaiting reply · '+(a.title||a.id),propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'invitee'));
   (window._tasks||[]).filter(t=>activeRecord(t)&&t.due_date&&Number.isFinite(Date.parse(t.due_date))&&Date.parse(t.due_date)<=week).forEach(t=>add(t.priority==='urgent'||Date.parse(t.due_date)<now?needs:upcoming,'Task · '+(t.title||t.id),propertyName(t.property_id)+' · due '+fmtDate(t.due_date),'tasks','task-'+t.id,t.priority||'normal'));
   (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)>=now&&Date.parse(a.start_time)<=week).sort((a,b)=>Date.parse(a.start_time)-Date.parse(b.start_time)).forEach(a=>add(upcoming,a.title||'Appointment',propertyName(a.property_id)+' · '+fmtDate(a.start_time),'overview','appointment-'+a.id,'confirmed'));
-  const deadline=x=>x.due_at||x.next_action_at||x.follow_up_at||'';
+  const deadline=x=>x.next_due_at||x.due_at||x.next_action_at||x.follow_up_at||'';
   const over=(rows,view,prefix,labelFn,detailFn)=>{(rows||[]).forEach(x=>{const d=deadline(x);if(activeRecord(x)&&d&&Number.isFinite(Date.parse(d))&&Date.parse(d)<now)add(overdue,labelFn(x),detailFn(x)+' · due '+fmtDate(d),view,prefix(x),'overdue');});};
   over(stage.cases,'cases',x=>'case-'+x.id,x=>'Case #'+x.id,x=>propertyName(x.property_id));over(stage.jobs,'jobs',x=>'job-'+x.id,x=>'Job '+x.id,x=>propertyName(x.property_id));over(stage.registrations,'registrations',x=>'reg-'+x.id,x=>'Application · '+(x.name||x.id),x=>x.email||'');over(window._appts,'overview',x=>'appointment-'+x.id,x=>x.title||'Appointment',x=>propertyName(x.property_id));over(window._tasks,'tasks',x=>'task-'+x.id,x=>x.title||'Task',x=>propertyName(x.property_id));
   (window._appts||[]).filter(a=>a.status==='confirmed'&&Number.isFinite(Date.parse(a.start_time))&&Date.parse(a.start_time)<now).forEach(a=>add(overdue,'Appointment outcome needs recording · '+(a.title||a.id),propertyName(a.property_id)+' · was '+fmtDate(a.start_time),'overview','appointment-'+a.id,'check'));
@@ -212,6 +314,7 @@ function renderAttentionBoard(){
     bucket('new trades applications',newTradesApplications,'prospects',false)+
     bucket('approvals waiting',approvalsWaiting,'jobs',true)+
     bucket('quotes waiting',quotesWaiting,'jobs',true)+
+    bucket('invoice follow-ups',followupInvoices,'jobs',followupInvoices.length>0)+
     bucket('appointments today',appointmentsToday,'overview',false)+
     bucket('overdue actions',overdue,'overview',true)+
     bucket('rent arrears',rentArrears,'money',true)+
@@ -231,7 +334,7 @@ function renderOverview(){
   const unassigned=jobs.filter(j=>j.status==='open').length;
   const gated=jobs.filter(j=>j.status==='pending_verification').length;
   const waiting=(stage.approvals||[]).filter(a=>a.status==='pending');
-  const settledToday=jobs.filter(j=>j.status==='paid'&&(j.paid_at||'').slice(0,10)===new Date().toISOString().slice(0,10));
+  const settledToday=jobs.flatMap(j=>(j.payments||[]).map(p=>({...p,job_id:j.id}))).filter(p=>p.date===new Date().toISOString().slice(0,10));
   const regs=(stage.registrations||[]).filter(r=>r.status==='pending').length;
   const lim=(stage.authority?.standing_limit_pence||15000)/100;
   const tile=(n,label,view,hot)=>`<a class="stat ${hot?'hot':''}" href="#" onclick="show('${view}');return false"><div class="value">${n}</div><div class="label">${label}</div></a>`;
@@ -246,7 +349,7 @@ function renderOverview(){
         ${tile(gated,'bookings needing your verification','jobs',gated>0)}
         ${tile(unassigned,'open jobs nobody took','jobs',unassigned>0)}
         ${tile(waiting.length,'invoices waiting on landlord'+(waiting.length?' · '+waiting.map(a=>money(a.amount_pence)).join(', '):''),'jobs',waiting.length>0)}
-        ${tile(money(settledToday.reduce((s,j)=>s+(j.invoice_pence||0),0)),'settled today','jobs')}
+        ${tile(money(settledToday.reduce((s,p)=>s+(p.amount_pence||0),0)),'external payments recorded today','jobs')}
         ${tile(regs,'registrations to review','registrations',regs>0)}
       </div>
       <p class="fineprint">Standing authority: invoices up to £${lim.toFixed(0)} settle automatically — the £150 rule lives here so you never have to explain it twice. Above it, the landlord decides.</p>
@@ -329,6 +432,53 @@ async function emailCommunicationReply(btn,id){
  if(!textValue){toast('Type a reply first.','bad');return;}
  await busy(btn,async()=>{try{await post('/api/email-reply',{id,text:textValue});input.value='';window.commQuery='';toast('Email sent and recorded on the case timeline.');load();}catch(e){}});
 }
+function renderOffice(){
+  const o=window._office||{},data={
+    'office_name':o.office_name||'','phone':o.phone||'','email':o.email||'',
+    'opening_hours':o.opening_hours||'','out_of_hours_phone':o.out_of_hours_phone||'',
+    'out_of_hours_instructions':o.out_of_hours_instructions||'',
+    'emergency_policy':o.emergency_policy||''
+  };
+  const items=[
+    ['office_name','Real office name','text'],['phone','Verified office phone','tel'],
+    ['email','Verified office email','email'],['opening_hours','Office opening hours','textarea'],
+    ['out_of_hours_phone','Out-of-hours telephone (optional)','tel'],
+    ['out_of_hours_instructions','What people should do outside hours','textarea'],
+    ['emergency_policy','Reviewed emergency policy and limitations','textarea']
+  ];
+  const fields=items.map(([key,label,type])=>'<label class="field"><span>'+label+'</span>'+
+    (type==='textarea'?'<textarea id="office-'+key+'" rows="3">'+esc(data[key])+'</textarea>':
+     '<input type="'+type+'" id="office-'+key+'" value="'+esc(data[key])+'">')+'</label>').join('');
+  document.getElementById('view-office').innerHTML=
+    '<div class="move">real contact details, not demo placeholders</div><h2>Office contacts and emergency policy</h2>'+
+    '<p class="fineprint">Drafts stay hidden from tenants, landlords and trades until an agent reviews and publishes the real numbers and instructions. Never describe the portal as a 24/7 emergency line.</p>'+
+    '<div class="card"><div class="meta">Current status: <b>'+esc(o.published?'Published':'Not published')+
+    '</b>'+(o.reviewed_at?' · reviewed '+esc(o.reviewed_at.slice(0,10)):'')+' · version '+esc(o.version||0)+'</div>'+
+    '<div class="grid2">'+fields+'</div>'+
+    '<label><input id="office-checked" type="checkbox"> I personally checked the real contact numbers and email</label>'+
+    '<label><input id="office-reviewed" type="checkbox"> I reviewed the emergency and out-of-hours policy</label>'+
+    '<div class="actions"><button class="btn" onclick="saveOffice(this,\'save_draft\')">Save private draft</button>'+
+    '<button class="btn primary" onclick="saveOffice(this,\'publish\')">Publish checked contacts</button>'+
+    (o.published?'<button class="btn danger" onclick="saveOffice(this,\'unpublish\')">Unpublish contacts</button>':'')+
+    '</div></div>';
+}
+async function saveOffice(btn,action){
+  const payload={action};
+  if(action!=='unpublish'){
+    ['office_name','phone','email','opening_hours','out_of_hours_phone','out_of_hours_instructions','emergency_policy']
+      .forEach(k=>payload[k]=document.getElementById('office-'+k)?.value.trim()||'');
+    payload.checked_real_contacts=!!document.getElementById('office-checked')?.checked;
+    payload.policy_reviewed=!!document.getElementById('office-reviewed')?.checked;
+    if(action==='publish'&&(!payload.checked_real_contacts||!payload.policy_reviewed)){
+      toast('Check real contacts and review the emergency policy before publishing.','bad');return;
+    }
+  }
+  await busy(btn,async()=>{try{
+    await post('/api/office-settings',payload);
+    toast(action==='publish'?'Verified office details published':action==='unpublish'?'Contacts hidden from other roles':'Office draft saved privately');
+    await load();
+  }catch(e){toast(e.message||'Could not save office contacts.','bad');}});
+}
 const NOTIFICATION_TYPES={agent_alert:'Agent alert',landlord_approval_request:'Landlord approval request',tenant_appointment:'Tenant appointment notification',trades_job:'Trades job notification',compliance_reminder:'Compliance reminder',rent_arrears_reminder:'Rent / arrears reminder',reminder_email:'Reminder email',general:'General'};
 function notificationEntityLine(n){
  const p=(stage.properties||[]).find(x=>x.id===n.property_id)||{};
@@ -375,8 +525,8 @@ function renderNotifications(){
  const typeOptions=Object.entries(NOTIFICATION_TYPES).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
  const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
  const taskOptions=tasks.filter(activeRecord).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>').join('');
- const rows=notes.slice().reverse().map(n=>'<div class="card" id="notification-'+esc(n.id)+'"><div class="cardtop"><h3>'+esc(n.title||n.id)+'</h3><span class="badge '+(n.status==='unread'?'pending':'completed')+'">'+esc(n.status||'unread')+'</span></div><div class="meta">'+esc(NOTIFICATION_TYPES[n.notification_type]||n.notification_type||'Notification')+' · to '+esc(n.recipient_role||'agent')+(n.recipient_name?' / '+esc(n.recipient_name):'')+(n.due_at?' · due '+esc(n.due_at):'')+'</div><div class="details">'+esc(n.message||'')+'</div><div class="meta">'+esc(notificationEntityLine(n)||'No related record')+' · channels: '+esc((n.channels||['in_app']).join(', '))+(n.email_status?' · email '+esc(n.email_status):'')+'</div><div class="actions"><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\''+(n.status==='unread'?'read':'unread')+'\')">Mark '+(n.status==='unread'?'read':'unread')+'</button>'+(n.email_status==='queued'?'<button class="btn primary" onclick="notificationAction(this,\''+esc(n.id)+'\',\'sent\')">Mark email sent</button>':'')+'</div></div>').join('');
- document.getElementById('view-notifications').innerHTML='<div class="move">notification centre</div><p class="fineprint">Create in-app alerts and email outbox items for tenants, landlords, trades and agents. SMTP delivery for general notifications is tracked separately from case email replies.</p>'+
+ const rows=notes.slice().reverse().map(n=>'<div class="card" id="notification-'+esc(n.id)+'"><div class="cardtop"><h3>'+esc(n.title||n.id)+'</h3><span class="badge '+(n.status==='unread'?'pending':'completed')+'">'+esc(n.status||'unread')+'</span></div><div class="meta">'+esc(NOTIFICATION_TYPES[n.notification_type]||n.notification_type||'Notification')+' · to '+esc(n.recipient_role||'agent')+(n.recipient_name?' / '+esc(n.recipient_name):'')+(n.due_at?' · due '+esc(n.due_at):'')+'</div><div class="details">'+esc(n.message||'')+'</div><div class="meta">'+esc(notificationEntityLine(n)||'No related record')+' · channels: '+esc((n.channels||['in_app']).join(', '))+(n.email_status?' · email '+esc(n.email_status):'')+'</div><div class="actions"><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\''+(n.status==='unread'?'read':'unread')+'\')">Mark '+(n.status==='unread'?'read':'unread')+'</button>'+(n.email_status==='queued'?'<button class="btn primary" onclick="notificationAction(this,\''+esc(n.id)+'\',\'sent\')">Record external delivery</button><button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\'failed\')">Record failure</button>':'')+(n.email_status==='failed'?'<button class="btn" onclick="notificationAction(this,\''+esc(n.id)+'\',\'retry\')">Requeue when due</button><span class="fineprint">Attempts: '+esc(n.email_attempts||0)+'/3 · next '+esc(n.email_next_retry_at||'not scheduled')+'</span>':'')+(n.email_status==='exhausted'?'<span class="fineprint hot">Three failed attempts. Contact the person by another method.</span>':'')+'</div></div>').join('');
+ document.getElementById('view-notifications').innerHTML='<div class="move">notification centre</div><p class="fineprint">Create in-app alerts and a manual email outbox. Roger does NOT send these emails; record external provider proof when sent. Failures can be requeued after their due time, up to three attempts.</p>'+
  '<div class="stats"><div class="stat '+(notes.some(n=>n.status==='unread')?'hot':'')+'"><div class="value">'+notes.filter(n=>n.status==='unread').length+'</div><div class="label">unread</div></div><div class="stat"><div class="value">'+notes.filter(n=>(n.channels||[]).includes('email')).length+'</div><div class="label">email outbox</div></div><div class="stat"><div class="value">'+notes.filter(n=>n.email_status==='queued').length+'</div><div class="label">queued emails</div></div></div>'+
  '<div class="card"><h2>Create notification</h2><div class="grid2"><label class="field"><span>Type</span><select id="note-type">'+typeOptions+'</select></label><label class="field"><span>Recipient role</span><select id="note-role" onchange="refreshNotificationPartyOptions()"><option value="agent">Agent</option><option value="tenant">Tenant</option><option value="landlord">Landlord</option><option value="trades">Trades</option></select></label><label class="field"><span>Recipient Party</span><select id="note-party"><option value="">Choose a verified recipient</option></select></label><label class="field"><span>Email to</span><input id="note-email" type="email" placeholder="Optional email address"></label><label class="field"><span>Property</span><select id="note-property"><option value="">No property</option>'+propOptions+'</select></label><label class="field"><span>Case ID</span><input id="note-case"></label><label class="field"><span>Job ID</span><input id="note-job"></label><label class="field"><span>Related task</span><select id="note-task"><option value="">No task</option>'+taskOptions+'</select></label><label class="field"><span>Due / reminder time</span><input id="note-due" type="datetime-local"></label></div><div class="field"><span>Channels</span><label><input type="checkbox" name="note-channel" value="in_app" checked> In-app</label> <label><input type="checkbox" name="note-channel" value="email"> Email outbox</label></div><label class="field"><span>Title</span><input id="note-title" maxlength="160"></label><label class="field"><span>Message</span><textarea id="note-message" rows="3" maxlength="1200"></textarea></label><button class="btn primary" onclick="createNotification(this)">Create notification</button></div>'+
  '<div class="move">notifications</div>'+(rows||'<div class="empty">No notifications yet.</div>');
@@ -426,17 +576,40 @@ async function createNotification(btn){
        case_id:document.getElementById('note-case').value,
        job_id:document.getElementById('note-job').value,
        task_id:document.getElementById('note-task').value,
-       due_at:due?due+':00Z':'',
+       due_at:due?new Date(due).toISOString():'',
        channels,
        title:document.getElementById('note-title').value,
-       message:document.getElementById('note-message').value
+       message:document.getElementById('note-message').value,
+       request_id:crypto.randomUUID()
      });
      toast('Notification created.');
      load();
    }catch(e){}
  });
 }
-async function notificationAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/notification-action',{id,action});toast('Notification updated.');load();}catch(e){}});}
+async function notificationAction(btn,id,action){
+  const payload={id,action};
+  if(action==='sent'){
+    const source=prompt('External email provider / mail application used for the actual send');
+    if(source===null)return;
+    const reference=prompt('Real sent email ID / delivery reference (from external mail logs)');
+    if(reference===null)return;
+    payload.delivery_source=source.trim();payload.delivery_reference=reference.trim();
+    if(payload.delivery_source.length<3||payload.delivery_reference.length<5){
+      toast('External delivery evidence required. Roger has not sent the email.','bad');return;
+    }
+  }else if(action==='failed'){
+    const reason=prompt('Reason the external email attempt failed');
+    if(reason===null)return;
+    if(!reason.trim()){toast('Please record why the email failed.','bad');return;}
+    payload.reason=reason.trim();
+  }
+  await busy(btn,async()=>{try{
+    await post('/api/notification-action',payload);
+    toast(action==='sent'?'External delivery reference recorded':action==='failed'?'Failure recorded — check retry time':'Notification updated.');
+    load();
+  }catch(e){toast(e.message||'Could not update notification.','bad');}});
+}
 async function sendCommunicationReply(btn,id){
  const input=document.getElementById('comm-reply-'+id),textValue=input?.value.trim()||'';
  if(!textValue){toast('Type a reply first.','bad');return;}
@@ -453,8 +626,12 @@ function renderCases(){
       <div class="cardtop"><h3>#${c.id} · ${esc(c.type||'case')}</h3><span class="badge ${esc(c.status)}">${esc(c.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${when(c.submitted_at)}</div>
       <div class="details">${esc(c.message)}</div>
+      ${c.next_actor?`<div class="triage-line"><b>Next: ${esc(c.next_actor)}</b> · ${esc(c.next_action||'Action needed')}${c.next_due_at?' · internal target '+esc(c.next_due_at):' · no date set'}</div>`:c.status!=='closed'?'<div class="triage-line hot">No next step — assign an owner and date.</div>':''}
+      ${c.status!=='closed'?'<div class="actions"><button class="btn" onclick="setCaseNext(this,'+JSON.stringify(String(c.id))+')">Set next person and deadline</button></div>':''}
+      ${(c.internal_notes||[]).length?'<details class="msgs"><summary>Agency-only notes · '+c.internal_notes.length+'</summary>'+c.internal_notes.map(n=>'<div class="thread">'+esc(n.text)+'</div>').join('')+'</details>':''}
       ${triageLine(c.triage)}${threadFor(c)}${msgThread(c)}
       ${c.closed_reason?`<div class="fineprint">Closed: ${esc(c.closed_reason)}</div>`:''}
+      ${c.type==='issue'&&['reported','new'].includes(c.status)&&!(stage.jobs||[]).some(j=>String(j.case_id)===String(c.id))?`<div class="actions"><button class="btn primary" onclick="dispatchRepairCase(this,${c.id},'${esc(c.triage?.trade||'general')}')">Review &amp; open repair job</button><span class="fineprint">The agent must review before contractors see the job.</span></div>`:''}
       ${c.status!=='closed'?`<div class="actions closebox">
         <input placeholder="say something — tenant sees it" id="rp-${c.id}" autocomplete="off" onkeydown="if(event.key==='Enter')replyCase(this,${c.id})">
         <label class="who"><input type="checkbox" id="rpl-${c.id}" checked> landlord</label>
@@ -471,6 +648,36 @@ function renderCases(){
       `<div class="actions"><button class="btn" onclick="reopenCase(this,${c.id})">Reopen case</button></div>`}
     </div>`).join(''):'<div class="empty">Case book is empty — tenant reports land here the moment they arrive, emergencies first.</div>');
 }
+async function setCaseNext(btn,id){
+  const current=(stage.cases||[]).find(c=>String(c.id)===String(id))||{};
+  const actor=prompt('Who must act next? (agent / tenant / landlord / trades)',current.next_actor||'agent');
+  if(actor===null)return;
+  const next_actor=actor.trim().toLowerCase();
+  if(!['agent','tenant','landlord','trades'].includes(next_actor)){toast('Choose agent, tenant, landlord or trades.','bad');return;}
+  const message=prompt('What exactly needs to happen next?',current.next_action||'');
+  if(message===null)return;
+  const next_action=message.trim();
+  if(!next_action){toast('A next action is required.','bad');return;}
+  const suggested=new Date(Date.now()+86400000).toISOString().slice(0,10);
+  const due=prompt('Internal target date (YYYY-MM-DD)',current.next_due_at||suggested);
+  if(due===null)return;
+  const next_due_at=due.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(next_due_at)){toast('Enter a valid YYYY-MM-DD date.','bad');return;}
+  await busy(btn,async()=>{try{
+    await post('/api/case-action',{id,action:'set_next_action',next_actor,next_action,next_due_at});
+    toast('Next person, task and target saved.');load();
+  }catch(e){toast(e.message||'Could not update case.','bad');}});
+}
+async function dispatchRepairCase(btn,id,suggestedTrade){
+ const triage_note=(prompt('Agent triage note: why should this become a repair job?')||'').trim();
+ if(!triage_note)return;
+ const required_trade=prompt('Required trade (e.g. plumbing, electrical, heating):',suggestedTrade==='other'?'general':suggestedTrade);
+ if(required_trade===null)return;
+ await busy(btn,async()=>{try{
+   await post('/api/case-action',{id,action:'dispatch_repair',triage_note,required_trade:required_trade.trim().toLowerCase()});
+   toast('Repair job opened after agent review.');load();
+ }catch(e){toast(e.message||'Could not dispatch the repair.','bad');}});
+}
 async function closeCase(btn,id){ const r=document.getElementById('cl-'+id).value.trim();
   if(!r){toast('A closing reason is required — it stays on the record.','bad');return;}
   await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'close',reason:r}); toast('Case #'+id+' closed — logged with your reason.'); load(); }catch(e){} }); }
@@ -486,8 +693,23 @@ async function replyCase(btn,id){ const el=document.getElementById('rp-'+id); co
     el.value=''; toast('Sent — it lands in their portal.'); load(); }catch(e){} }); }
 async function reopenCase(btn,id){ await busy(btn,async()=>{ try{ await post('/api/case-action',{id,action:'reopen'});
   toast('Reopened — back on the active list.'); load(); }catch(e){} }); }
-function poolPicker(idSuffix,jobId){ const opts=pool.map(t=>`<option value="${esc(t.company)}">${esc(t.company)} — ${esc(t.trades.join('/'))}${t.gas_safe?' · Gas Safe':''}</option>`).join('');
-  return `<select id="pool-${idSuffix}"><option value="">choose trade…</option>${opts}</select>`;}
+function poolPicker(idSuffix,job){
+  const home=(stage.properties||[]).find(p=>p.id===job.property_id)||{};
+  const postcode=String(home.postcode||'').replace(/\s/g,'').toUpperCase();
+  const outward=postcode.length>=5?postcode.slice(0,-3):'';
+  const area=String(home.area||'').trim().toUpperCase().replace(/\s/g,'');
+  const suitable=t=>{
+    if(!t.party_id)return false;
+    if(!job.requires_prework_quote)return true;
+    if(!t.ready_for_new_repairs)return false;
+    const allowed=(t.service_areas||[]).map(a=>String(a).toUpperCase().replace(/\s/g,''));
+    return !!((outward&&allowed.includes(outward))||(area&&allowed.includes(area)));
+  };
+  const opts=pool.filter(suitable).map(t=>
+    '<option value="'+esc(t.party_id)+'">'+esc(t.company)+' — '+esc((t.trades||[]).join('/'))+
+    ' · checked areas '+esc((t.service_areas||[]).join(', '))+(t.gas_safe?' · gas evidence checked':'')+'</option>').join('');
+  return '<select id="pool-'+esc(idSuffix)+'"><option value="">'+(opts?'choose checked trade…':'no verified trade in this area')+'</option>'+opts+'</select>';
+}
 
 function renderJobs(){
   const jobs=(stage.jobs||[]).slice().reverse();
@@ -498,41 +720,90 @@ function renderJobs(){
       <div class="meta">${propLine(j.property_id)}${j.required_trade?` · needs <b>${esc(j.required_trade)}</b>`:''} · ${when(j.created_at)}</div>
       <div class="details">${esc(j.message)}</div>
       ${j.assigned_to?`<div class="meta">${j.status==='quote_requested'?'quote requested from':j.status==='assigned'?'assigned to':'by'} <b>${esc(j.assigned_to)}</b></div>`:''}
-      ${j.status==='quoted'&&j.quotes?`<table class="evidence">${j.quotes.map(q=>`<tr><td>${esc(q.tradesperson)} · ${when(q.at)}</td><td><b>${money(q.pence)}</b> ${q.note?esc(q.note):''}</td><td>${q.status==='pending'?`<button class="btn primary" onclick="quoteAct(this,'${esc(j.id)}','approve_quote')">Approve</button> <button class="btn danger" onclick="quoteAct(this,'${esc(j.id)}','decline_quote')">Decline</button>`:esc(q.status)}</td></tr>`).join('')}</table>`:''}
+      ${j.status==='quoted'&&j.quotes?`<table class="evidence">${j.quotes.map(q=>`<tr><td>${esc(q.tradesperson)} · v${esc(q.version||'?')} · ${when(q.at)}</td><td><b>${money(q.pence)}</b> ${q.vat_pence!=null?' · net '+money(q.net_pence)+' + VAT '+money(q.vat_pence):' · lump sum (not itemised)'} ${q.note?esc(q.note):''}</td><td>${q.status==='pending'?`<button class="btn primary" onclick="quoteAct(this,'${esc(j.id)}','approve_quote')">Approve</button> <button class="btn danger" onclick="quoteAct(this,'${esc(j.id)}','decline_quote')">Decline</button>`:esc(q.status)}</td></tr>`).join('')}</table>`:''}
       ${j.gate_reason?`<div class="fineprint hot">Blocked: ${esc(j.gate_reason)} — booked by ${esc(j.requested_by)}</div>
         <div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','verify_approve')">Allow anyway</button>
         <button class="btn danger" onclick="jobAct(this,'${esc(j.id)}','verify_decline')">Send back</button></div>`:''}
-      ${['open'].includes(j.status)?`<div class="actions"><span>${poolPicker(j.id,j.id)}</span>
+      ${j.status==='triaged'?`<div class="actions"><span>${poolPicker(j.id,j)}</span><button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Request quote before work</button></div>`:''}
+      ${['open'].includes(j.status)?`<div class="actions"><span>${poolPicker(j.id,j)}</span>
         <button class="btn" onclick="pickAct(this,'${esc(j.id)}','assign')">Assign directly</button>
         <button class="btn primary" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask for quote first</button></div>`:''}
-      ${j.status==='assigned'&&j.assigned_to?`<div class="actions"><button class="btn primary" data-who="${esc(j.assigned_to)}" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask them to quote first</button></div>`:''}
-      ${j.invoice_pence!=null?`<div class="meta">invoice ${money(j.invoice_pence)}${j.approved_quote_pence!=null&&j.invoice_pence>j.approved_quote_pence?` · <span class="amber">above approved quote of ${money(j.approved_quote_pence)}</span>`:''}</div>`:''}
-      ${j.status==='paid'&&j.invoice_pence!=null?`<div class="actions"><button class="btn ghost" onclick="jobAct(this,'${esc(j.id)}','send_to_landlord')">Send this invoice to the landlord anyway</button></div>`:''}
+      ${j.status==='assigned'&&j.assigned_to?`<div class="actions"><button class="btn primary" data-party-id="${esc(j.assigned_to_party_id||'')}" onclick="pickAct(this,'${esc(j.id)}','request_quote')">Ask them to quote first</button></div>`:''}
+      ${j.pending_variation?`<div class="triage-line hot"><b>Additional work NOT yet authorised</b> · +${money(j.pending_variation.extra_pence)} · ${esc(j.pending_variation.scope)} · ${esc(j.pending_variation.status.replace(/_/g,' '))}</div>${j.pending_variation.status==='pending_agent'?`<div class="actions"><button class="btn primary" onclick="variationAct(this,'${esc(j.id)}','approve_variation')">Review extra-work cost</button><button class="btn danger" onclick="variationAct(this,'${esc(j.id)}','decline_variation')">Decline extras</button></div>`:''}`:''}
+      ${j.approved_variations?.length?`<div class="meta">Approved extras: ${j.approved_variations.map(v=>esc(v.scope)+' +'+money(v.extra_pence)).join(' · ')}</div>`:''}
+      ${j.invoice_pence!=null?`<div class="meta">Invoice ${esc(j.invoice_number||'number missing (legacy)')} · ${money(j.invoice_pence)}${j.invoice_vat_pence!=null?' (net '+money(j.invoice_net_pence)+' + VAT '+money(j.invoice_vat_pence)+')':' (not itemised)'}${j.balance_due_pence!=null?' · balance '+money(j.balance_due_pence):''}</div>`:''}
+      ${j.status==='invoice_submitted'?`<div class="actions"><button class="btn primary" onclick="jobAct(this,'${esc(j.id)}','approve_invoice')">Approve invoice</button><button class="btn ghost" onclick="jobAct(this,'${esc(j.id)}','send_to_landlord')">Ask landlord to review</button></div>`:''}
+      ${['invoice_approved','partially_paid'].includes(j.status)?`<div class="actions"><button class="btn primary" onclick="recordJobPayment(this,'${esc(j.id)}',${j.balance_due_pence??j.invoice_pence})">Record verified external payment</button><button class="btn" onclick="recordJobCredit(this,'${esc(j.id)}',${j.balance_due_pence??j.invoice_pence})">Record supplier credit note</button><span class="fineprint">Outstanding: ${money(j.balance_due_pence??j.invoice_pence)}. Manual records; Roger transfers nothing.</span></div>`:''}
+      ${['paid','credited'].includes(j.status)?`<div class="meta">Invoice settled: external payments ${money((j.payments||[]).reduce((v,p)=>v+p.amount_pence,0))} · supplier credits ${money((j.credit_notes||[]).reduce((v,c)=>v+c.amount_pence,0))}. ${j.status==='credited'?'No bank payment recorded.':''}</div>`:''}
     </div>`;
   const sec=(list,title,note,none)=>`<h2>${title}</h2>${note?`<p class="fineprint">${note}</p>`:''}${list.length?list.map(card).join(''):`<div class="empty">${none}</div>`}`;
   document.getElementById('view-jobs').innerHTML=`<div class="move">jobs — who took what</div>`+
+    sec(g('triaged'),'Agent reviewed — get a quote','Contractors cannot start these jobs until a price is approved.','No reports awaiting a quote request.')+
+    sec(g('awaiting_prework_approval'),'Landlord must approve before work','No work is authorised until the landlord accepts the quote.','No quotes waiting for landlord approval.')+
     sec(g('quoted'),'Quotes waiting on you','approve a price before anyone visits, or decline and ask again','No quotes in. When a trade replies with a price, it lands here for your yes or no.')+
     sec(g('pending_verification'),'Needs verification','credential mismatch — your call before anyone visits','Nothing held back. A booking appears here only when the trade\'s credentials need your eye.')+
-    sec(g('open'),'Unassigned','assign a trusted trade, ask for a quote first, or leave it on the board','No open jobs. Tenant reports become jobs here the moment you dispatch them.')+
+    sec(g('open'),'Unassigned','assign a trusted trade, ask for a quote first, or leave it on the board','No unassigned repair jobs. Review new tenant reports in Cases before opening a job.')+
     sec(g('assigned'),'Assigned, waiting to start','','Nothing sitting with a trade. Assign one from the open list.')+
     sec(g('quote_requested'),'Waiting on a quote','','No quote is outstanding. Ask a trade for a price from an open job.')+
     sec(g('in_progress'),'In progress','','Nothing on the go. Jobs arrive here once work is green-lit.')+
-    sec(g('awaiting_approval'),'Waiting on landlord','','No bills over the standing limit are waiting on a landlord.')+
-    sec(g('paid'),'Settled','','Nothing settled yet. Paid invoices move here.')+
+    sec(g('invoice_submitted'),'Invoice needs review','Review against the job and approved quote before approving.','No invoices awaiting review.')+
+    sec(g('awaiting_approval'),'Waiting on landlord','','No invoices are waiting on a landlord.')+
+    sec(g('invoice_approved'),'Approved, not yet paid','Check the actual external payment before recording it here.','No approved unpaid invoices.')+
+    sec(g('partially_paid'),'Part-paid contractor invoices','Outstanding balances require reconciliation.','No partial payments outstanding.')+
+    sec(g('credited'),'Fully credited invoices','A supplier credit is not a bank payment.','No fully credited invoices.')+
+    sec(g('paid'),'External payments recorded','These have a manually entered payment reference; Roger does not send money.','No external payments recorded yet.')+
     sec(g('rejected'),'Declined by landlord','','No landlord has declined an invoice.');
 }
 async function pickAct(btn,id,action){ const sel=document.getElementById('pool-'+id);
-  const who=(sel?sel.value:'')||btn.dataset.who||'';
-  if(!who){toast('Choose a tradesperson from the list first.','bad');return;}
-  await jobAct(btn,id,action,who); }
-async function jobAct(btn,id,action,tradesperson){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:tradesperson||'agent'});
+  const partyId=(sel?sel.value:'')||btn.dataset.partyId||'';
+  const trade=pool.find(t=>t.party_id===partyId);
+  if(!trade){toast('Choose an approved contractor with a linked portal account first.','bad');return;}
+  await jobAct(btn,id,action,trade.company,partyId); }
+async function jobAct(btn,id,action,tradesperson,trades_party_id){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:tradesperson||'agent',trades_party_id});
   const say={verify_approve:'Booking released to the tradesperson.',verify_decline:'Booking sent back — it returns to the open board.',
     assign:'Assigned — they see it on their board now.',request_quote:'Quote requested — it waits on their price.',
-    approve_quote:'Quote approved — work is green-lit.',decline_quote:'Quote declined; they\'ve been asked to re-quote or stand down.',
-    send_to_landlord:'Invoice sent to the landlord for sign-off.'}[action]||'Done.';
+    approve_quote:'Quote reviewed; high quotes wait for landlord approval.',decline_quote:'Quote declined; they\'ve been asked to re-quote or stand down.',
+    send_to_landlord:'Invoice sent to the landlord for sign-off.',
+    approve_invoice:'Invoice approved. External payment has NOT been made.'}[action]||'Done.';
   toast(say); load(); }catch(e){} }); }
+async function variationAct(btn,id,action){
+  let reason='';
+  if(action==='decline_variation'){
+    const entry=prompt('Why was this extra work declined?');
+    if(entry===null)return;reason=entry.trim();
+    if(!reason){toast('Please record a reason.','bad');return;}
+  }
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action,reason});
+    toast(action==='approve_variation'?'Extra work reviewed. Above the mandate limit, landlord approval is still required.':'Extra work declined.');load();
+  }catch(e){toast(e.message||'Could not decide extra work.','bad');}});
+}
+async function recordJobPayment(btn,id,balance){
+  const amountText=prompt('Amount actually paid outside Roger (£). Remaining due: '+money(balance),(balance/100).toFixed(2));
+  if(amountText===null)return;
+  const amountPence=Math.round(Number(amountText)*100);
+  if(!Number.isInteger(amountPence)||amountPence<=0||amountPence>balance){toast('Payment must be positive and no more than the balance.','bad');return;}
+  const payment_reference=(prompt('External bank/payment reference (required):')||'').trim();
+  if(!payment_reference){toast('External reference required.','bad');return;}
+  const payment_date=prompt('Date bank paid (YYYY-MM-DD):',new Date().toISOString().slice(0,10));
+  if(payment_date===null)return;
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action:'record_payment',payment_reference,payment_date,payment_amount_pence:amountPence});
+    toast('External payment recorded. It was not sent by Roger.');load();}catch(e){toast(e.message||'Could not record payment.','bad');}});
+}
+async function recordJobCredit(btn,id,balance){
+  const credit_note_number=(prompt('Supplier credit note number (required):')||'').trim();
+  if(!credit_note_number)return;
+  const credit_reason=(prompt('Reason for this supplier credit:')||'').trim();
+  if(!credit_reason)return;
+  const amount=prompt('Supplier credit amount (£), up to '+money(balance),(balance/100).toFixed(2));
+  if(amount===null)return;
+  const credit_amount_pence=Math.round(Number(amount)*100);
+  if(!Number.isInteger(credit_amount_pence)||credit_amount_pence<=0||credit_amount_pence>balance){toast('Credit cannot exceed remaining balance.','bad');return;}
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action:'record_credit',
+    credit_note_number,credit_reason,credit_amount_pence});
+    toast('Supplier credit recorded. No payment was made.');load();}catch(e){toast(e.message||'Could not record credit.','bad');}});
+}
 function quoteAct(btn,id,action){ const reason=action==='decline_quote'?prompt('Reason for the trade (kept on record):')||'price not right':undefined;
-  busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote approved — work is green-lit.':'Quote declined and sent back.'); load(); }catch(e){} }); }
+  busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,reason}); toast(action==='approve_quote'?'Quote reviewed. If above the spending limit, landlord approval is needed before work.':'Quote declined and sent back.'); load(); }catch(e){} }); }
 
 const PROSPECT_STAGES={
  tenant:['enquiry','viewing','application','referencing','approved','offer','converted','closed'],
@@ -569,6 +840,63 @@ async function saveProspectStage(btn){
  await busy(btn,async()=>{try{await post('/api/prospect-action',{kind:btn.dataset.kind,id:btn.dataset.id,stage:select.value});toast('Prospect stage updated and recorded in the audit history.');load();}catch(e){}});
 }
 
+function contractorProofPanel(reg){
+  if(reg.role!=='trades')return '';
+  const cv=reg.contractor_verification||{};
+  const verified=cv.status==='verified'&&cv.valid_until>=new Date().toISOString().slice(0,10)&&
+    pool.some(t=>t.party_id===reg.party_id&&t.ready_for_new_repairs);
+  const evidence=(window._docs||[]).filter(d=>d.party_id===reg.party_id&&d.document_type==='trades_document'&&d.status==='verified'&&!d.replaced_by_id);
+  const options='<option value="">Choose checked document</option>'+evidence.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.file_name||d.id)+' · '+esc(d.id)+' · expires '+esc(d.expiry_date||'not recorded')+'</option>').join('');
+  if(!reg.party_id)return '<div class="fineprint hot">Contractor not linked to an active Party/account. Approve the registration, link the contractor in People, then upload and review evidence.</div>';
+  return '<div class="card"><b>Contractor evidence status: '+esc(cv.status||'not independently checked')+'</b>'+
+    (verified?'<div class="meta">Checked by '+esc(cv.checked_by||'?')+' · expires '+esc(cv.valid_until)+' · regions '+esc((cv.service_areas||[]).join(', '))+'</div>':'<div class="fineprint hot">Not eligible for new repair work until current independent checks are recorded and evidence remains valid.</div>')+
+    '<details class="msgs"><summary>Record checks / renew (agent only)</summary>'+
+    '<p class="fineprint">First use Documents to upload TWO separate trades documents, link both to this contractor, and verify each file. Independently confirm insurance and qualifications with the issuer; then record how you checked. This form does NOT contact an insurer or Gas Safe.</p>'+
+    '<div class="grid2"><label class="field"><span>Insurance evidence</span><select id="cv-ins-'+esc(reg.id)+'">'+options+'</select></label>'+
+    '<label class="field"><span>Qualification evidence</span><select id="cv-qual-'+esc(reg.id)+'">'+options+'</select></label>'+
+    '<label class="field"><span>Insurer / check source</span><input id="cv-ins-src-'+esc(reg.id)+'" maxlength="100" placeholder="Insurer portal / confirmed phone call"></label>'+
+    '<label class="field"><span>Insurer check reference</span><input id="cv-ins-ref-'+esc(reg.id)+'" maxlength="160" placeholder="Provider confirmation reference"></label>'+
+    '<label class="field"><span>Qualification issuer / check source</span><input id="cv-src-'+esc(reg.id)+'" maxlength="100" placeholder="Trade register / awarding body"></label>'+
+    '<label class="field"><span>Qualification check reference</span><input id="cv-ref-'+esc(reg.id)+'" maxlength="160" placeholder="Register lookup / issuer confirmation"></label>'+
+    '<label class="field"><span>Verified trade categories (comma separated)</span><input id="cv-trades-'+esc(reg.id)+'" value="'+esc((cv.verified_trades||reg.trades||[]).join(', '))+'"></label>'+
+    '<label class="field"><span>Checked service areas or postcode outward codes</span><input id="cv-areas-'+esc(reg.id)+'" value="'+esc((cv.service_areas||[]).join(', '))+'" placeholder="Leeds, LS1, LS2"></label>'+
+    '<label class="field"><span>Review expiry (must not exceed evidence expiry)</span><input type="date" id="cv-exp-'+esc(reg.id)+'" value="'+esc(cv.valid_until||'')+'"></label>'+
+    '<label class="field"><span>Gas Safe evidence, if approving gas</span><select id="cv-gas-'+esc(reg.id)+'">'+options+'</select></label>'+
+    '<label class="field"><span>Gas Safe independent register check ref, if approving gas</span><input id="cv-gas-ref-'+esc(reg.id)+'" maxlength="160"></label></div>'+
+    '<div class="actions"><button class="btn primary" onclick="recordContractorChecks(this,\''+esc(reg.id)+'\')">Record independent checks</button></div></details>'+
+    (cv.status==='verified'?'<div class="actions"><button class="btn danger" onclick="revokeContractorChecks(this,\''+esc(reg.id)+'\')">Revoke contractor checks</button></div>':'')+
+    '</div>';
+}
+async function recordContractorChecks(btn,id){
+  const v=s=>document.getElementById('cv-'+s+'-'+id)?.value.trim()||'';
+  const verification={
+    registration_id:id,action:'verify',insurance_document_id:v('ins'),
+    qualification_document_id:v('qual'),insurance_check_source:v('ins-src'),
+    insurance_check_reference:v('ins-ref'),check_source:v('src'),
+    external_check_reference:v('ref'),valid_until:v('exp'),
+    verified_trades:v('trades').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean),
+    service_areas:v('areas').split(',').map(x=>x.trim()).filter(Boolean),
+    gas_document_id:v('gas'),gas_register_reference:v('gas-ref')
+  };
+  if(!verification.insurance_document_id||!verification.qualification_document_id||
+     !verification.external_check_reference||!verification.insurance_check_reference||
+     !verification.valid_until||!verification.service_areas.length){
+    toast('Select evidence and enter issuer references, service area and review expiry.','bad');return;
+  }
+  await busy(btn,async()=>{try{
+    await post('/api/contractor-verification',verification);
+    toast('Manual independent checks recorded. Dispatch restrictions now use this evidence.');load();
+  }catch(e){toast(e.message||'Could not verify contractor.','bad');}});
+}
+async function revokeContractorChecks(btn,id){
+  const reason=prompt('Why revoke this contractor verification?');
+  if(reason===null)return;
+  if(!reason.trim()){toast('A revocation reason is required.','bad');return;}
+  await busy(btn,async()=>{try{
+    await post('/api/contractor-verification',{registration_id:id,action:'revoke',reason:reason.trim()});
+    toast('Contractor verification revoked; new repair dispatch is blocked.');load();
+  }catch(e){toast(e.message||'Could not revoke contractor checks.','bad');}});
+}
 function renderRegs(){
   const all=stage.registrations||[]; const pend=all.filter(r=>r.status==='pending');
   const decided=all.filter(r=>r.status!=='pending').slice().reverse();
@@ -578,6 +906,7 @@ function renderRegs(){
     <div class="details">${esc(r.details)}</div>
     ${r.role==='trades'?`<div class="meta">trades: ${esc((r.trades||['not stated']).join(', '))}${r.gas_safe_number?' · Gas Safe '+esc(r.gas_safe_number):' · <span class="hot">no Gas Safe number</span>'}${r.insurance_expiry?' · insurance to '+esc(r.insurance_expiry):''}${r.coverage?' · covers '+esc(r.coverage):''}</div>`:''}
     ${r.property_address?`<div class="meta">${esc(r.property_address)}${r.units?' · '+esc(r.units)+' unit(s)':''}</div>`:''}
+    ${r.role==='trades'?contractorProofPanel(r):''}
     ${r.status==='pending'?`<div class="actions"><input placeholder="note for the record (optional)" id="rn-${esc(r.id)}" autocomplete="off" style="max-width:240px" onkeydown="if(event.key==='Enter')regAct(this,'${esc(r.id)}','approve')">
       <button class="btn primary" onclick="regAct(this,'${esc(r.id)}','approve')">Approve</button>
       <button class="btn danger" onclick="regAct(this,'${esc(r.id)}','reject')">Reject</button></div>`:
@@ -588,7 +917,7 @@ function renderRegs(){
     (decided.length?`<h2>Decided</h2>`+decided.map(reg).join(''):'');
 }
 async function regAct(btn,id,action){ await busy(btn,async()=>{ try{ const n=document.getElementById('rn-'+id); const note=n?n.value.trim():'';
-  await post('/api/registration-action',{id,action,note}); toast(action==='approve'?'Approved — they can be booked now':'Rejected, with your note on record'); load(); }catch(e){} }); }
+  await post('/api/registration-action',{id,action,note}); toast(action==='approve'?'Registration approved. Contractor still needs independent proof checks before new repair work.':'Rejected with your note on record'); load(); }catch(e){} }); }
 
 const PROPERTY_TRANSITIONS={
  prospect:['onboarding','offboarded'],onboarding:['ready_to_market','offboarded'],
@@ -597,9 +926,44 @@ const PROPERTY_TRANSITIONS={
  notice_given:['occupied','checkout'],checkout:['void'],void:['remarketing','offboarded'],
  remarketing:['advertised','onboarding','offboarded'],offboarded:[]
 };
+function renderPropertySubmissionReviews(){
+ const submissions=(stage.property_submissions||[]).slice().reverse();
+ const pending=submissions.filter(s=>s.status==='pending');
+ const renderItem=s=>{
+   const state=s.status||'pending', note=s.agent_note||'';
+   return `<div class="card" id="submission-${esc(s.id)}">
+     <div class="cardtop"><h3>${esc(s.address||'New property')}</h3><span class="badge ${esc(state)}">${esc(state.replace(/_/g,' '))}</span></div>
+     <div class="meta">${esc(s.area||'')} · ${esc(s.postcode||'')} · ${esc(s.property_type||'Property')} · ${esc(s.beds)} bed · ${money(s.rent_pence)} pcm</div>
+     <div class="meta">Landlord: ${esc((stage.parties||[]).find(p=>p.id===s.landlord_party_id)?.display_name||'Landlord')} · Submitted ${when(s.submitted_at)}</div>
+     ${s.description?`<div class="details">${esc(s.description)}</div>`:''}
+     ${note?`<div class="fineprint">Latest review: ${esc(note)}</div>`:''}
+     ${state==='pending'?`<label class="field"><span>Agent message (required for changes or decline)</span>
+       <textarea class="review-note" rows="2" maxlength="1000" placeholder="Any questions, missing information or reason for declining"></textarea></label>
+       <div class="actions">
+         <button class="btn primary" data-submission-id="${esc(s.id)}" onclick="reviewSubmission(this,'approve')">Approve for onboarding</button>
+         <button class="btn" data-submission-id="${esc(s.id)}" onclick="reviewSubmission(this,'request_changes')">We need to talk</button>
+         <button class="btn danger" data-submission-id="${esc(s.id)}" onclick="reviewSubmission(this,'decline')">Decline</button>
+       </div>`:s.property_id?`<div class="meta">Onboarded as property ${esc(s.property_id)}. Advertising requires a separate agent action.</div>`:''}
+   </div>`;
+ };
+ return '<div class="move">new landlord submissions</div>'+
+    '<p class="fineprint">Approval puts a property into onboarding. It does not publish an advert. Check management terms, documents and compliance separately.</p>'+
+    (pending.length?pending.map(renderItem).join(''):'<div class="empty">No property submissions waiting for review.</div>')+
+    (submissions.some(s=>s.status!=='pending')?'<details class="card"><summary>Previous property decisions</summary>'+
+      submissions.filter(s=>s.status!=='pending').slice(0,20).map(renderItem).join('')+'</details>':'');
+}
+async function reviewSubmission(btn,action){
+ const card=btn.closest('.card'),note=card?.querySelector('.review-note')?.value.trim()||'';
+ if(action!=='approve'&&!note){toast('Please explain what the landlord needs to change or why it was declined.','bad');return;}
+ await busy(btn,async()=>{try{
+   await post('/api/agent/property-submission',{submission_id:btn.dataset.submissionId,action,note});
+   toast(action==='approve'?'Approved for onboarding — not advertised.':action==='request_changes'?'Questions sent to landlord.':'Application declined.');
+   await load();
+ }catch(e){}});
+}
 function renderProps(){
  const rows=stage.properties||[];
- document.getElementById('view-properties').innerHTML='<div class="move">your properties</div>'+
+ document.getElementById('view-properties').innerHTML=renderPropertySubmissionReviews()+'<div class="move">your properties</div>'+
  '<p class="fineprint">Move each property through its lifecycle. Only properties marked Advertised with a public description appear on the lettings site.</p><div class="grid2">'+
  (rows.length?rows.map(p=>{
    const current=p.lifecycle_status||'onboarding';
@@ -624,16 +988,29 @@ const TENANCY_TRANSITIONS={
  notice_given:['active','checkout'],checkout:['deposit_resolution','former_tenant'],
  deposit_resolution:['former_tenant'],former_tenant:[],cancelled:[]
 };
+async function revokePortalAccount(btn,partyId){
+  const party=(stage.parties||[]).find(p=>p.id===partyId);
+  if(!party||!party.account_id)return;
+  if(!confirm('Disable ALL portal sessions and future login for '+(party.display_name||partyId)+'? Their tenancy and history will remain.'))return;
+  const reason=prompt('Required reason for revoking access');
+  if(reason===null)return;
+  if(!reason.trim()){toast('A reason is required.','bad');return;}
+  await busy(btn,async()=>{try{
+    const result=await post('/api/access-revoke',{action:'revoke',party_id:partyId,reason:reason.trim()});
+    toast('Access revoked; '+result.sessions_closed+' active sessions removed.');load();
+  }catch(e){toast(e.message||'Could not revoke account.','bad');}});
+}
 function renderPeopleTenancies(){
  const parties=stage.parties||[],tenancies=stage.tenancies||[],props=stage.properties||[];
  const partyOptions=(role,selected)=>parties.filter(p=>p.status==='active'&&(p.roles||[]).includes(role)).map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.display_name)+' · '+esc(p.id)+'</option>').join('');
  const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title)+' · '+esc(p.area)+'</option>').join('');
  const prospectOptions=(stage.cases||[]).filter(c=>c.type==='enquiry'&&['renter','tenant'].includes(c.role)).map(c=>'<option value="'+esc(c.id)+'">#'+esc(c.id)+' · '+esc(c.name||'Prospect')+'</option>').join('');
- const landlordRegOptions=(stage.registrations||[]).filter(x=>x.role==='landlord'&&x.status==='approved'&&!x.party_id).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name||x.id)+' · '+esc(x.id)+'</option>').join('');
+ const linkableRegs=(stage.registrations||[]).filter(x=>['landlord','trades'].includes(x.role)&&x.status==='approved'&&!x.party_id&&(x.role==='landlord'||x.credentials_checked_at));
+ const registrationOptions=linkableRegs.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name||x.id)+' · '+esc(x.role)+' · '+esc(x.id)+'</option>').join('');
  const landlordOptions=partyOptions('landlord');
  const agreements=stage.management_agreements||[];
- const agreementCards=agreements.length?agreements.slice().reverse().map(a=>{const landlord=parties.find(p=>p.id===a.landlord_party_id)||{};const properties=(a.property_ids||[]).map(id=>(props.find(p=>p.id===id)||{}).title||id).join(', ');const choices=[a.status,...({draft:['sent','cancelled'],sent:['signed','cancelled'],signed:['active','ended'],active:['ended']}[a.status]||[])];return '<div class="card" id="'+esc(a.id)+'"><div class="cardtop"><h3>'+esc(a.id)+' · '+esc(landlord.display_name||a.landlord_party_id)+'</h3><span class="badge '+esc(a.status)+'">'+esc(a.status)+'</span></div><div class="meta">'+esc(a.agreement_type.replace(/_/g,' '))+' · '+esc(properties)+' · fee '+(Number(a.management_fee_bps||0)/100).toFixed(2)+'%'+(a.signed_at?' · signed '+esc(a.signed_at):'')+(a.ended_at?' · ended '+esc(a.ended_at):'')+'</div><div class="grid2"><label class="field"><span>Agreement stage</span><select class="management-stage">'+choices.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('')+'</select></label><label class="field"><span>Signed date</span><input class="management-signed" type="date" value="'+esc(a.signed_at||'')+'"></label><label class="field"><span>End date</span><input class="management-ended" type="date" value="'+esc(a.ended_at||'')+'"></label><label class="field"><span>Evidence note</span><input class="management-evidence" maxlength="1000" value="'+esc(a.evidence_note||'')+'"></label></div><button class="btn primary" data-agreement-id="'+esc(a.id)+'" onclick="saveManagementAgreement(this)">Update agreement</button></div>';}).join(''):'<div class="empty">No management agreements recorded yet.</div>';
- const partyCards=parties.length?parties.map(p=>'<div class="appt" id="'+esc(p.id)+'"><div><b>'+esc(p.display_name)+'</b><div class="meta">'+esc(p.kind)+' · '+esc((p.roles||[]).join(', '))+(p.email?' · '+esc(p.email):'')+'</div><div class="meta">'+(p.account_id?'Portal account linked':'No portal account linked')+'</div></div><span class="badge">'+esc(p.status)+'</span></div>').join(''):'<div class="empty">No Party records yet. Create landlord and tenant Parties before adding a tenancy.</div>';
+ const agreementCards=agreements.length?agreements.slice().reverse().map(a=>{const landlord=parties.find(p=>p.id===a.landlord_party_id)||{};const properties=(a.property_ids||[]).map(id=>(props.find(p=>p.id===id)||{}).title||id).join(', ');const choices=[a.status,...({draft:['sent','cancelled'],sent:['signed','cancelled'],signed:['active','ended'],active:['ended']}[a.status]||[])];return '<div class="card" id="'+esc(a.id)+'"><div class="cardtop"><h3>'+esc(a.id)+' · '+esc(landlord.display_name||a.landlord_party_id)+'</h3><span class="badge '+esc(a.status)+'">'+esc(a.status)+'</span></div><div class="meta">'+esc(a.agreement_type.replace(/_/g,' '))+' · '+esc(properties)+' · fee '+(Number(a.management_fee_bps||0)/100).toFixed(2)+'% · spending limit '+(Number.isInteger(a.spending_limit_pence)?money(a.spending_limit_pence):'not agreed')+(a.signed_at?' · signed '+esc(a.signed_at):'')+(a.ended_at?' · ended '+esc(a.ended_at):'')+'</div><div class="grid2"><label class="field"><span>Agreement stage</span><select class="management-stage">'+choices.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('')+'</select></label><label class="field"><span>Signed date</span><input class="management-signed" type="date" value="'+esc(a.signed_at||'')+'"></label><label class="field"><span>End date</span><input class="management-ended" type="date" value="'+esc(a.ended_at||'')+'"></label><label class="field"><span>Evidence note</span><input class="management-evidence" maxlength="1000" value="'+esc(a.evidence_note||'')+'"></label></div><button class="btn primary" data-agreement-id="'+esc(a.id)+'" onclick="saveManagementAgreement(this)">Update agreement</button></div>';}).join(''):'<div class="empty">No management agreements recorded yet.</div>';
+ const partyCards=parties.length?parties.map(p=>'<div class="appt" id="'+esc(p.id)+'"><div><b>'+esc(p.display_name)+'</b><div class="meta">'+esc(p.kind)+' · '+esc((p.roles||[]).join(', '))+(p.email?' · '+esc(p.email):'')+'</div><div class="meta">'+(p.account_id?'Portal account linked':'No portal account linked')+'</div></div><div class="actions"><span class="badge">'+esc(p.status)+'</span>'+(p.account_id&&p.status==='active'&&!(p.roles||[]).includes('agent')?'<button class="btn danger" onclick="revokePortalAccount(this,\''+esc(p.id)+'\')">Revoke portal access</button>':'')+'</div></div>').join(''):'<div class="empty">No Party records yet. Create landlord and tenant Parties before adding a tenancy.</div>';
  const tenancyCards=tenancies.length?tenancies.slice().reverse().map(t=>{
    const tenants=(t.tenant_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
    const landlords=(t.landlord_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
@@ -654,10 +1031,10 @@ function renderPeopleTenancies(){
  '<label class="field"><span>Email</span><input id="party-email" type="email" maxlength="254"></label><label class="field"><span>Phone</span><input id="party-phone" type="text" maxlength="40"></label>'+
  '<label class="field"><span>Address</span><input id="party-address" type="text" maxlength="300"></label><div class="field"><span>Role assignments</span>'+
  '<label><input type="checkbox" name="party-role" value="landlord"> Landlord</label> <label><input type="checkbox" name="party-role" value="tenant"> Tenant</label> <label><input type="checkbox" name="party-role" value="trades"> Trades</label> <label><input type="checkbox" name="party-role" value="agent"> Agent</label></div>'+
- '<label class="field"><span>Link approved landlord registration (optional)</span><select id="party-registration"><option value="">No linked registration</option>'+landlordRegOptions+'</select></label>'+
+ '<label class="field"><span>Link matching approved landlord or trades registration (optional)</span><select id="party-registration"><option value="">No linked registration</option>'+registrationOptions+'</select></label>'+
  '<label class="field"><span>Agent notes</span><textarea id="party-notes" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="createParty(this)">Create Party</button></div>'+
  '<div class="card"><h2>People records</h2>'+partyCards+'</div></div>'+
- '<div class="card"><h2>Management agreements</h2><p class="fineprint">Record authority against a landlord Party and selected properties. Mark signed only when you have evidence and the date.</p><div class="grid2"><label class="field"><span>Landlord Party</span><select id="management-landlord">'+landlordOptions+'</select></label><label class="field"><span>Properties (select multiple with Ctrl/Cmd)</span><select id="management-properties" multiple>'+propOptions+'</select></label><label class="field"><span>Agreement type</span><select id="management-type"><option value="full_management">Full management</option><option value="let_only">Let only</option></select></label><label class="field"><span>Management fee (%)</span><input id="management-fee" type="number" min="0" max="100" step="0.01" value="10"></label></div><button class="btn primary" onclick="createManagementAgreement(this)">Create draft agreement</button></div>'+
+ '<div class="card"><h2>Management agreements</h2><p class="fineprint">Record authority against a landlord Party and selected properties. Mark signed only when you have evidence and the date.</p><div class="grid2"><label class="field"><span>Landlord Party</span><select id="management-landlord">'+landlordOptions+'</select></label><label class="field"><span>Properties (select multiple with Ctrl/Cmd)</span><select id="management-properties" multiple>'+propOptions+'</select></label><label class="field"><span>Agreement type</span><select id="management-type"><option value="full_management">Full management</option><option value="let_only">Let only</option></select></label><label class="field"><span>Management fee (%)</span><input id="management-fee" type="number" min="0" max="100" step="0.01" value="10"></label><label class="field"><span>Spending limit for each selected property (£)</span><input id="management-spending-limit" type="number" min="0" max="1000000" step="0.01" value="150" required></label></div><p class="fineprint">Choose properties with the same limit. For different limits, use separate agreements. The limit applies only after signing and activation.</p><button class="btn primary" onclick="createManagementAgreement(this)">Create draft agreement</button></div>'+
  '<div class="move">management authority</div>'+agreementCards+
  '<div class="card"><h2>Create tenancy application</h2><div class="grid2"><label class="field"><span>Property</span><select id="tenancy-property">'+propOptions+'</select></label><label class="field"><span>Source tenant enquiry (optional)</span><select id="tenancy-prospect"><option value="">No linked enquiry</option>'+prospectOptions+'</select></label>'+
  '<label class="field"><span>Tenant Party (select multiple with Ctrl/Cmd)</span><select id="tenancy-tenants" multiple>'+partyOptions('tenant')+'</select></label>'+
@@ -675,8 +1052,11 @@ async function createParty(btn){
 async function createManagementAgreement(btn){
  const propertyIds=Array.from(document.getElementById('management-properties').selectedOptions).map(x=>x.value);
  const fee=Number(document.getElementById('management-fee').value);
+ const spendEl=document.getElementById('management-spending-limit');
+ const spend=Number(spendEl.value);
  if(!Number.isFinite(fee)||fee<0||fee>100){toast('Enter a fee between 0 and 100%.','bad');return;}
- await busy(btn,async()=>{try{await post('/api/management-agreement-action',{action:'create',landlord_party_id:document.getElementById('management-landlord').value,property_ids:propertyIds,agreement_type:document.getElementById('management-type').value,management_fee_bps:Math.round(fee*100)});toast('Draft management agreement created.');load();}catch(e){}});
+ if(!spendEl.value.trim()||!Number.isFinite(spend)||spend<0||spend>1000000){toast('Enter the agreed spending limit in pounds.','bad');return;}
+ await busy(btn,async()=>{try{await post('/api/management-agreement-action',{action:'create',landlord_party_id:document.getElementById('management-landlord').value,property_ids:propertyIds,agreement_type:document.getElementById('management-type').value,management_fee_bps:Math.round(fee*100),spending_limit_pence:Math.round(spend*100)});toast('Draft management agreement created.');load();}catch(e){}});
 }
 async function saveManagementAgreement(btn){
  const card=btn.closest('.card'),status=card.querySelector('.management-stage').value;
@@ -737,6 +1117,17 @@ async function createTask(btn){
 }
 async function taskAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/task-action',{id,action});toast('Task updated.');load();}catch(e){}});}
 
+function renderContractorInvoices(){
+ const invoices=(stage.jobs||[]).filter(j=>j.invoice_pence!=null).slice().reverse();
+ const action=invoices.filter(j=>["invoice_submitted","invoice_approved","partially_paid","awaiting_approval","rejected"].includes(j.status));
+ const status=j=>j.status==="paid"?"External payment recorded":j.status==="invoice_submitted"?"Needs agent review":j.status==="invoice_approved"?"Approved — unpaid":j.status==="partially_paid"?"Part-paid; balance outstanding":j.status==="credited"?"Credited without bank payment":j.status==="awaiting_approval"?"Landlord approval pending":j.status==="rejected"?"Declined — follow up":j.status;
+ const records=invoices.length?invoices.slice(0,25).map(j=>
+   deskLink("Invoice "+money(j.invoice_pence)+" · "+(j.assigned_to||"Tradesperson"),
+     propLine(j.property_id)+" · "+status(j)+" · Work order "+j.id,
+     "jobs","job-"+j.id,j.status==="awaiting_approval"?"pending":j.status==="rejected"?"overdue":"completed")
+   ).join(""):"<div class=\"empty\">No contractor invoices received yet. Completed jobs with submitted invoices appear here.</div>";
+ return `<div class="move">contractor invoices</div><div class="card"><div class="cardtop"><h3>Invoices from tradespeople</h3><span class="badge ${action.length?"pending":"completed"}">${action.length} need follow-up</span></div><p class="fineprint">Every entry links to its job. Invoice approval does not mean payment. Only manually verified external payments can be marked paid; Roger does not transfer money.</p>${records}</div>`;
+}
 function renderMoney(){
  const eligible=(stage.tenancies||[]).filter(t=>t.agreement_status==='signed'&&['move_in_scheduled','active','renewal','notice_given'].includes(t.status));
  const tenOptions=eligible.map(t=>{const p=(stage.properties||[]).find(x=>x.id===t.property_id)||{};return '<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc(p.title||t.property_id)+' · '+money(t.rent_amount_pence)+'</option>';}).join('');
@@ -752,7 +1143,7 @@ function renderMoney(){
    (x.adjustments||[]).map(a=>'<div class="thread">Adjustment '+(a.amount_pence>=0?'+':'')+money(a.amount_pence)+' · '+esc(a.reason)+'</div>').join('')+
    '<div class="actions"><input class="receipt-amount" type="number" min="0.01" step="0.01" placeholder="Receipt (£)" aria-label="Receipt amount in pounds"><input class="receipt-date" type="date" value="'+new Date().toISOString().slice(0,10)+'" aria-label="Receipt date"><button class="btn primary" data-entry-id="'+esc(x.id)+'" onclick="recordRentReceipt(this)">Record receipt</button><button class="btn" data-entry-id="'+esc(x.id)+'" onclick="adjustRentEntry(this)">Adjust charge</button></div></div>';
  }).join('');
- document.getElementById('view-money').innerHTML='<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
+ document.getElementById('view-money').innerHTML=renderContractorInvoices()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
  '<div class="stats"><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat"><div class="value">'+money(feeTotal)+'</div><div class="label">management fees recorded</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
  '<div class="card"><h2>Generate rent schedule</h2><div class="grid2"><label class="field"><span>Signed tenancy</span><select id="ledger-tenancy">'+tenOptions+'</select></label><label class="field"><span>First due date</span><input id="ledger-first-due" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label class="field"><span>Periods (max 36)</span><input id="ledger-periods" type="number" min="1" max="36" value="12"></label></div><button class="btn primary" onclick="generateRentSchedule(this)">Generate schedule</button>'+(eligible.length?'':'<div class="fineprint">A signed tenancy with move-in scheduled or active status is required.</div>')+'</div>'+
  '<div class="card"><h2>Generate landlord statement</h2><div class="grid2"><label class="field"><span>Landlord</span><select id="statement-landlord">'+landlordOptions+'</select></label><label class="field"><span>Period start</span><input id="statement-start" type="date"></label><label class="field"><span>Period end</span><input id="statement-end" type="date"></label></div><button class="btn primary" onclick="createLandlordStatement(this)">Create statement snapshot</button>'+(landlords.length?'':'<div class="fineprint">Create a landlord Party and active management authority first.</div>')+'</div>'+
@@ -823,23 +1214,32 @@ function renderAppointments(){
    '<div class="meta">'+esc(apptTypeLabel(a.appointment_type))+' · '+fmtDate(a.start_time)+(a.end_time?' to '+fmtDate(a.end_time):'')+(a.reminder_at?' · reminder '+fmtDate(a.reminder_at):'')+'</div>'+
    '<div class="meta">'+esc(apptEntityLine(a))+'</div><div class="meta">Participants: '+esc(apptParticipants(a)||'agent')+'</div>'+
    (a.description?'<div class="details">'+esc(a.description)+'</div>':'')+(a.outcome?'<div class="triage-line">Outcome: '+esc(a.outcome)+'</div>':'')+(a.previous_start_time?'<div class="thread">Previously '+esc(fmtDate(a.previous_start_time))+'</div>':'')+
-   '<div class="actions">'+(a.status==='proposed'?'<button class="btn primary" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'confirm\')">Confirm</button>':'')+'<button class="btn" onclick="apptReschedule(this,\''+esc(a.id)+'\')">Reschedule</button><button class="btn" onclick="apptOutcome(this,\''+esc(a.id)+'\')">Record outcome</button><button class="btn ghost" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'miss\')">Missed</button><button class="btn danger" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'cancel\')">Cancel</button></div></div>').join('');
+   '<div class="actions">'+(a.status==='proposed'&&a.appointment_type!=='contractor_visit'?'<button class="btn primary" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'confirm\')">Confirm</button>':'')+(['proposed','confirmed','change_requested','declined','missed','no_access','parts_delay'].includes(a.status)?'<button class="btn" onclick="apptReschedule(this,\''+esc(a.id)+'\')">Reschedule</button>':'')+(a.status==='confirmed'?'<button class="btn" onclick="apptOutcome(this,\''+esc(a.id)+'\')">Record outcome</button><button class="btn ghost" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'miss\')">Missed</button>': '')+(a.status==='confirmed'&&a.appointment_type==='contractor_visit'?'<button class="btn" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'no_access\')">No access</button><button class="btn" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'parts_delay\')">Parts delayed</button>':'')+(!['completed','cancelled'].includes(a.status)?'<button class="btn danger" onclick="apptAgentAction(this,\''+esc(a.id)+'\',\'cancel\')">Cancel</button>':'')+'</div></div>').join('');
  document.getElementById('view-appointments').innerHTML='<div class="move">appointments diary</div><p class="fineprint">Book viewings, inspections, contractor visits, valuations, check-ins, check-outs, key handovers, compliance visits and agent appointments. Diary records link back to property, case and job context.</p>'+
  '<div class="stats"><div class="stat"><div class="value">'+appts.filter(a=>a.status==='confirmed'&&Date.parse(a.start_time)>=now&&Date.parse(a.start_time)<=week).length+'</div><div class="label">confirmed this week</div></div><div class="stat '+(appts.some(a=>a.status==='proposed')?'hot':'')+'"><div class="value">'+appts.filter(a=>a.status==='proposed').length+'</div><div class="label">awaiting confirmation</div></div><div class="stat '+(appts.some(a=>a.status==='confirmed'&&Date.parse(a.start_time)<now)?'hot':'')+'"><div class="value">'+appts.filter(a=>a.status==='confirmed'&&Date.parse(a.start_time)<now).length+'</div><div class="label">need an outcome</div></div></div>'+
  '<div class="card"><h2>Book appointment</h2><div class="grid2"><label class="field"><span>Property</span><select id="appt-property">'+propOptions+'</select></label><label class="field"><span>Type</span><select id="appt-type">'+typeOptions+'</select></label><label class="field"><span>Title</span><input id="appt-title" maxlength="120"></label><label class="field"><span>Start</span><input id="appt-start" type="datetime-local"></label><label class="field"><span>End</span><input id="appt-end" type="datetime-local"></label><label class="field"><span>Reminder time</span><input id="appt-reminder" type="datetime-local"></label><label class="field"><span>Case</span><select id="appt-case"><option value="">No linked case</option>'+caseOptions+'</select></label><label class="field"><span>Job</span><select id="appt-job"><option value="">No linked job</option>'+jobOptions+'</select></label><label class="field"><span>Participant person</span><select id="appt-party" multiple size="4">'+partyOptions+'</select></label><label class="field"><span>Location</span><input id="appt-location" value="At the property" maxlength="200"></label></div><div class="field"><span>Participant roles</span><label><input type="checkbox" name="appt-role" value="tenant" checked> Tenant</label> <label><input type="checkbox" name="appt-role" value="landlord"> Landlord</label> <label><input type="checkbox" name="appt-role" value="trades"> Trades</label></div><label class="field"><span>Description</span><textarea id="appt-description" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="createAppointment(this)">Book appointment</button></div>'+
  '<div class="card diary-grid">'+days+'</div>'+
- '<div class="card"><div class="grid2"><label class="field"><span>Search</span><input value="'+esc(window.apptQuery||'')+'" placeholder="Title, participant, case, job or notes" onchange="window.apptQuery=this.value;renderAppointments()"></label><label class="field"><span>Type</span><select id="appt-type-filter" onchange="window.apptType=this.value;renderAppointments()"><option value="">All types</option>'+typeOptions+'</select></label><label class="field"><span>Status</span><select id="appt-status-filter" onchange="window.apptStatus=this.value;renderAppointments()"><option value="">All statuses</option><option value="proposed">Proposed</option><option value="confirmed">Confirmed</option><option value="declined">Declined</option><option value="completed">Completed</option><option value="missed">Missed</option><option value="cancelled">Cancelled</option></select></label><label class="field"><span>Property</span><select id="appt-property-filter" onchange="window.apptProperty=this.value;renderAppointments()"><option value="">All properties</option>'+propOptions+'</select></label></div></div>'+
+ '<div class="card"><div class="grid2"><label class="field"><span>Search</span><input value="'+esc(window.apptQuery||'')+'" placeholder="Title, participant, case, job or notes" onchange="window.apptQuery=this.value;renderAppointments()"></label><label class="field"><span>Type</span><select id="appt-type-filter" onchange="window.apptType=this.value;renderAppointments()"><option value="">All types</option>'+typeOptions+'</select></label><label class="field"><span>Status</span><select id="appt-status-filter" onchange="window.apptStatus=this.value;renderAppointments()"><option value="">All statuses</option><option value="proposed">Proposed</option><option value="confirmed">Confirmed</option><option value="declined">Declined</option><option value="completed">Completed</option><option value="missed">Missed</option><option value="no_access">No access</option><option value="parts_delay">Parts delay</option><option value="change_requested">Change requested</option><option value="cancelled">Cancelled</option></select></label><label class="field"><span>Property</span><select id="appt-property-filter" onchange="window.apptProperty=this.value;renderAppointments()"><option value="">All properties</option>'+propOptions+'</select></label></div></div>'+
  '<div class="move">agenda</div>'+(rows||'<div class="empty">No appointments match those filters.</div>');
  const tf=document.getElementById('appt-type-filter'),sf=document.getElementById('appt-status-filter'),pf=document.getElementById('appt-property-filter');if(tf)tf.value=typeFilter;if(sf)sf.value=statusFilter;if(pf)pf.value=propertyFilter;
 }
-function localDateTimeValue(id){const v=document.getElementById(id)?.value||'';return v?v+':00Z':'';}
+function localDateTimeValue(id){const v=document.getElementById(id)?.value||'';return v?new Date(v).toISOString():'';}
 async function createAppointment(btn){
  const roles=Array.from(document.querySelectorAll('input[name="appt-role"]:checked')).map(x=>x.value);
  const partyIds=Array.from(document.getElementById('appt-party')?.selectedOptions||[]).map(x=>x.value);
  await busy(btn,async()=>{try{await post('/api/appointment',{property_id:document.getElementById('appt-property').value,appointment_type:document.getElementById('appt-type').value,title:document.getElementById('appt-title').value,start_time:localDateTimeValue('appt-start'),end_time:localDateTimeValue('appt-end'),reminder_at:localDateTimeValue('appt-reminder'),case_id:document.getElementById('appt-case').value,job_id:document.getElementById('appt-job').value,participant_roles:roles,participant_party_ids:partyIds,location:document.getElementById('appt-location').value,description:document.getElementById('appt-description').value});toast('Appointment added to the diary.');load();}catch(e){}});
 }
-async function apptAgentAction(btn,id,action){await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action});toast('Appointment updated.');load();}catch(e){}});}
-async function apptReschedule(btn,id){const start=prompt('New start time (YYYY-MM-DDTHH:MM)');if(!start)return;const end=prompt('New end time (optional, YYYY-MM-DDTHH:MM)')||'';const note=prompt('Reason / note for reschedule')||'';await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action:'reschedule',start_time:start.replace(' ','T')+':00Z',end_time:end?end.replace(' ','T')+':00Z':'',note});toast('Appointment rescheduled and marked proposed.');load();}catch(e){}});}
+async function apptAgentAction(btn,id,action){
+  let note='';
+  if(['miss','no_access','parts_delay'].includes(action)){
+    const result=prompt('Reason for missed visit, no access or parts delay');
+    if(result===null)return;
+    note=result.trim();
+    if(!note){toast('A reason is required.','bad');return;}
+  }
+  await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action,note});toast('Appointment updated.');load();}catch(e){}});
+}
+async function apptReschedule(btn,id){const start=prompt('New start time (YYYY-MM-DDTHH:MM)');if(!start)return;const end=prompt('New end time (optional, YYYY-MM-DDTHH:MM)')||'';const note=prompt('Reason / note for reschedule')||'';await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action:'reschedule',start_time:new Date(start.replace(' ','T')).toISOString(),end_time:end?new Date(end.replace(' ','T')).toISOString():'',note});toast('Appointment rescheduled and marked proposed.');load();}catch(e){}});}
 async function apptOutcome(btn,id){const outcome=prompt('Outcome to record');if(!outcome)return;await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action:'complete',outcome});toast('Outcome recorded.');load();}catch(e){}});}
 function documentExpiryBadge(d){
  if(d.status==='superseded')return '<span class="badge superseded">superseded</span>';
@@ -909,7 +1309,7 @@ function renderHistory(){
   const selected=document.getElementById('history-property');if(selected)selected.value=propId;
 }
 
-function show(v){ document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
+function show(v){ document.querySelector('.mvp-more')?.removeAttribute('open'); document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.toggle('on',t.dataset.view===v));
   document.querySelectorAll('[id^=view-]').forEach(s=>s.style.display='none');
   document.getElementById('view-'+v).style.display='block'; }
 document.querySelectorAll('.tabs .tab[data-view]').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();show(t.dataset.view);}));

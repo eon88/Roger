@@ -2,8 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your properties | Stage portal</title>
+<title>Roger | Landlord portal</title>
 <link rel="stylesheet" href="/dash.css">
+<style>
+:root{--paper:#f3f5f1;--card:#fff;--ink:#1b3026;--muted:#687a70;--line:#e2e9e2;--accent:#2d6047;--accent-deep:#193e30;--accent-soft:#eaf2eb;--font-ui:Inter,"Segoe UI",system-ui,sans-serif;--font-display:Inter,"Segoe UI",system-ui,sans-serif;--r:15px}
+body{background:var(--paper)}
+.shell{max-width:1120px}
+.card{border-radius:15px;background:#fff;border-color:var(--line);box-shadow:0 4px 20px rgba(30,55,38,.035)}
+.brand h1{font-family:var(--font-display);font-weight:750;letter-spacing:-.6px}
+.rent-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.rent-stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}
+.rent-stat strong{display:block;font-size:26px;letter-spacing:-.6px}
+.rent-stat span{font-size:13px;color:var(--muted)}
+.rent-ledger-item{display:flex;gap:16px;justify-content:space-between;align-items:flex-start;padding:17px 0;border-top:1px solid var(--line)}
+.rent-ledger-item:first-child{border-top:0;padding-top:0}
+.rent-ledger-item h3{font-size:15px;font-family:var(--font-ui);font-weight:650}
+.rent-ledger-item .meta{margin:4px 0}
+.rent-ledger-right{text-align:right;flex-shrink:0}
+.rent-status{display:inline-block;border-radius:99px;padding:3px 10px;font-size:12px;font-weight:700;background:#eef0ed;color:#47604f}
+.rent-status.paid{background:#e5f2e7;color:#27643c}
+.rent-status.overdue{background:#ffe9e4;color:#9a3028}
+.rent-status.partial{background:#e6edfb;color:#315e98}
+.rent-status.due{background:#f6eddb;color:#775a22}
+.rent-receipt{font-size:12px;color:#42714e;margin-top:8px}
+.property-wizard{max-width:780px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:25px;margin-bottom:16px}
+.property-steps{display:flex;gap:7px;margin:0 0 22px;flex-wrap:wrap}
+.property-step{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12px;padding:9px 10px;border-radius:9px;background:#f3f6f2}
+.property-step.active{background:#eaf3e9;color:#20543d;font-weight:750}
+.property-step b{border:1px solid currentColor;border-radius:50%;width:19px;height:19px;display:grid;place-items:center;font-size:11px}
+.wizard-page{display:none}.wizard-page.active{display:block}
+.wizard-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:22px}
+.property-review{background:#f4f7f2;padding:16px;border-radius:12px;line-height:1.8}
+.property-wizard input,.property-wizard select,.property-wizard textarea{width:100%}
+.property-memo{margin:0 0 15px;color:var(--muted);font-size:14px}
+@media(max-width:550px){.property-wizard{padding:17px}.property-steps{gap:3px}.property-step{font-size:11px;padding:7px}
+.rent-cards{grid-template-columns:1fr}.rent-ledger-item{flex-direction:column;gap:8px}.rent-ledger-right{text-align:left}}
+</style>
 </head>
 <body>
 
@@ -16,6 +50,55 @@
     </nav>
   </header>
   <main id="main" aria-busy="true">
+  <div id="office-contact" class="banner" aria-live="polite">Office contact details are not yet confirmed. Use your signed paperwork.</div>
+  <section class="section">
+    <div class="move">bring a property into Roger</div>
+    <h2>Submit a property for approval</h2>
+    <p class="property-memo">Four quick steps. Your agent will review it before anything goes on the public website.</p>
+    <div class="property-wizard" id="property-wizard">
+      <div class="property-steps" aria-label="Property submission steps">
+        <span class="property-step active"><b>1</b> Location</span>
+        <span class="property-step"><b>2</b> Property</span>
+        <span class="property-step"><b>3</b> Paperwork</span>
+        <span class="property-step"><b>4</b> Review</span>
+      </div>
+      <input type="hidden" id="prop-submission-id" value="">
+      <div class="wizard-page active">
+        <h3>Where is your property?</h3>
+        <label class="field"><span>Full address</span><input id="prop-address" maxlength="200" required placeholder="12 Ashford Mews"></label>
+        <div class="grid2">
+          <label class="field"><span>Postcode</span><input id="prop-postcode" maxlength="20" required placeholder="TW9 1AA"></label>
+          <label class="field"><span>Town / area</span><input id="prop-area" maxlength="120" required placeholder="Richmond"></label>
+        </div>
+      </div>
+      <div class="wizard-page">
+        <h3>Tell us about the property</h3>
+        <div class="grid2">
+          <label class="field"><span>Property type</span><select id="prop-type"><option value="Flat">Flat</option><option value="House">House</option><option value="Maisonette">Maisonette</option><option value="Studio">Studio</option><option value="Other">Other</option></select></label>
+          <label class="field"><span>Bedrooms</span><input id="prop-beds" type="number" min="0" max="30" required value="2"></label>
+          <label class="field"><span>Expected monthly rent (£)</span><input id="prop-rent" type="number" min="1" max="100000" step="0.01" required placeholder="2250"></label>
+        </div>
+        <label class="field"><span>Notes for your agent</span><textarea id="prop-description" rows="3" maxlength="1500" placeholder="Condition, access, parking, preferred availability…"></textarea></label>
+      </div>
+      <div class="wizard-page">
+        <h3>Paperwork to prepare</h3>
+        <p class="property-memo">Your agent may ask for documents depending on the property: EPC, applicable gas safety certificates, electrical inspection reports and proof of authority to let. You'll upload these securely during onboarding.</p>
+        <div class="card" style="background:#f4f7f2"><b>No documents uploaded at this stage.</b><p class="meta">Submitting does not confirm compliance or authorise advertising. The agent will check the details after approval.</p></div>
+      </div>
+      <div class="wizard-page">
+        <h3>Review your submission</h3>
+        <div id="property-review-summary" class="property-review"></div>
+        <p class="fineprint">By submitting, you request the agent to review these details. The property is not advertised automatically.</p>
+      </div>
+      <div class="wizard-controls">
+        <button type="button" class="btn ghost" id="wizard-back" onclick="wizardMove(-1)" style="display:none">Back</button>
+        <button type="button" class="btn primary" id="wizard-next" onclick="wizardMove(1)">Continue</button>
+        <button type="button" class="btn primary" id="wizard-send" onclick="submitProperty(this)" style="display:none">Submit to agent</button>
+        <span id="wizard-progress" class="meta" aria-live="polite">Step 1 of 4</span>
+      </div>
+    </div>
+    <div id="my-submissions"></div>
+  </section>
   <section class="section">
     <div class="move">bills you need to approve</div>
     <div id="my-approvals"></div>
@@ -24,6 +107,11 @@
   <section class="section">
     <div class="move">money in and out</div>
     <div id="statement"><div class="skel c"></div></div>
+  </section>
+
+  <section class="section">
+    <div class="move">rent payments &amp; arrears</div>
+    <div id="rent-ledger"><div class="skel c"></div></div>
   </section>
 
   <section class="section">
@@ -61,26 +149,43 @@ async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-
   const j=await r.json().catch(()=>({})); if(!r.ok){toast(j.error||'failed','bad');throw new Error(j.error);} return j;}
 function toast(m,k){const el=document.createElement('div');el.className='toast '+(k||'');el.textContent=m;
   document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
-let stage, prevStatus={}, appts=[], docs=[];
+let stage, prevStatus={}, appts=[], docs=[], rentEntries=[], rentError=false;
 async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh. We will try again with the next update.','bad'); } }
 async function loadExtras(){
   try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
   try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
+  try{ const x=await api('/api/landlord/rent-ledger'); rentEntries=x.entries||[]; rentError=false; }
+  catch(e){ rentEntries=[]; rentError=true; }
 }
 function fmtDate(iso){ if(!iso) return '—'; const s=new Date(iso); return s.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
 
 function pTitle(id){const p=(stage.properties||[]).find(x=>x.id===id);return p?`${esc(p.title)} · ${esc(p.area)}`:'a property you own';}
 
-function render(){
+function renderOfficeContacts(){
+  const box=document.getElementById('office-contact');
+  if(!box)return;
+  const o=window.rogerOffice||{};
+  if(!o.published){
+    box.textContent='Office contact details are not confirmed in Roger. Use the contacts in your tenancy or agency paperwork. This portal is not an emergency service.';
+    return;
+  }
+  const numbers=[o.phone?'<a href="tel:'+esc(o.phone.replace(/[^+\d]/g,''))+'">'+esc(o.phone)+'</a>':'',
+                 o.out_of_hours_phone?'<a href="tel:'+esc(o.out_of_hours_phone.replace(/[^+\d]/g,''))+'">'+esc(o.out_of_hours_phone)+'</a>':''];
+  box.innerHTML='<b>'+esc(o.office_name||'Agency office')+'</b> · Office: '+numbers[0]+' · '+esc(o.opening_hours||'')+
+    '<div>Outside hours: '+(numbers[1]||'No separate emergency telephone provided')+' · '+esc(o.out_of_hours_instructions||'')+'</div>'+
+    '<div class="fineprint">'+esc(o.emergency_policy||'')+' This portal is not monitored continuously.</div>';
+}
+function render(){ renderOfficeContacts();
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
   const props=stage.properties||[];
+  renderPropertySubmissions();
   const pids=props.map(p=>p.id);
   const apps=stage.approvals||[];
   const jobs=stage.jobs||[];
@@ -90,17 +195,18 @@ function render(){
   const pend=apps.filter(a=>a.status==='pending');
   document.getElementById('my-approvals').innerHTML=pend.length?pend.map(a=>{
     const job=jobs.find(j=>j.id===a.job_id)||{};
-    const lim=(stage.authority?.standing_limit_pence||15000)/100;
-    return `<div class="card flagged"><div class="cardtop"><h3>${money(a.amount_pence)} — repair sign-off</h3><span class="meta">${when(a.requested_at)}</span></div>
+    const lim=(a.mandate_snapshot?.limit_pence??stage.repair_authority?.[a.property_id]?.limit_pence??0)/100;
+    return `<div class="card flagged"><div class="cardtop"><h3>${money(a.amount_pence)} — ${a.approval_type==='prework_quote'?'quote approval BEFORE work':a.approval_type==='variation_quote'?'Extra work approval BEFORE extras':'Invoice approval (not payment)'}</h3><span class="meta">${when(a.requested_at)}</span></div>
       <div class="meta">${pTitle(a.property_id)}</div>
       <div class="details">“${esc(a.reason)}”</div>
+      ${['prework_quote','variation_quote'].includes(a.approval_type)?`<div class="meta"><b>Scope:</b> ${esc(a.scope||'Request a detailed breakdown from your agent')} · ${a.approval_type==='variation_quote'?'Extra amount '+money(a.extra_pence)+'; combined authorised maximum '+money(a.amount_pence):'Quote version '+esc(a.quote_version||'legacy')+'. Net '+(a.quote_net_pence!=null?money(a.quote_net_pence):'not itemised')+', VAT '+(a.quote_vat_pence!=null?money(a.quote_vat_pence):'unspecified')} · No payment happens here.</div>`:''}
       <table class="evidence">
-        <tr><td>Who did the work</td><td><b>${esc(a.evidence?.tradesperson||job.assigned_to||'unknown — chase your agent')}</b>${a.evidence?.tradesperson?' (credentials verified at sign-up)':''}</td></tr>
+        <tr><td>Who did the work</td><td><b>${esc(a.evidence?.tradesperson||job.assigned_to||'unknown — chase your agent')}</b> ${a.evidence?.tradesperson?'(check credentials with your agent)':''}</td></tr>
         <tr><td>Reported by tenant</td><td>${a.evidence?.job_created?new Date(a.evidence.job_created).toLocaleDateString('en-GB'):'—'}</td></tr>
         <tr><td>Work completed</td><td>${a.evidence?.work_completed?new Date(a.evidence.work_completed).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—'}</td></tr>
         <tr><td>Job reference</td><td>${esc(a.job_id)} · case #${esc(job.case_id??'—')}</td></tr>
       </table>
-      <div class="fineprint">Above your £${lim.toFixed(0)} standing authority — that's why it reached you and not just the agent.</div>
+      <div class="fineprint"> ${a.approval_type==='prework_quote'?'Above this property’s agreed £'+lim.toFixed(2)+' limit. Work cannot start until you approve this exact quote.':a.approval_type==='variation_quote'?'The original work may continue, but this extra scope MUST NOT start until you approve the exact additional cost.':'Approving an invoice does not record a payment.'}</div>
       <div class="actions"><input placeholder="reason (required if declining)" id="rsn-${esc(a.id)}" autocomplete="off" style="max-width:260px">
         <button class="btn primary" onclick="decide(this,'${esc(a.id)}','approve')">Approve</button>
         <button class="btn danger" onclick="decide(this,'${esc(a.id)}','reject')">Decline</button>
@@ -113,18 +219,18 @@ function render(){
 
   // Statement
   const myJobs=jobs.filter(j=>pids.includes(j.property_id));
-  const paid=myJobs.filter(j=>j.status==='paid');
-  const paidTotal=paid.reduce((s,j)=>s+(j.invoice_pence||0),0);
-  const underLimit=paid.filter(j=>(j.invoice_pence||0)<=((stage.authority?.standing_limit_pence)||15000));
+  const externalPayments=myJobs.flatMap(j=>j.payments||[]);
+  const paidTotal=externalPayments.reduce((s,p)=>s+(p.amount_pence||0),0);
   const awaiting=myJobs.filter(j=>j.status==='awaiting_approval');
   const rentMo=props.reduce((s,p)=>s+p.rent,0);
   document.getElementById('statement').innerHTML=`<div class="card"><div class="grid2" style="gap:0">
-    <div><div class="label">Rent in (your ${props.length} properties)</div><div class="money">${money(rentMo)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div></div>
-    <div><div class="label">Repairs paid all-time</div><div class="money">${money(paidTotal)}</div><div class="meta">${paid.length} invoice${paid.length===1?'':'s'}${underLimit.length?` · ${underLimit.length} auto-settled under your limit`:''}</div></div>
+    <div><div class="label">Scheduled monthly rent (your ${props.length} properties)</div><div class="money">${money(rentMo)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div></div>
+    <div><div class="label">Repairs paid all-time</div><div class="money">${money(paidTotal)}</div><div class="meta">${externalPayments.length} manually recorded external bank reference${externalPayments.length===1?'':'s'}; credits not included</div></div>
     <div><div class="label">Awaiting decision</div><div class="money">${awaiting.length?money(awaiting.reduce((s,j)=>s+(j.invoice_pence||0),0)):'—'}</div><div class="meta">${awaiting.length?awaiting.map(j=>esc(j.id)).join(', '):'nothing waiting'}</div></div>
-    <div><div class="label">Standing authority</div><div class="money">£${((stage.authority?.standing_limit_pence||15000)/100).toFixed(0)}</div><div class="actions" style="margin-top:6px"><button class="btn ghost" onclick="changeLimit()">Change limit</button></div></div>
+    <div><div class="label">Agreed repair spending limits</div><div class="meta">${props.map(p=>esc(p.title)+': '+(stage.repair_authority?.[p.id]?'£'+(stage.repair_authority[p.id].limit_pence/100).toFixed(2):'not agreed')).join(' · ')||'No properties linked'}</div><div class="actions" style="margin-top:6px"><button class="btn ghost" onclick="changeLimit()">Ask agent to review</button></div></div>
   </div>
-  <div class="fineprint">Receipts, management-fee breakdown and monthly digests are on the roadmap — the data model already carries every figure shown here.</div></div>`;
+  <div class="fineprint">Scheduled rent is not the same as rent received. Actual payment dates, balances and arrears are shown below.</div></div>`;
+  renderRentLedger(props);
 
   // Cases on my properties (live vocabulary)
   const cases=(stage.cases||[]).filter(c=>pids.includes(c.property_id)).slice().reverse();
@@ -160,6 +266,109 @@ function render(){
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
+function renderRentLedger(props){
+  const host=document.getElementById("rent-ledger");
+  if(!host)return;
+  if(rentError){host.innerHTML='<div class="card">Rent records could not be loaded. Please try again.</div>';return;}
+  const propertyIds=new Set(props.map(p=>p.id));
+  const items=rentEntries.filter(x=>propertyIds.has(x.property_id)).slice().sort((a,b)=>String(b.due_date||"").localeCompare(String(a.due_date||"")));
+  if(!items.length){host.innerHTML='<div class="card"><div class="meta">No rent payments scheduled yet. Your agent will create the rent schedule once a tenancy is signed.</div></div>';return;}
+  const sum=(list,key)=>list.reduce((total,x)=>total+Math.max(0,Number(x[key])||0),0);
+  const today=new Date().toISOString().slice(0,10);
+  const collected=sum(items,"amount_received_pence");
+  const overdue=sum(items.filter(x=>x.status==="overdue"),"balance_pence");
+  const upcoming=sum(items.filter(x=>x.due_date>=today && x.status!=="paid"),"balance_pence");
+  const d=iso=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(String(iso)))return iso||"—";const [y,m,day]=iso.split("-");return day+"/"+m+"/"+y;};
+  host.innerHTML=`<div class="rent-cards">
+    <div class="rent-stat"><strong>${money(collected)}</strong><span>Rent received</span></div>
+    <div class="rent-stat"><strong>${money(overdue)}</strong><span>Overdue balance</span></div>
+    <div class="rent-stat"><strong>${money(upcoming)}</strong><span>Upcoming / due</span></div>
+  </div><div class="card"><div class="cardtop"><h3>Rent payment history</h3><span class="meta">${items.length} scheduled period${items.length===1?"":"s"}</span></div>
+  <p class="fineprint">Payments are recorded by your agent; bank settlement is not automatically verified.</p>
+  ${items.map(x=>{
+    const property=props.find(p=>p.id===x.property_id);
+    const status=["paid","partial","overdue","due"].includes(x.status)?x.status:"due";
+    const receipts=(x.payments||[]).filter(p=>p.received_date).map(p=>`<div class="rent-receipt">Received ${esc(d(p.received_date))} · ${money(p.amount_pence)}</div>`).join("");
+    return `<div class="rent-ledger-item"><div><h3>${esc(property?.title||"Your property")}</h3><div class="meta">Due ${esc(d(x.due_date))} · ${money(x.amount_due_pence)} scheduled</div><div class="meta">Received ${money(x.amount_received_pence)} · Remaining ${money(x.balance_pence)}</div>${receipts}</div><div class="rent-ledger-right"><span class="rent-status ${status}">${status==="due"?"Due":status==="overdue"?"Overdue":status==="partial"?"Part-paid":"Paid"}</span></div></div>`;
+  }).join("")}</div>`;
+}
+
+let wizardStep=0;
+const propVal=id=>document.getElementById('prop-'+id)?.value.trim()||'';
+function wizardDisplay(){
+ document.querySelectorAll('.wizard-page').forEach((s,i)=>s.classList.toggle('active',i===wizardStep));
+ document.querySelectorAll('.property-step').forEach((s,i)=>s.classList.toggle('active',i===wizardStep));
+ document.getElementById('wizard-back').style.display=wizardStep?'':'none';
+ document.getElementById('wizard-next').style.display=wizardStep<3?'':'none';
+ document.getElementById('wizard-send').style.display=wizardStep===3?'':'none';
+ document.getElementById('wizard-progress').textContent='Step '+(wizardStep+1)+' of 4';
+ if(wizardStep===3){
+   const pence=Math.round(Number(propVal('rent'))*100);
+   document.getElementById('property-review-summary').innerHTML=[
+     ['Address',propVal('address')],['Postcode',propVal('postcode')],['Area',propVal('area')],
+     ['Type',propVal('type')],['Bedrooms',propVal('beds')],['Expected rent',money(pence)+' per month'],
+     ['Notes',propVal('description')||'None']
+   ].map(([key,val])=>'<div><b>'+esc(key)+':</b> '+esc(val)+'</div>').join('');
+ }
+}
+function wizardMove(delta){
+ if(delta>0){
+   const ids=wizardStep===0?['address','postcode','area']:wizardStep===1?['beds','rent']:[];
+   for(const id of ids){
+     const el=document.getElementById('prop-'+id);
+     if(!el.reportValidity())return;
+   }
+   if(wizardStep===1){
+     const rent=Number(propVal('rent')),beds=Number(propVal('beds'));
+     if(!Number.isFinite(rent)||rent<=0||rent>100000||!Number.isInteger(beds)||beds<0||beds>30){
+       toast('Please enter valid bedrooms and monthly rent.','bad');return;
+     }
+   }
+ }
+ wizardStep=Math.max(0,Math.min(3,wizardStep+delta));
+ wizardDisplay();
+}
+async function submitProperty(btn){
+ const rent=Math.round(Number(propVal('rent'))*100),beds=Number(propVal('beds'));
+ const body={submission_id:propVal('submission-id')||undefined,address:propVal('address'),
+   postcode:propVal('postcode'),area:propVal('area'),property_type:propVal('type'),
+   beds,rent_pence:rent,description:propVal('description')};
+ if(!body.address||!body.postcode||!body.area||!Number.isInteger(beds)||!Number.isSafeInteger(rent)||rent<=0){
+   toast('Please complete the required property details.','bad');return;
+ }
+ if(btn.disabled)return;
+ btn.disabled=true;
+ try{
+   await post('/api/landlord/property-submission',body);
+   toast('Property submitted. Your agent will review it.');
+   ['address','postcode','area','rent','description','submission-id'].forEach(id=>document.getElementById('prop-'+id).value='');
+   document.getElementById('prop-beds').value='2';
+   document.getElementById('prop-type').value='Flat';
+   wizardStep=0;wizardDisplay();await load();
+ }catch(e){}finally{btn.disabled=false;}
+}
+function editSubmission(id){
+ const s=(stage?.property_submissions||[]).find(s=>s.id===id);
+ if(!s||s.status!=='changes_requested')return;
+ for(const [field,value] of Object.entries({
+   'submission-id':s.id,address:s.address,postcode:s.postcode,area:s.area,
+   type:s.property_type||'Flat',beds:s.beds,rent:(s.rent_pence/100).toFixed(2),description:s.description||''
+ }))document.getElementById('prop-'+field).value=value;
+ wizardStep=0;wizardDisplay();document.getElementById('property-wizard').scrollIntoView({behavior:'smooth'});
+ toast('Update the details and resubmit. The previous review remains on record.');
+}
+function renderPropertySubmissions(){
+ const host=document.getElementById('my-submissions');
+ const rows=(stage?.property_submissions||[]).slice().reverse();
+ const states={pending:'Awaiting agent review',approved:'Approved for onboarding',changes_requested:'Agent has questions',declined:'Declined'};
+ host.innerHTML=rows.length?'<div class="card"><h3>Your property submissions</h3>'+rows.map(s=>
+  '<div class="rent-ledger-item"><div><b>'+esc(s.address)+'</b><div class="meta">'+esc(s.area)+' · '+esc(s.postcode)+
+  ' · '+money(s.rent_pence)+' pcm</div>'+(s.agent_note?'<div class="meta"><b>Agent:</b> '+esc(s.agent_note)+'</div>':'')+
+  (s.status==='approved'?'<div class="meta">Property is in onboarding, not advertised.</div>':'')+
+  (s.status==='changes_requested'?'<button class="btn primary" data-id="'+esc(s.id)+'" onclick="editSubmission(this.dataset.id)">Edit and resubmit</button>':'')+
+  '</div><div class="rent-ledger-right"><span class="rent-status '+esc(s.status==='approved'?'paid':s.status==='declined'?'overdue':'due')+'">'+esc(states[s.status]||s.status)+'</span></div></div>'
+ ).join('')+'</div>':'';
+}
 function cMsgs(c){ const th=c.thread||[]; if(!th.length) return '';
   return `<details class="msgs"><summary>Conversation · ${th.length}</summary>`+
     th.map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> · ${when(t.at)}</span><div>${esc(t.text)}</div></div>`).join('')+`</details>`;}
@@ -181,11 +390,11 @@ async function decide(btn,id,action){
     if(!reason){toast('Tell us why — your agent and the tradesperson will see it.','bad');return;}}
   btn.dataset.busy='1';
   try{ await post('/api/landlord-action',{id,action,reason});
-    toast(action==='approve'?'Approved — the trade will be settled.':'Declined with your reason; your agent now has a task to fix it.');
+    toast(action==='approve'?'Approval recorded. No payment was made.':'Declined with your reason; your agent will follow up.');
     load(); }catch(e){}
   finally{ delete btn.dataset.busy; }
 }
-function changeLimit(){toast('Limit changes are set up with your agent — ring the office on 0121 496 0123 and they will adjust it for you. The current limit already applies to every invoice on this page.');}
+function changeLimit(){toast('Ask your agent to review the spending limit. It cannot be changed from this portal yet.');}
 boot(); setInterval(load,20000);
 </script>
 <button class="to-top" aria-label="Back to top" title="Back to top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>

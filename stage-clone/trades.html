@@ -16,6 +16,7 @@
     </nav>
   </header>
   <main id="main" aria-busy="true">
+  <div id="office-contact" class="banner" aria-live="polite">Office contact details are not yet confirmed. Use your signed paperwork.</div>
   <section class="section">
     <div class="move">jobs you can take</div>
     <div id="open-jobs"><div class="skel c"></div><div class="skel l"></div></div>
@@ -30,6 +31,10 @@
   <section class="section">
     <div class="move">jobs you've taken</div>
     <div id="my-jobs"></div>
+  </section>
+
+  <section class="section"><div class="move">your proposed and confirmed visits</div>
+    <h2>Property access and appointments</h2><div id="my-visits"></div>
   </section>
 
   <section class="section">
@@ -59,20 +64,37 @@ function toast(m,k){const el=document.createElement('div');el.className='toast '
 function busy(btn,fn){ if(btn&&btn.dataset.busy) return Promise.resolve();
   if(btn) btn.dataset.busy='1';
   return Promise.resolve(fn()).finally(()=>{ if(btn) delete btn.dataset.busy; }); }
-let stage, prevStatus={}, docs=[];
+let stage, prevStatus={}, docs=[], appts=[];
 async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; document.getElementById('who').textContent=ME; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh the board. We will try again shortly.','bad'); } }
-async function loadExtras(){ try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; } }
+async function loadExtras(){
+  try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
+  try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
+}
 function capType(t){ return (t||'document').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()); }
 function prop(id){const p=(stage.properties||[]).find(x=>x.id===id);return p?`<b>${esc(p.title)}</b> · ${esc(p.area)}`:'address pending from the agent';}
 function termsNote(){const lim=(stage.authority?.standing_limit_pence||15000)/100;
-  return `<div class="terms">Payment terms: invoices up to £${lim.toFixed(0)} settle the same day under the agency's standing authority. Above it, the landlord signs off first — the office chases if it sits.</div>`;}
+  return `<div class="terms">Invoices require review and separately verified external payment. The quoted spending limit does not promise same-day payment.</div>`;}
 
-function render(){
+function renderOfficeContacts(){
+  const box=document.getElementById('office-contact');
+  if(!box)return;
+  const o=window.rogerOffice||{};
+  if(!o.published){
+    box.textContent='Office contact details are not confirmed in Roger. Use the contacts in your tenancy or agency paperwork. This portal is not an emergency service.';
+    return;
+  }
+  const numbers=[o.phone?'<a href="tel:'+esc(o.phone.replace(/[^+\d]/g,''))+'">'+esc(o.phone)+'</a>':'',
+                 o.out_of_hours_phone?'<a href="tel:'+esc(o.out_of_hours_phone.replace(/[^+\d]/g,''))+'">'+esc(o.out_of_hours_phone)+'</a>':''];
+  box.innerHTML='<b>'+esc(o.office_name||'Agency office')+'</b> · Office: '+numbers[0]+' · '+esc(o.opening_hours||'')+
+    '<div>Outside hours: '+(numbers[1]||'No separate emergency telephone provided')+' · '+esc(o.out_of_hours_instructions||'')+'</div>'+
+    '<div class="fineprint">'+esc(o.emergency_policy||'')+' This portal is not monitored continuously.</div>';
+}
+function render(){ renderOfficeContacts();
   const y=window.scrollY;
   const jobs=stage.jobs||[];
   const flips={}; const note=(k,v)=>{ const p=prevStatus[k]; if(p&&p!==v) flips[k]=1; prevStatus[k]=v; };
@@ -89,22 +111,23 @@ function render(){
       ${j.triage?`<div class="triage-line ${j.triage.urgency>=2?'hot':''}">Triage: <b>${u}</b>${j.triage.safety>=0.5?' · possible danger — trust the agent on this one':' · low risk'}</div>`:''}
       ${termsNote()}
       <div class="actions"><button class="btn primary" onclick="accept(this,'${esc(j.id)}')">Take this job</button></div></div>`;}).join('')
-    :`<div class="empty">No open jobs right now. The agent posts work here as tenant reports come in — worth a look each morning.</div>`;
+    :`<div class="empty">No open jobs right now. New reports go to the agent for review; only authorised jobs appear here.</div>`;
 
-  const foryou=jobs.filter(j=>['assigned','quote_requested','quoted'].includes(j.status)&&j.assigned_to===ME).slice().reverse();
+  const foryou=jobs.filter(j=>['assigned','quote_requested','quoted','awaiting_prework_approval'].includes(j.status)&&j.assigned_to===ME).slice().reverse();
   document.getElementById('foryou-jobs').innerHTML=foryou.length?foryou.map(j=>{
     const th=((stage.threads||{})[j.case_id]||[]);
     const msgs=th.length?`<details class="msgs"><summary>Conversation · ${th.length}</summary>`+th.map(t=>`<div class="msg r-${esc(t.role)}"><b>${esc(t.author)}</b><span class="who"> · ${when(t.at)}</span><div>${esc(t.text)}</div></div>`).join('')+`</details>`:'';
-    const cta={assigned:`<button class="btn primary" onclick="jobGo(this,'${esc(j.id)}','start')">Start job</button>`,
-      quote_requested:`<div class="field" style="margin:4px 0"><label for="q-${esc(j.id)}">Your quote (£)</label><input type="number" id="q-${esc(j.id)}" min="0" step="0.01" placeholder="0.00" style="max-width:140px" autocomplete="off"></div><div class="field" style="margin:0 0 6px"><label for="qn-${esc(j.id)}">Note (what's included)</label><input id="qn-${esc(j.id)}" placeholder="parts, labour, visit count" autocomplete="off" style="max-width:260px"></div><button class="btn primary" onclick="sendQuote(this,'${esc(j.id)}')">Send quote</button>`,
-      quoted:`<span class="badge quoted">quote sent — waiting for the agency to approve</span>`}[j.status];
-    const label={assigned:'assigned to you — nothing agreed on price yet',quote_requested:'the agency wants a price before work',quoted:'you quoted, agent reviewing'}[j.status];
+    const cta={assigned:`<button class="btn primary" onclick="jobGo(this,'${esc(j.id)}','start')">Start job</button> <button class="btn" onclick="proposeVisit(this,'${esc(j.id)}')">Propose visit</button>`,
+      quote_requested:`<div class="grid2"><label class="field"><span>Labour net (£)</span><input id="ql-${esc(j.id)}" type="number" min="0" step="0.01" value="0"></label><label class="field"><span>Parts net (£)</span><input id="qp-${esc(j.id)}" type="number" min="0" step="0.01" value="0"></label><label class="field"><span>VAT rate (choose the correct rate)</span><select id="qvat-${esc(j.id)}"><option value="" selected>Choose VAT rate</option><option value="0">0%</option><option value="500">5%</option><option value="2000">20%</option></select></label></div><div class="field"><label for="qn-${esc(j.id)}">Included work / scope</label><input id="qn-${esc(j.id)}" placeholder="what is covered and excluded" maxlength="500"></div><button class="btn primary" onclick="sendQuote(this,'${esc(j.id)}')">Send itemised quote</button>`,
+      quoted:`<span class="badge quoted">quote sent — waiting for the agency to approve</span>`,
+      awaiting_prework_approval:`<span class="badge pending">awaiting landlord approval before work</span>`}[j.status];
+    const label={assigned:'authorised job — you can arrange a visit',quote_requested:'the agency wants a price before work',quoted:'you quoted, agent reviewing',awaiting_prework_approval:'landlord approval needed — do not start work'}[j.status];
     return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · ${label}</h3><span class="badge ${esc(j.status)}">${esc(j.status.replace('_',' '))}</span></div>
       <div class="meta">${prop(j.property_id)} · ${when(j.created_at)}</div>
       <div class="details">${esc(j.message)}</div>
       ${j.approved_quote_pence!=null?`<div class="meta">approved quote: ${money(j.approved_quote_pence)}</div>`:''}
       ${msgs}
-      <div class="actions">${cta} <button class="btn ghost" onclick="release(this,'${esc(j.id)}')">Not me — hand back</button></div></div>`;}).join('')
+      <div class="actions">${cta} ${j.status==='awaiting_prework_approval'?'':`<button class="btn ghost" onclick="release(this,'${esc(j.id)}')">Not me — hand back</button>`}</div></div>`;}).join('')
     :'<div class="empty">Nothing addressed to you. The agent can assign jobs directly or ask you for a quote first.</div>';
 
   const mine=jobs.filter(j=>j.status==='in_progress'&&j.assigned_to===ME).slice().reverse();
@@ -117,44 +140,135 @@ function render(){
       return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · yours since ${when(j.created_at)}</h3></div>
       <div class="meta">${prop(j.property_id)}</div>
       <div class="details">${esc(j.message)}</div>
-      <div class="meta">Contact through the office: <a href="tel:+441214960123">0121 496 0123</a> — they confirm who's home and access${c.email?' · reporter email: '+esc(c.email):''}.</div>
-      <div class="field" style="margin-top:10px"><label for="inv-${esc(j.id)}">Invoice amount (£)</label>
-        <input type="number" id="inv-${esc(j.id)}" min="0" step="0.01" placeholder="0.00" autocomplete="off" style="max-width:140px"></div>
+      <div class="meta">Only attend if the tenant confirms the proposed visit. Do not assume permission to enter.</div>
+      <div class="actions"><button class="btn" onclick="proposeVisit(this,'${esc(j.id)}')">Propose visit</button></div>
+      ${j.pending_variation?'<div class="fineprint hot">Extra work awaiting '+esc(j.pending_variation.status.replace(/_/g,' '))+' — do NOT perform it yet.</div>':''}
+      <div class="field"><label>Extra work net amount (£)</label><input type="number" min="0" step="0.01" id="var-${esc(j.id)}" placeholder="0.00"></div>
+      <div class="field"><label>Extra work description</label><input id="vnote-${esc(j.id)}" maxlength="500" placeholder="What must be added?"></div>
+      <div class="field"><label>Extra work VAT rate</label><select id="vvat-${esc(j.id)}"><option value="" selected>Choose VAT rate</option><option value="0">0%</option><option value="500">5%</option><option value="2000">20%</option></select></div>
+      <div class="actions"><button class="btn" onclick="sendVariation(this,'${esc(j.id)}')">Request approval for extra work</button></div>
+      <div class="field"><label>Supplier invoice number</label><input id="invnum-${esc(j.id)}" maxlength="80" placeholder="INV-2026-001"></div>
+      <div class="field"><label>Invoice net amount (£)</label><input type="number" id="inv-${esc(j.id)}" min="0" step="0.01" placeholder="0.00" autocomplete="off"></div>
+      <div class="field"><label>Invoice VAT rate</label><select id="invat-${esc(j.id)}"><option value="" selected>Choose VAT rate</option><option value="0">0%</option><option value="500">5%</option><option value="2000">20%</option></select></div>
       <div class="actions"><button class="btn primary" onclick="complete(this,'${esc(j.id)}')">Job done — submit invoice</button>
       <button class="btn ghost" onclick="release(this,'${esc(j.id)}')">Hand it back</button></div></div>`;}).join('')
     :gated.length?'':`<div class="empty">Nothing in hand. Accept a job above and it lands here with the invoice box and the tenant's access notes.</div>`);
 
-  const done=jobs.filter(j=>['awaiting_approval','paid','rejected'].includes(j.status)).slice().reverse();
+  const done=jobs.filter(j=>['invoice_submitted','invoice_approved','partially_paid','credited','awaiting_approval','paid','rejected'].includes(j.status)).slice().reverse();
   document.getElementById('done-jobs').innerHTML=done.length?done.map(j=>{
     const appr=(stage.approvals||[]).find(a=>a.job_id===j.id);
     const age=appr?` · waiting ${when(appr.requested_at)}`:'';
-    const label={awaiting_approval:`landlord sign-off pending${age} — the office chases if it sits`,paid:`settled ${j.paid_at?when(j.paid_at):'recently'} · reference ${esc(j.id)} (demo: settlement is simulated until a payment provider lands)`,rejected:`declined${appr?.reason_given?' — “'+esc(appr.reason_given)+'”':''} · the agent has a task to sort next steps`}[j.status];
+    const label={invoice_submitted:'invoice sent — agent reviewing; no payment recorded',invoice_approved:'invoice approved — awaiting external payment',awaiting_approval:`landlord sign-off pending${age} — no payment recorded`,paid:`External entries settled invoice: ${money(j.payment_amount_pence||0)} paid and ${money((j.credit_notes||[]).reduce((v,c)=>v+c.amount_pence,0))} credited · latest ref ${esc(j.payment_reference||'n/a')}`,partially_paid:`Partly settled: ${money(j.balance_due_pence??j.invoice_pence)} still due; no automatic payment`,credited:'Fully credited, not paid by bank',rejected:`declined${appr?.reason_given?' — “'+esc(appr.reason_given)+'”':''} · the agent will follow up`}[j.status];
     return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · ${money(j.invoice_pence??0)}</h3>
-      <span class="badge ${esc(j.status)}">${j.status==='paid'?'settled':j.status}</span></div>
+      <span class="badge ${esc(j.status)}">${j.status==='paid'?'payment recorded':j.status.replace(/_/g,' ')}</span></div>
       <div class="meta">${prop(j.property_id)}</div>
       <div class="fineprint">${label}</div></div>`;}).join('')
-    :`<div class="empty">No invoices filed yet. When a job is done, enter the amount on your in-progress card above — small ones settle the same day.</div>`;
+    :`<div class="empty">No invoices filed yet. Submit the invoice after your work; the agent checks it and records payment separately.</div>`;
   document.getElementById('my-docs').innerHTML=docs.length?docs.map(d=>`<div class="card"><div class="docrow">
       <a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a>
       <span class="badge ${esc(d.status)}">${esc(d.status)}</span>
       <div class="docmeta">${capType(d.document_type)} · ${prop(d.property_id)}</div></div></div>`).join('')
     :`<div class="empty">Nothing on file for your jobs yet. Inspection reports or photos the office attaches to a job appear here once you're assigned.</div>`;
+  renderVisits();
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
 }
+function localVisitTime(input){
+  const text=String(input||'').trim().replace(' ','T');
+  const parsed=new Date(text);
+  if(!text||Number.isNaN(parsed.getTime())||parsed.getTime()<=Date.now())return '';
+  return parsed.toISOString();
+}
+function renderVisits(){
+  const byJob=new Map((stage.jobs||[]).map(j=>[String(j.id),j]));
+  const html=appts.filter(a=>a.appointment_type==='contractor_visit')
+    .sort((a,b)=>String(a.start_time).localeCompare(String(b.start_time))).map(a=>{
+    const job=byJob.get(String(a.job_id));
+    const date=new Date(a.start_time).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});
+    const rebook=['proposed','change_requested','no_access','missed','parts_delay'].includes(a.status);
+    const confirmed=a.status==='confirmed';
+    return '<div class="card"><div class="cardtop"><h3>'+esc(date)+' · '+esc(a.title||'Contractor visit')+'</h3><span class="badge '+esc(a.status)+'">'+esc(a.status.replace(/_/g,' '))+'</span></div>'+
+      '<div class="meta">'+(job?prop(job.property_id):'Your assigned job')+' · Job '+esc(a.job_id)+'</div>'+
+      (a.notes?'<div class="details">Update: '+esc(a.notes)+'</div>':'')+
+      (confirmed&&a.contact_consent&&a.access_preference?'<div class="meta">Resident shared access preference: '+esc(a.access_preference)+'</div>':'')+
+      (a.status==='proposed'?'<div class="fineprint">Waiting for tenant confirmation — do not attend yet.</div>':'')+
+      (confirmed?'<div class="fineprint">Resident confirmed. Recording the visit will NOT close the repair.</div>':'')+
+      '<div class="actions">'+(rebook?'<button class="btn" onclick="changeVisit(this,\''+esc(a.id)+'\')">Offer another time</button>':'')+
+      (confirmed?'<button class="btn primary" onclick="visitAct(this,\''+esc(a.id)+'\',\'complete\')">Record visit completed</button><button class="btn" onclick="visitAct(this,\''+esc(a.id)+'\',\'no_access\')">No access</button><button class="btn" onclick="visitAct(this,\''+esc(a.id)+'\',\'parts_delay\')">Parts delayed</button>':'')+'</div></div>';
+  }).join('');
+  document.getElementById('my-visits').innerHTML=html||'<div class="empty">No visits yet. After authorisation, propose a time for the tenant to agree.</div>';
+}
+async function proposeVisit(btn,jobId){
+  const job=(stage.jobs||[]).find(j=>String(j.id)===String(jobId));
+  if(!job)return;
+  const requested=prompt('Proposed local visit start (YYYY-MM-DD HH:MM)');
+  if(requested===null)return;
+  const start=localVisitTime(requested);
+  if(!start){toast('Enter a future local date and time, e.g. 2099-05-20 09:00.','bad');return;}
+  await busy(btn,async()=>{try{
+    await post('/api/appointment',{property_id:job.property_id,job_id:job.id,
+      case_id:job.case_id,appointment_type:'contractor_visit',start_time:start,
+      title:'Contractor visit · '+job.id});
+    toast('Visit proposed — wait for tenant agreement before attending.');await load();
+  }catch(e){}});
+}
+async function changeVisit(btn,id){
+  const requested=prompt('New proposed local visit time (YYYY-MM-DD HH:MM)');
+  if(requested===null)return;
+  const start=localVisitTime(requested);
+  if(!start){toast('Enter a valid future local date and time.','bad');return;}
+  const note=prompt('Reason for moving the visit (optional)')||'';
+  await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action:'reschedule',start_time:start,note});
+    toast('New time offered — tenant agreement is needed again.');await load();}catch(e){}});
+}
+async function visitAct(btn,id,action){
+  const note=prompt(action==='complete'?'What happened during the visit?':'Reason for no access or parts delay');
+  if(note===null)return;
+  if(action!=='complete'&&!note.trim()){toast('Please give a reason.','bad');return;}
+  await busy(btn,async()=>{try{await post('/api/appointment-action',{id,action,
+    note:action==='complete'?'':note,outcome:action==='complete'?(note.trim()||'Visit completed; repair still needs tenant confirmation'):''});
+    toast(action==='complete'?'Visit recorded — repair completion is separate.':'Delay recorded — offer a new time.');await load();
+  }catch(e){}});
+}
 async function jobGo(btn,id,action){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action,tradesperson:ME});
   toast(action==='start'?'Started — the office and tenant have been told.':'Done.'); load(); }catch(e){} }); }
-async function sendQuote(btn,id){ const v=parseFloat(document.getElementById('q-'+id).value||'0');
-  if(v<=0){toast('Enter your price first.','bad');return;}
+function penceFromField(id){ const v=Number(document.getElementById(id)?.value||0);return Number.isFinite(v)&&v>=0?Math.round(v*100):-1; }
+function moneyBreakdown(lines,vat){
+  return lines.filter(x=>x.net_pence>0).map(x=>({...x,vat_rate_bps:vat}));
+}
+function grossLines(lines){return lines.reduce((sum,x)=>sum+x.net_pence+Math.floor((x.net_pence*x.vat_rate_bps+5000)/10000),0);}
+async function sendQuote(btn,id){
+  const labour=penceFromField('ql-'+id),parts=penceFromField('qp-'+id);
+  const vatText=document.getElementById('qvat-'+id).value;
+  const vat=Number(vatText);
   const note=document.getElementById('qn-'+id).value.trim();
-  await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'submit_quote',quote_pence:Math.round(v*100),note,tradesperson:ME});
-    toast('Quote sent — the agency approves before work starts.'); load(); }catch(e){} }); }
+  if(!vatText||labour<0||parts<0||labour+parts<=0||!note){toast('Enter work scope and labour or parts cost.','bad');return;}
+  const line_items=moneyBreakdown([{description:'Labour: '+note.slice(0,160),net_pence:labour},
+    {description:'Parts: '+note.slice(0,160),net_pence:parts}],vat);
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action:'submit_quote',
+    quote_pence:grossLines(line_items),line_items,note,tradesperson:ME});
+    toast('Itemised quote submitted. Work requires approval first.');load();}catch(e){}});
+}
 async function accept(btn,id){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'accept',tradesperson:ME});
   toast('Booked — details now on your in-progress list.'); load(); }catch(e){} }); }
-async function complete(btn,id){ const v=parseFloat(document.getElementById('inv-'+id).value||'0');
-  if(v<=0){toast('Enter the invoice amount first.','bad');return;}
-  await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'complete',invoice_pence:Math.round(v*100),tradesperson:ME});
-  toast(v*100<=(stage.authority?.standing_limit_pence||15000)?'Invoice filed — settles under standing authority today.':'Invoice filed — the landlord signs off anything over the limit.'); load(); }catch(e){} }); }
+async function sendVariation(btn,id){
+  const net=penceFromField('var-'+id),vat=Number(document.getElementById('vvat-'+id)?.value);
+  const note=document.getElementById('vnote-'+id)?.value.trim()||'';
+  if(!document.getElementById('vvat-'+id)?.value||net<=0||!note){toast('Add an extra amount and clear description.','bad');return;}
+  const line_items=[{description:note.slice(0,200),net_pence:net,vat_rate_bps:vat}];
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action:'submit_variation',
+    extra_pence:grossLines(line_items),line_items,note});
+    toast('Extra work requested — do not start it until approved.');load();}catch(e){}});
+}
+async function complete(btn,id){
+  const net=penceFromField('inv-'+id),vat=Number(document.getElementById('invat-'+id)?.value);
+  const invoice_number=document.getElementById('invnum-'+id)?.value.trim()||'';
+  if(!document.getElementById('invat-'+id)?.value||net<=0||!invoice_number){toast('Enter the net amount and your real invoice number.','bad');return;}
+  const line_items=[{description:'Contractor work and materials',net_pence:net,vat_rate_bps:vat}];
+  await busy(btn,async()=>{try{await post('/api/job-action',{id,action:'complete',
+    invoice_pence:grossLines(line_items),line_items,invoice_number,tradesperson:ME});
+    toast('Itemised invoice submitted. Await agency review — no payment is made here.');load();}catch(e){}});
+}
 async function release(btn,id){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'release',tradesperson:ME});
   toast('Handed back — it returns to the open board.'); load(); }catch(e){} }); }
 boot(); setInterval(load,20000);
