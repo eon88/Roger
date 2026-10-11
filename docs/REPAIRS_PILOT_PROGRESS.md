@@ -15,6 +15,22 @@ Focused England-first small-agency pilot. The repair process is built in stages 
 - [x] Removed fictitious tenant email, office phone/email, fake verified gas engineer, and false emergency response-time promises from the pilot screens.
 - [x] Synthetic four-role back-end end-to-end test; property-isolation and denial tests; existing four-role browser smoke.
 
+## Task 01 — appointment and property access implementation (11 October 2026)
+
+**Development only; not deployed.** This step is **partly accepted** pending the dedicated full browser journey and access-policy review.
+
+- [x] Assigned and authorised contractor can propose a real job-linked visit; a second active visit is rejected.
+- [x] Tenant explicitly accepts or requests a new time, including after a previous confirmation; rescheduling cancels earlier contact/access consent.
+- [x] Wrong tenant, landlord, unrelated contractor or trade cannot confirm on behalf of the resident.
+- [x] Agent has an accurate diary; contractor sees confirmed times and only consented access preferences; no key codes or entry credentials are collected.
+- [x] Missed/no-access and parts-delay outcomes require a reason and do **not** complete the job, submit an invoice or close the repair.
+- [x] Work authorisation is rechecked before confirming or changing a contractor visit; withdrawn approval blocks the visit.
+- [x] New role, cross-property, wrong-job, time validation, consent, reschedule and delay regression tests. Standard Python tests and the existing four-role portal browser smoke pass.
+- [ ] Run the dedicated full visit browser test (`node tests/visit_browser_smoke.cjs`) in isolated CI and record the run link. The script exists, but it is **not yet wired into the GitHub Actions workflow**; an attempted workflow edit was blocked. The existing browser smoke does not cover the full visit journey.
+- [ ] Office review: confirm acceptable access instructions, tenant contact consent and any safe, offline key handover process. Never store lockbox codes in general appointment notes.
+
+**Current status:** built on the feature branch with regression coverage; awaiting full browser proof and office acceptance. Do not call Task 01 DONE or proceed to Task 02 until those gates are met.
+
 ## Next P0 tasks (NOT DONE)
 1. Appointments and access: propose/accept/reschedule/cancel/no-access, contact consent, key instructions and a parts-delay branch. Block misleading “scheduled” statuses.
 2. Case control: single next person/action and due date, duplicate reporting/idempotency, internal/private vs shared notes, disputes, reopening after completed work.
