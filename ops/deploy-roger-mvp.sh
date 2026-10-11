@@ -24,6 +24,7 @@ fi
 
 SHORT="${SHA:0:12}"
 IMAGE="roger-mvp:$SHORT"
+ROLLBACK_IMAGE="roger-rollback:$SHORT"
 BASE="/docker/roger/docker-compose.yml"
 OVERRIDE="/docker/roger/docker-compose.override.yml"
 DB_ENV="/docker/roger-postgres/roger-db.env"
@@ -57,8 +58,44 @@ echo "=== TAKE RESTORABLE BACKUPS ==="
 install -d -m 700 "$BACKUP/data"
 cp -p "$BASE" "$BACKUP/docker-compose.yml"
 cp -p "$OVERRIDE" "$BACKUP/docker-compose.override.yml"
-docker image tag "$(docker inspect roger --format '{{.Image}}')" "roger-rollback:$SHORT"
+# The running container may reference an image ID whose tag and underlying
+# image metadata were pruned by Docker. A running container is NOT proof that
+# docker image tag <old-id> will work. In that case snapshot the container
+# filesystem/config into a usable rollback image BEFORE stopping anything.
+PREVIOUS_IMAGE_ID="$(docker inspect roger --format '{{.Image}}')"
+if docker image inspect "$PREVIOUS_IMAGE_ID" >/dev/null 2>&1; then
+  echo "Saving the existing Roger image for rollback."
+  docker image tag "$PREVIOUS_IMAGE_ID" "$ROLLBACK_IMAGE"
+else
+  echo "Original image metadata was pruned; snapshotting the running Roger container for rollback."
+  docker commit --pause=false roger "$ROLLBACK_IMAGE" >/dev/null
+fi
+docker image inspect "$ROLLBACK_IMAGE" >/dev/null
+test -n "$(docker image inspect "$ROLLBACK_IMAGE" --format '{{json .Config.Entrypoint}}')"
 printf '%s\n' "$SHA" > "$BACKUP/new_release_sha"
+
+# Write the selected local image into the existing override, preserving all
+# its current PostgreSQL settings. Atomic replacement avoids a half-written
+# Compose override if the disk fills up during the deployment.
+set_override_image() {
+  python3 - "$OVERRIDE" "$1" <<'PY'
+from pathlib import Path
+import os
+import re
+import sys
+p = Path(sys.argv[1])
+new_image = sys.argv[2]
+content = p.read_text()
+assert "/docker/roger-postgres/roger-db.env" in content, "PostgreSQL env file missing"
+pattern = r"(?m)^(    image:\s*)[^\n]+$"
+assert len(re.findall(pattern, content)) == 1, "expected one Roger image line"
+content = re.sub(pattern, lambda m: m.group(1) + new_image, content, count=1)
+temp = p.with_name(p.name + ".deploy-tmp")
+temp.write_text(content)
+os.chmod(temp, p.stat().st_mode & 0o777)
+os.replace(temp, p)
+PY
+}
 
 STOPPED=0
 SWITCHED=0
@@ -69,8 +106,18 @@ rollback() {
   trap - EXIT
   if [[ "$SUCCESS" != "1" ]]; then
     echo "=== DEPLOYMENT FAILED — RESTORE PREVIOUS APP IMAGE ===" >&2
-    if [[ "$SWITCHED" == "1" ]]; then
+    if [[ "$STOPPED" == "1" ]]; then
+      # Always restore from our known-good saved image, never a stale or
+      # Docker-pruned image reference from the original Compose override.
       cp -p "$BACKUP/docker-compose.override.yml" "$OVERRIDE"
+      set_override_image "$ROLLBACK_IMAGE" || {
+        echo "ERROR: cannot pin known-good rollback image in Compose" >&2
+        exit "$result"
+      }
+      (cd /docker/roger && docker compose config --quiet) || {
+        echo "ERROR: rollback Compose configuration is invalid" >&2
+        exit "$result"
+      }
     fi
     if [[ "$STOPPED" == "1" ]]; then
       (cd /docker/roger && docker compose up -d --no-build --no-deps \
@@ -94,19 +141,7 @@ docker exec -i roger-postgres pg_restore --list < "$BACKUP/roger-postgres.dump" 
 docker cp roger:/data/. "$BACKUP/data/"
 
 echo "=== UPDATE IMAGE PIN AND START ROGER ==="
-python3 - "$OVERRIDE" "$IMAGE" <<'PY'
-from pathlib import Path
-import re
-import sys
-p = Path(sys.argv[1])
-new_image = sys.argv[2]
-content = p.read_text()
-assert "/docker/roger-postgres/roger-db.env" in content, "PostgreSQL env file missing"
-pattern = r"(?m)^(    image:\s*)[^\n]+$"
-assert len(re.findall(pattern, content)) == 1, "expected one Roger image line"
-content = re.sub(pattern, lambda m: m.group(1) + new_image, content, count=1)
-p.write_text(content)
-PY
+set_override_image "$IMAGE"
 SWITCHED=1
 (cd /docker/roger && docker compose config --quiet)
 (cd /docker/roger && docker compose up -d --no-build --no-deps \
