@@ -988,6 +988,18 @@ const TENANCY_TRANSITIONS={
  notice_given:['active','checkout'],checkout:['deposit_resolution','former_tenant'],
  deposit_resolution:['former_tenant'],former_tenant:[],cancelled:[]
 };
+async function revokePortalAccount(btn,partyId){
+  const party=(stage.parties||[]).find(p=>p.id===partyId);
+  if(!party||!party.account_id)return;
+  if(!confirm('Disable ALL portal sessions and future login for '+(party.display_name||partyId)+'? Their tenancy and history will remain.'))return;
+  const reason=prompt('Required reason for revoking access');
+  if(reason===null)return;
+  if(!reason.trim()){toast('A reason is required.','bad');return;}
+  await busy(btn,async()=>{try{
+    const result=await post('/api/access-revoke',{action:'revoke',party_id:partyId,reason:reason.trim()});
+    toast('Access revoked; '+result.sessions_closed+' active sessions removed.');load();
+  }catch(e){toast(e.message||'Could not revoke account.','bad');}});
+}
 function renderPeopleTenancies(){
  const parties=stage.parties||[],tenancies=stage.tenancies||[],props=stage.properties||[];
  const partyOptions=(role,selected)=>parties.filter(p=>p.status==='active'&&(p.roles||[]).includes(role)).map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.display_name)+' · '+esc(p.id)+'</option>').join('');
@@ -998,7 +1010,7 @@ function renderPeopleTenancies(){
  const landlordOptions=partyOptions('landlord');
  const agreements=stage.management_agreements||[];
  const agreementCards=agreements.length?agreements.slice().reverse().map(a=>{const landlord=parties.find(p=>p.id===a.landlord_party_id)||{};const properties=(a.property_ids||[]).map(id=>(props.find(p=>p.id===id)||{}).title||id).join(', ');const choices=[a.status,...({draft:['sent','cancelled'],sent:['signed','cancelled'],signed:['active','ended'],active:['ended']}[a.status]||[])];return '<div class="card" id="'+esc(a.id)+'"><div class="cardtop"><h3>'+esc(a.id)+' · '+esc(landlord.display_name||a.landlord_party_id)+'</h3><span class="badge '+esc(a.status)+'">'+esc(a.status)+'</span></div><div class="meta">'+esc(a.agreement_type.replace(/_/g,' '))+' · '+esc(properties)+' · fee '+(Number(a.management_fee_bps||0)/100).toFixed(2)+'% · spending limit '+(Number.isInteger(a.spending_limit_pence)?money(a.spending_limit_pence):'not agreed')+(a.signed_at?' · signed '+esc(a.signed_at):'')+(a.ended_at?' · ended '+esc(a.ended_at):'')+'</div><div class="grid2"><label class="field"><span>Agreement stage</span><select class="management-stage">'+choices.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('')+'</select></label><label class="field"><span>Signed date</span><input class="management-signed" type="date" value="'+esc(a.signed_at||'')+'"></label><label class="field"><span>End date</span><input class="management-ended" type="date" value="'+esc(a.ended_at||'')+'"></label><label class="field"><span>Evidence note</span><input class="management-evidence" maxlength="1000" value="'+esc(a.evidence_note||'')+'"></label></div><button class="btn primary" data-agreement-id="'+esc(a.id)+'" onclick="saveManagementAgreement(this)">Update agreement</button></div>';}).join(''):'<div class="empty">No management agreements recorded yet.</div>';
- const partyCards=parties.length?parties.map(p=>'<div class="appt" id="'+esc(p.id)+'"><div><b>'+esc(p.display_name)+'</b><div class="meta">'+esc(p.kind)+' · '+esc((p.roles||[]).join(', '))+(p.email?' · '+esc(p.email):'')+'</div><div class="meta">'+(p.account_id?'Portal account linked':'No portal account linked')+'</div></div><span class="badge">'+esc(p.status)+'</span></div>').join(''):'<div class="empty">No Party records yet. Create landlord and tenant Parties before adding a tenancy.</div>';
+ const partyCards=parties.length?parties.map(p=>'<div class="appt" id="'+esc(p.id)+'"><div><b>'+esc(p.display_name)+'</b><div class="meta">'+esc(p.kind)+' · '+esc((p.roles||[]).join(', '))+(p.email?' · '+esc(p.email):'')+'</div><div class="meta">'+(p.account_id?'Portal account linked':'No portal account linked')+'</div></div><div class="actions"><span class="badge">'+esc(p.status)+'</span>'+(p.account_id&&p.status==='active'&&!(p.roles||[]).includes('agent')?'<button class="btn danger" onclick="revokePortalAccount(this,\''+esc(p.id)+'\')">Revoke portal access</button>':'')+'</div></div>').join(''):'<div class="empty">No Party records yet. Create landlord and tenant Parties before adding a tenancy.</div>';
  const tenancyCards=tenancies.length?tenancies.slice().reverse().map(t=>{
    const tenants=(t.tenant_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
    const landlords=(t.landlord_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
