@@ -37,12 +37,12 @@ Next open [Roger → Settings → Secrets and variables → Actions](https://git
 | Secret name | Value |
 | --- | --- |
 | `ROGER_SSH_HOST` | `srv1991335.hstgr.cloud` (or the reachable VPS public IP) |
-| `ROGER_SSH_PRIVATE_KEY` | Full private key, displayed *on the VPS only* with `cat /root/.ssh/roger-github-actions`, including BEGIN/END lines |
+| `ROGER_SSH_PRIVATE_KEY` | **Preferred:** the single-line Base64 output of `base64 -w0 /root/.ssh/roger-github-actions; echo` run on your VPS. The workflow also accepts a correctly pasted multiline OpenSSH private key. |
 | `ROGER_SSH_KNOWN_HOSTS` | One line obtained *on the VPS* by running `printf '%s ' 'srv1991335.hstgr.cloud'; cat /etc/ssh/ssh_host_ed25519_key.pub` |
 
 **Important:** The hostname at the start of the known-hosts line must exactly match the `ROGER_SSH_HOST` secret. If using the IP for `ROGER_SSH_HOST`, use that same IP instead of the hostname when constructing the known-hosts line.
 
-**Never paste the private key into chat, commit it to GitHub, or share it in an issue.** Store it only as the GitHub repository Actions secret. Anyone who can modify the deployment workflow on `main` or run unreviewed code with access to these secrets has root-level power on the VPS. Restrict repository write access and consider replacing root SSH access with a dedicated, restricted deployment identity later.
+**The Base64 output is the private key in encoded form, not encryption.** Never paste either format into chat, commit it to GitHub, or share it in an issue. Store it only as the GitHub repository Actions secret. Anyone who can modify the deployment workflow on `main` or run unreviewed code with access to these secrets has root-level power on the VPS. Restrict repository write access and consider replacing root SSH access with a dedicated, restricted deployment identity later.
 
 ## Deploy
 
