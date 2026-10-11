@@ -131,6 +131,32 @@ class PreworkCostApprovalTests(unittest.TestCase):
                                         tradesperson=COMPANY, trades_party_id="trade-a"), 409)
         self.assertEqual(self.stage, before)
 
+    def test_suspension_after_quote_blocks_agent_approval(self):
+        self.request_quote()
+        self.submit(12000)
+        self.stage["registrations"][0]["prospect_stage"] = "suspended"
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.approve_quote(), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_expiry_after_authorisation_blocks_start(self):
+        self.request_quote()
+        self.submit(12000)
+        self.approve_quote()
+        self.stage["registrations"][0]["insurance_expiry"] = "2020-01-01"
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.job_action("trade", "start"), 409)
+        self.assertEqual(self.stage, before)
+
+    def test_suspension_before_landlord_decision_voids_release(self):
+        self.request_quote()
+        self.submit(25000)
+        self.approve_quote()
+        self.stage["registrations"][0]["prospect_stage"] = "suspended"
+        before = copy.deepcopy(self.stage)
+        self.assertEqual(self.landlord_decides(), 409)
+        self.assertEqual(self.stage, before)
+
     def test_approved_small_quote_only_assigns_not_starts_work(self):
         self.assertEqual(self.request_quote(), 200)
         self.assertEqual(self.submit(12000), 200)
