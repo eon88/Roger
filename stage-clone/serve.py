@@ -5,6 +5,8 @@ v2 (post-audit): status-sync between cases/jobs/approvals, credential gating
 on trades jobs, structured registrations, evidence on approvals, validation.
 """
 from http.server import SimpleHTTPRequestHandler, HTTPServer
+from contextlib import contextmanager
+from threading import RLock
 import email.parser
 import email.policy
 import email.utils
@@ -59,6 +61,100 @@ def postgres_connection():
         raise RuntimeError("install psycopg[binary] to use PostgreSQL storage") from exc
     return psycopg.connect(os.environ["DATABASE_URL"])
 
+# A single cooperative writer across Roger web processes. File locks are held
+# around the *entire read/validate/write request*, not just os.replace().
+# For PostgreSQL the transaction-level advisory lock is acquired before the
+# request and released when the lock connection's transaction ends. Current
+# Postgres projections/snapshots remain developmental, not agency-isolated.
+_WRITER_MUTEX = RLock()
+_PG_WRITER_LOCK_ID = 0x524F474552  # "ROGER" — stable across all worker processes
+
+
+@contextmanager
+def storage_write_lock():
+    """Serialize modifying web requests across threads and processes.
+
+    Any external importer/worker MUST take this same lock. SQLite/network/NFS
+    storage and external direct SQL writers are not validated here.
+    """
+    with _WRITER_MUTEX:
+        backend = os.environ.get("ROGER_STORAGE_BACKEND", "file")
+        if backend == "postgres":
+            # A PostgreSQL advisory transaction lock is shared by all app
+            # instances connecting to the same database.
+            with postgres_connection() as lock_connection:
+                lock_connection.execute("SELECT pg_advisory_xact_lock(%s)",
+                                        (_PG_WRITER_LOCK_ID,))
+                yield
+        elif backend == "file":
+            lock_path = os.path.join(DATA_DIR, ".roger-write.lock")
+            with open(lock_path, "a+b") as handle:
+                if os.name == "nt":
+                    import msvcrt
+                    handle.seek(0)
+                    if not handle.read(1):
+                        handle.seek(0)
+                        handle.write(b"R")
+                        handle.flush()
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    try:
+                        yield
+                    finally:
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                    try:
+                        yield
+                    finally:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        else:
+            raise RuntimeError("unsupported ROGER_STORAGE_BACKEND; refusing unguarded writes")
+
+
+class AgencyBoundaryError(RuntimeError):
+    """A shared single-agency snapshot contains unknown/mixed agency records."""
+
+
+def require_single_agency(stage):
+    """Fail CLOSED rather than ever serve a mixed-agency snapshot.
+
+    Current Roger is a ONE-agency application. It is NOT a multitenant SaaS.
+    Migrating to many agencies requires full row policies and agency-linked
+    users, not simply adding a second agency_id to a shared JSON snapshot.
+    """
+    if not isinstance(stage, dict):
+        raise AgencyBoundaryError("Roger stage snapshot is not an object")
+    root = stage.get("agency_id")
+    configured = os.environ.get("ROGER_AGENCY_ID")
+    if configured and (not root or root != configured):
+        raise AgencyBoundaryError("configured agency and stored snapshot disagree")
+    if root is not None and (not isinstance(root, str) or not root.strip()):
+        raise AgencyBoundaryError("invalid single-agency marker")
+    collections = ("parties", "properties", "tenancies", "cases", "jobs",
+                   "documents", "registrations", "approvals", "appointments",
+                   "management_agreements", "rent_ledger_entries",
+                   "landlord_statements", "notifications", "tasks",
+                   "compliance_records", "property_submissions")
+    for name in collections:
+        entries = stage.get(name, [])
+        if not isinstance(entries, list):
+            continue
+        for record in entries:
+            if not isinstance(record, dict):
+                continue
+            rid = record.get("agency_id")
+            # Legacy untagged data is accepted ONLY if the entire stage is
+            # untagged. A tagged snapshot must tag every sensitive record.
+            if rid is not None and (root is None or rid != root):
+                raise AgencyBoundaryError("foreign or unowned agency data in " + name)
+            if root is not None and rid != root:
+                raise AgencyBoundaryError("missing agency ownership in " + name)
+    return stage
+
+
 def load_users():
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") == "postgres":
         with postgres_connection() as connection:
@@ -97,9 +193,9 @@ def load_stage():
             row = connection.execute("SELECT payload FROM roger_stage_snapshot WHERE singleton_id=1").fetchone()
         if not row:
             raise RuntimeError("PostgreSQL stage snapshot is empty; run the migration first")
-        return row[0]
+        return require_single_agency(row[0])
     with open(STAGE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        return require_single_agency(json.load(f))
 
 def save_users(data):
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") == "postgres":
@@ -200,8 +296,8 @@ class H(SimpleHTTPRequestHandler):
         if not sess:
             return None
         if datetime.fromisoformat(sess["exp"]) < datetime.now(timezone.utc):
-            users["sessions"].pop(tok, None)
-            save_users(users)
+            # Never overwrite newer login/revocation state from a GET request;
+            # expired sessions are rejected here and pruned by locked login.
             return None
         user = next((u for u in users["users"] if u["username"] == sess["username"]), None)
         return user if user and not user.get("disabled_at") else None
@@ -305,6 +401,12 @@ class H(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        try:
+            return self._do_GET_with_agency_boundary()
+        except AgencyBoundaryError:
+            return self._json({"error": "agency data isolation check failed; contact the administrator"}, 409)
+
+    def _do_GET_with_agency_boundary(self):
         path = self.path.split("?")[0]
         if ("%" in path or "\\" in path or "//" in path
                 or any(x in (".", "..") for x in path.split("/"))):
@@ -754,6 +856,13 @@ class H(SimpleHTTPRequestHandler):
             return False
 
     def do_POST(self):
+        try:
+            with storage_write_lock():
+                return self._do_POST_with_write_lock()
+        except AgencyBoundaryError:
+            return self._json({"error": "agency data isolation check failed; contact the administrator"}, 409)
+
+    def _do_POST_with_write_lock(self):
         path = self.path.split("?")[0]
         self.user = None
         if not self.valid_csrf_origin():
