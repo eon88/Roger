@@ -207,7 +207,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -833,6 +833,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/job-action": self.handle_job_action,
             "/api/landlord-action": self.handle_landlord_action,
             "/api/registration-action": self.handle_registration_action,
+            "/api/contractor-verification": self.handle_contractor_verification,
             "/api/prospect-action": self.handle_prospect_action,
             "/api/property-action": self.handle_property_action,
             "/api/landlord/property-submission": self.handle_landlord_property_submission,
@@ -1051,6 +1052,150 @@ class H(SimpleHTTPRequestHandler):
         self.audit(stage, {"actor": "agent", "action": f"registration_{reg['status']}", "target": reg["id"], "note": reg["decision_note"]})
         save_stage(stage)
         self._json({"success": True})
+
+    @staticmethod
+    def contractor_location_match(verification, property_record):
+        """Exact declared service area or postcode outward code, not fuzzy prefix."""
+        areas = verification.get("service_areas") or []
+        if not isinstance(areas, list) or not areas:
+            return False
+        postcode = str((property_record or {}).get("postcode") or "").upper().replace(" ", "")
+        area = str((property_record or {}).get("area") or "").strip().upper()
+        options = {str(item).strip().upper().replace(" ", "") for item in areas
+                   if isinstance(item, str)}
+        if area and area.replace(" ", "") in options:
+            return True
+        # Outward postcode is everything before the final three characters.
+        outward = postcode[:-3] if len(postcode) >= 5 else ""
+        return bool(outward and outward in options)
+
+    @staticmethod
+    def contractor_verified_document(stage, party_id, doc_id):
+        doc = next((d for d in stage.get("documents", [])
+                    if d.get("id") == doc_id and d.get("party_id") == party_id
+                    and d.get("document_type") == "trades_document"
+                    and d.get("status") == "verified"
+                    and not d.get("replaced_by_id")
+                    and d.get("verified_at")
+                    and (d.get("storage_key") or d.get("data_b64"))
+                    ), None)
+        if not doc:
+            return None
+        expiry = doc.get("expiry_date")
+        try:
+            if not expiry or datetime.strptime(expiry, "%Y-%m-%d").date() < datetime.now(timezone.utc).date():
+                return None
+        except (ValueError, TypeError):
+            return None
+        return doc
+
+    def handle_contractor_verification(self, data):
+        """Human-reviewed independent checks: keep evidence references, never assert automated verification."""
+        stage = load_stage()
+        reg = next((r for r in stage.get("registrations", [])
+                    if r.get("id") == data.get("registration_id") and r.get("role") == "trades"), None)
+        if not reg:
+            return self._json({"error": "trades registration not found"}, 404)
+        pid = reg.get("party_id")
+        party = next((p for p in stage.get("parties", [])
+                      if p.get("id") == pid and p.get("source_registration_id") == reg["id"]
+                      and p.get("status") == "active" and "trades" in p.get("roles", [])
+                      and p.get("account_id") and p.get("display_name") == reg.get("name")), None)
+        if not party or reg.get("status") != "approved":
+            return self._json({"error": "active linked approved contractor account required"}, 409)
+        action = data.get("action")
+        if action not in ("verify", "revoke"):
+            return self._json({"error": "action must be verify or revoke"}, 400)
+        if action == "revoke":
+            reason = str(data.get("reason") or "").strip()[:500]
+            if not reason:
+                return self._json({"error": "revocation reason is required"}, 400)
+            previous = reg.get("contractor_verification")
+            if not previous or previous.get("status") != "verified":
+                return self._json({"error": "no active verification to revoke"}, 409)
+            previous["status"] = "revoked"
+            previous["revoked_at"] = now()
+            previous["revocation_reason"] = reason
+            previous["revoked_by"] = (self.user or {}).get("username", "agent")
+            self.audit(stage, {"actor": (self.user or {}).get("display_name", "Agent"),
+                               "action": "contractor_verification_revoked",
+                               "target": reg["id"], "note": reason})
+            save_stage(stage)
+            return self._json({"success": True, "verification_status": "revoked"})
+        if reg.get("prospect_stage") in ("suspended", "rejected"):
+            return self._json({"error": "suspended contractor cannot be verified"}, 409)
+        docs = {}
+        for kind in ("insurance", "qualification"):
+            doc = self.contractor_verified_document(stage, pid, data.get(kind + "_document_id"))
+            if not doc:
+                return self._json({"error": "valid verified " + kind + " document linked to this contractor is required"}, 409)
+            docs[kind] = doc
+        if docs["insurance"]["id"] == docs["qualification"]["id"]:
+            return self._json({"error": "insurance and qualification require separate evidence documents"}, 409)
+        source = str(data.get("check_source") or "").strip()[:100]
+        ref = str(data.get("external_check_reference") or "").strip()[:160]
+        insurance_source = str(data.get("insurance_check_source") or "").strip()[:100]
+        insurance_ref = str(data.get("insurance_check_reference") or "").strip()[:160]
+        valid_until = str(data.get("valid_until") or "").strip()
+        try:
+            expires = datetime.strptime(valid_until, "%Y-%m-%d").date()
+            registered_expires = datetime.strptime(reg["insurance_expiry"], "%Y-%m-%d").date()
+            d_expires = [datetime.strptime(d["expiry_date"], "%Y-%m-%d").date() for d in docs.values()]
+        except (TypeError, ValueError, KeyError):
+            return self._json({"error": "valid review date and insurance expiry required"}, 400)
+        today = datetime.now(timezone.utc).date()
+        if (not today <= expires <= today + timedelta(days=366)
+                or expires > min([registered_expires] + d_expires)):
+            return self._json({"error": "verification expiry must be current and no later than underlying evidence"}, 409)
+        if (not source or not ref or not insurance_source or not insurance_ref
+                or len(ref) < 4 or len(insurance_ref) < 4):
+            return self._json({"error": "record separate independent qualification and insurer checks and references"}, 400)
+        raw_areas = data.get("service_areas")
+        if not isinstance(raw_areas, list) or not 1 <= len(raw_areas) <= 25 or any(
+                not isinstance(a, str) or not 2 <= len(a.strip()) <= 70 for a in raw_areas):
+            return self._json({"error": "list 1-25 explicitly checked service areas or postcode outward codes"}, 400)
+        areas = sorted(set(a.strip().upper() for a in raw_areas))
+        verified_trades = data.get("verified_trades")
+        submitted = {str(t).lower() for t in reg.get("trades", []) if isinstance(t, str)}
+        if (not isinstance(verified_trades, list) or not verified_trades
+                or any(not isinstance(t, str) or t.lower() not in submitted for t in verified_trades)):
+            return self._json({"error": "choose verified trades from the registered trade list"}, 400)
+        scopes = sorted(set(t.lower().strip() for t in verified_trades))
+        gas_info = None
+        if "gas" in scopes:
+            gas = self.contractor_verified_document(stage, pid, data.get("gas_document_id"))
+            gas_ref = str(data.get("gas_register_reference") or "").strip()[:160]
+            if (not gas or gas["id"] in {d["id"] for d in docs.values()}
+                    or not reg.get("gas_safe_number") or len(gas_ref) < 4):
+                return self._json({"error": "Gas Safe requires separate verified evidence and an independent current register check"}, 409)
+            gas_info = {"document_id": gas["id"], "document_verified_at": gas["verified_at"],
+                        "register_reference": gas_ref, "number": reg["gas_safe_number"]}
+            gas_expiry = datetime.strptime(gas["expiry_date"], "%Y-%m-%d").date()
+            if expires > gas_expiry:
+                return self._json({"error": "review date exceeds verified gas qualification expiry"}, 409)
+        previous = reg.get("contractor_verification")
+        if isinstance(previous, dict) and previous.get("status") == "verified":
+            previous["status"] = "superseded"
+            previous["superseded_at"] = now()
+        verification = {
+            "status": "verified", "checked_at": now(), "checked_by": (self.user or {}).get("username", "agent"),
+            "party_id": pid, "registration_id": reg["id"], "valid_until": valid_until,
+            "insurance_document_id": docs["insurance"]["id"],
+            "insurance_document_verified_at": docs["insurance"]["verified_at"],
+            "qualification_document_id": docs["qualification"]["id"],
+            "qualification_document_verified_at": docs["qualification"]["verified_at"],
+            "check_source": source, "external_check_reference": ref,
+            "insurance_check_source": insurance_source, "insurance_check_reference": insurance_ref,
+            "service_areas": areas, "verified_trades": scopes, "gas": gas_info,
+        }
+        reg.setdefault("verification_history", []).append(verification)
+        reg["contractor_verification"] = verification
+        self.audit(stage, {"actor": (self.user or {}).get("display_name", "Agent"),
+                           "action": "contractor_independent_checks_recorded",
+                           "target": reg["id"], "note": f"{pid}; expiry {valid_until}; {','.join(scopes)}"})
+        save_stage(stage)
+        return self._json({"success": True, "verification_status": "verified",
+                           "valid_until": valid_until})
 
     def serve_public_listings(self):
         """Return only explicitly advertised properties and only safe marketing fields."""
