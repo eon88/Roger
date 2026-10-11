@@ -3,6 +3,8 @@
 Never contacts the deployed Hostinger server or a live PostgreSQL instance.
 """
 import contextlib
+import io
+from email.message import Message
 import json
 import multiprocessing
 import os
@@ -87,7 +89,13 @@ class TransactionAndAgencyTests(unittest.TestCase):
                 yield
             finally:
                 seen.append("released")
-        h._do_POST_with_write_lock=lambda:seen.append("handler")
+        h.path="/api/public"
+        h.valid_csrf_origin=lambda:True
+        h.is_public=lambda path:path=="/api/public"
+        h.headers=Message()
+        h.headers["Content-Length"]="2"
+        h.rfile=io.BytesIO(b"{}")
+        h.handle_public_post=lambda data:seen.append("handler")
         with patch.object(serve,"storage_write_lock",fake_lock):
             h.do_POST()
         self.assertEqual(seen,["acquired","handler","released"])
