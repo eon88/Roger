@@ -209,7 +209,7 @@ class H(SimpleHTTPRequestHandler):
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
                 "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
-                "/api/appointment": {"agent"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
+                "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
                 "/api/document": {"agent"}, "/api/document-action": {"agent"}}
     DOCUMENT_TYPES = (
@@ -3717,6 +3717,10 @@ class H(SimpleHTTPRequestHandler):
         if job and not case_id:
             case_id = job.get("case_id")
             case = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
+        if case:
+            case_id = case.get("id")
+        if job:
+            job_id = job.get("id")
         start = str(data.get("start_time") or "")
         end = str(data.get("end_time") or "")
         start_dt = self.appointment_datetime(start)
