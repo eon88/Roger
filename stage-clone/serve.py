@@ -2642,8 +2642,9 @@ class H(SimpleHTTPRequestHandler):
         if role not in ("agent", "landlord"):
             return self._json({"error": "not authorised"}, 403)
         prework = appr.get("approval_type") == "prework_quote"
+        variation_approval = appr.get("approval_type") == "variation_quote"
         # A costly quote must be explicitly approved by the correct landlord.
-        if prework and role != "landlord":
+        if (prework or variation_approval) and role != "landlord":
             return self._json({"error": "landlord approval required before work starts"}, 403)
         if role == "landlord":
             ids = self.account_party_ids(stage, user, "landlord")
@@ -2674,9 +2675,28 @@ class H(SimpleHTTPRequestHandler):
                         q.get("status") == "pending_landlord"
                         and q.get("pence") == appr.get("amount_pence")
                         and q.get("at") == appr.get("quote_at")
+                        and q.get("version") == appr.get("quote_version")
+                        and q.get("line_items", []) == appr.get("quote_lines", [])
                         for q in job.get("quotes", [])
                     )):
                 return self._json({"error": "this quote approval is no longer valid"}, 409)
+        if variation_approval:
+            var = job.get("pending_variation") if job else None
+            current_mandate = self.repair_authority(stage, appr.get("property_id"))
+            if (not job or not var or var.get("status") != "pending_landlord"
+                    or var.get("id") != appr.get("variation_id")
+                    or var.get("scope") != appr.get("scope")
+                    or var.get("line_items") != appr.get("line_items")
+                    or var.get("base_authorised_pence") != appr.get("base_authorised_pence")
+                    or job.get("approved_quote_pence") != appr.get("base_authorised_pence")
+                    or job.get("approved_quote_pence", 0) + var.get("extra_pence", 0) != appr.get("amount_pence")
+                    or job.get("status") not in ("assigned", "in_progress")
+                    or not job.get("work_authorised_at")
+                    or not current_mandate or current_mandate != appr.get("mandate_snapshot")):
+                return self._json({"error": "variation or mandate changed; request new approval"}, 409)
+            if not self.verified_contractor_for_new_repair(
+                    stage, job.get("assigned_to_party_id"), job.get("required_trade")):
+                return self._json({"error": "contractor no longer approved for extra work"}, 409)
         appr["status"] = "approved" if action == "approve" else "rejected"
         appr["reason_given"] = reason if action == "reject" else None
         appr["decided_at"] = now()
@@ -2698,6 +2718,20 @@ class H(SimpleHTTPRequestHandler):
                               "The landlord declined the quote. No work is authorised; the agent must arrange a new price.",
                               to=("tenant", "landlord", "trades"))
             self.sync_case(stage, job["case_id"], "dispatched")
+        elif job and variation_approval:
+            var = job["pending_variation"]
+            if action == "approve":
+                self.approve_job_variation(stage, job, var, user.get("username", "landlord"))
+            else:
+                var["status"] = "declined"
+                var["decision_reason"] = reason
+                var["decided_at"] = now()
+                job.pop("pending_variation", None)
+                self.audit(stage, {"actor": user.get("username", "landlord"),
+                                   "action": "variation_declined", "target": job["id"], "note": reason})
+                self.post_msg(stage, job["case_id"],
+                              "Landlord declined the additional work; only the original authorised scope remains.",
+                              to=("tenant", "landlord", "trades"))
         elif job:
             self.post_msg(stage, job["case_id"],
                           ("The landlord approved the invoice — " if action == "approve"
@@ -2725,7 +2759,7 @@ class H(SimpleHTTPRequestHandler):
                 stage["next_case_id"] = stage.get("next_case_id", 490) + 1
         self.audit(stage, {
             "actor": user.get("display_name", "Landlord"),
-            "action": ("prework_quote_" if prework else "invoice_") + appr["status"],
+            "action": ("prework_quote_" if prework else "variation_" if variation_approval else "invoice_") + appr["status"],
             "target": appr["id"], "note": reason or None
         })
         if job:
