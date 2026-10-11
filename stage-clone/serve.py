@@ -1903,7 +1903,9 @@ class H(SimpleHTTPRequestHandler):
             "in_progress": ("trades", "Complete the agreed work and submit evidence"),
             "invoice_submitted": ("agent", "Review the contractor invoice"),
             "awaiting_approval": ("landlord", "Review the pending contractor invoice"),
-            "invoice_approved": ("tenant", "Confirm whether the repair is resolved"),
+            "invoice_approved": ("agent", "Record external payments only after bank verification"),
+            "partially_paid": ("agent", "Check and reconcile the remaining contractor invoice balance"),
+            "credited": ("agent", "Check fully credited invoice and close any accounting follow-up"),
             "paid": ("tenant", "Confirm repair resolution or ask for follow-up"),
             "rejected": ("agent", "Resolve the rejected invoice or dispute"),
         }
