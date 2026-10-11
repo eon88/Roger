@@ -157,7 +157,12 @@ jobs:
                       'prospects', 'people', 'properties', 'history'
                     ];
                     for (const view of views) {
-                      await page.locator('nav a[data-view="' + view + '"]').click();
+                      const link = page.locator('nav a[data-view="' + view + '"]');
+                      if (await link.locator('xpath=ancestor::details').count()) {
+                        // V5 navigation keeps secondary tools in an accessible disclosure.
+                        await page.locator('nav details.mvp-more summary').click();
+                      }
+                      await link.click();
                     }
                   }
                   if (errors.length) throw new Error('Uncaught page errors: ' + errors.join(' | '));
