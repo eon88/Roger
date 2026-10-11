@@ -207,7 +207,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -374,6 +374,11 @@ class H(SimpleHTTPRequestHandler):
             if not self.require({"agent"}):
                 return
             return self._json({"tasks": load_stage().get("tasks", [])})
+        if path == "/api/office-settings":
+            u = self.require({"agent", "tenant", "landlord", "trades"})
+            if not u:
+                return
+            return self._json({"office": self.safe_office_settings(load_stage(), u)})
         if path == "/api/notifications":
             u = self.require({"agent", "tenant", "landlord", "trades"})
             if not u:
@@ -834,6 +839,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/landlord-action": self.handle_landlord_action,
             "/api/registration-action": self.handle_registration_action,
             "/api/contractor-verification": self.handle_contractor_verification,
+            "/api/office-settings": self.handle_office_settings,
             "/api/prospect-action": self.handle_prospect_action,
             "/api/property-action": self.handle_property_action,
             "/api/landlord/property-submission": self.handle_landlord_property_submission,
@@ -4111,6 +4117,78 @@ class H(SimpleHTTPRequestHandler):
         self.audit(stage, {"actor": actor, "action": f"task_{action}", "target": task["id"], "note": task.get("title", "")})
         save_stage(stage)
         return self._json({"success": True, "task": task})
+
+    # ---------- office policy and real contacts ----------
+    @staticmethod
+    def safe_office_settings(stage, user):
+        record = stage.get("office_settings")
+        if not isinstance(record, dict):
+            return {"configured": False, "published": False,
+                    "notice": "Office contact and out-of-hours arrangements not yet published. Refer to your signed tenancy paperwork."}
+        visible = {k: record.get(k) for k in (
+            "office_name", "phone", "email", "opening_hours", "out_of_hours_phone",
+            "out_of_hours_instructions", "emergency_policy", "published_at",
+        )}
+        visible["configured"] = bool(record.get("phone") and record.get("email"))
+        visible["published"] = bool(record.get("published"))
+        if (user or {}).get("role") != "agent" and not visible["published"]:
+            return {"configured": False, "published": False,
+                    "notice": "Office contacts have not been confirmed. Please use the details in your tenancy paperwork."}
+        if (user or {}).get("role") == "agent":
+            visible["reviewed_by"] = record.get("reviewed_by")
+            visible["reviewed_at"] = record.get("reviewed_at")
+            visible["version"] = record.get("version", 0)
+        return visible
+
+    def handle_office_settings(self, data):
+        if (self.user or {}).get("role") != "agent":
+            return self._json({"error": "office settings require an agent"}, 403)
+        if data.get("action") not in ("save_draft", "publish", "unpublish"):
+            return self._json({"error": "action must be save_draft|publish|unpublish"}, 400)
+        stage = load_stage()
+        old = stage.get("office_settings")
+        if not isinstance(old, dict):
+            old = {}
+        actor = (self.user or {}).get("username", "agent")
+        if data["action"] == "unpublish":
+            if not old.get("published"):
+                return self._json({"error": "office policy is not published"}, 409)
+            new = {**old, "published": False, "unpublished_at": now(),
+                   "updated_at": now(), "version": old.get("version", 0)+1}
+        else:
+            fields = {
+                "office_name": (3, 160), "phone": (7, 35), "email": (5, 254),
+                "opening_hours": (5, 400), "out_of_hours_phone": (0, 35),
+                "out_of_hours_instructions": (15, 800), "emergency_policy": (30, 1200),
+            }
+            new = {}
+            for key, (minimum, maximum) in fields.items():
+                val = data.get(key)
+                if not isinstance(val, str) or not minimum <= len(val.strip()) <= maximum:
+                    return self._json({"error": key+" has missing or invalid text"}, 400)
+                new[key] = val.strip()
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", new["email"]):
+                return self._json({"error": "valid office email required"}, 400)
+            if not re.fullmatch(r"\+?[0-9()\s-]{7,35}", new["phone"]):
+                return self._json({"error": "valid office phone required"}, 400)
+            if new["out_of_hours_phone"] and not re.fullmatch(
+                    r"\+?[0-9()\s-]{7,35}", new["out_of_hours_phone"]):
+                return self._json({"error": "invalid out-of-hours number"}, 400)
+            if data["action"] == "publish":
+                if data.get("checked_real_contacts") is not True or data.get("policy_reviewed") is not True:
+                    return self._json({"error": "confirm real contacts and review emergency policy before publishing"}, 409)
+                if not new["out_of_hours_phone"] and len(new["out_of_hours_instructions"]) < 25:
+                    return self._json({"error": "clear out-of-hours instructions required"}, 409)
+            new.update({"published": data["action"] == "publish",
+                        "published_at": now() if data["action"] == "publish" else old.get("published_at"),
+                        "reviewed_by": actor if data["action"] == "publish" else old.get("reviewed_by"),
+                        "reviewed_at": now() if data["action"] == "publish" else old.get("reviewed_at"),
+                        "updated_at": now(), "version": old.get("version", 0)+1})
+        stage["office_settings"] = new
+        self.audit(stage, {"actor": actor, "action": "office_policy_"+data["action"],
+                           "target": "office_settings", "note": "version "+str(new["version"])})
+        save_stage(stage)
+        return self._json({"success": True, "office": self.safe_office_settings(stage, self.user)})
 
     # ---------- notifications ----------
     NOTIFICATION_TYPES = (
