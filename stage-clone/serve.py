@@ -4254,6 +4254,7 @@ class H(SimpleHTTPRequestHandler):
                     not party
                     or party.get("status") != "active"
                     or role not in (party.get("roles") or [])
+                    or not party.get("account_id")
                 ):
                     return self._json({
                         "error": "invalid recipient Party"
@@ -4267,9 +4268,32 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "title and message are required"}, 400)
             nums = [int(n["id"].split("-")[1]) for n in notes if re.fullmatch(r"note-\d+", n.get("id", ""))]
             channels = data.get("channels") if isinstance(data.get("channels"), list) else ["in_app"]
-            channels = [c for c in channels if c in ("in_app", "email")]
-            if not channels:
-                channels = ["in_app"]
+            if not channels or any(c not in ("in_app", "email") for c in channels):
+                return self._json({"error": "choose supported notification channels"}, 400)
+            channels = sorted(set(channels))
+            email_to = str(data.get("email_to", "")).strip().lower()[:254]
+            if "email" in channels:
+                if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email_to):
+                    return self._json({"error": "valid verified email destination is required"}, 400)
+                if role != "agent" and (not party.get("email") or email_to != str(party.get("email")).strip().lower()):
+                    return self._json({"error": "email destination must match linked recipient Party"}, 409)
+                if role == "agent":
+                    office = stage.get("office_settings") or {}
+                    if not office.get("published") or email_to != str(office.get("email") or "").strip().lower():
+                        return self._json({"error": "agent emails require published office contact email"}, 409)
+            else:
+                email_to = None
+            request_id = data.get("request_id")
+            if request_id is not None:
+                if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request_id):
+                    return self._json({"error": "invalid notification request id"}, 400)
+                duplicate = next((x for x in notes if x.get("request_id") == request_id), None)
+                if duplicate:
+                    if (duplicate.get("recipient_party_id") != (recipient_party_id if role!="agent" else None)
+                        or duplicate.get("recipient_role") != role or duplicate.get("title") != title
+                        or duplicate.get("message") != message or sorted(duplicate.get("channels", [])) != channels):
+                        return self._json({"error": "notification request id already used"}, 409)
+                    return self._json({"success": True, "notification": duplicate, "already_received": True})
             note = {
                 "id": f"note-{(max(nums) + 1) if nums else 1}",
                 "notification_type": ntype,
@@ -4279,8 +4303,13 @@ class H(SimpleHTTPRequestHandler):
                 "recipient_name": str(data.get("recipient_name", ""))[:120] or None,
                 "recipient_party_id": recipient_party_id if role != "agent" else None,
                 "channels": channels,
-                "email_to": str(data.get("email_to", ""))[:254] or None,
+                "email_to": email_to,
                 "email_status": "queued" if "email" in channels else None,
+                "request_id": request_id,
+                "email_attempts": 0,
+                "email_next_retry_at": None,
+                "email_failure_reason": None,
+                "email_delivery_evidence": None,
                 "status": "unread",
                 "property_id": data.get("property_id") or None,
                 "case_id": data.get("case_id") or None,
@@ -4306,11 +4335,53 @@ class H(SimpleHTTPRequestHandler):
         elif action == "unread":
             note["status"] = "unread"
             note["read_at"] = None
-        elif action == "sent":
+        elif action in ("sent", "failed", "retry"):
             if (self.user or {}).get("role") != "agent":
-                return self._json({"error": "only agents can mark email sent"}, 403)
-            note["email_status"] = "sent"
-            note["email_sent_at"] = now()
+                return self._json({"error": "only agent can record external notification delivery"}, 403)
+            if "email" not in note.get("channels", []):
+                return self._json({"error": "notification has no email outbox entry"}, 409)
+            current = note.get("email_status")
+            if action == "sent":
+                if current != "queued":
+                    return self._json({"error": "only a queued email may be marked externally delivered"}, 409)
+                ref = str(data.get("delivery_reference") or "").strip()[:160]
+                source = str(data.get("delivery_source") or "").strip()[:100]
+                if len(ref) < 5 or len(source) < 3:
+                    return self._json({"error": "external delivery reference and source required; Roger does not send emails"}, 400)
+                note["email_status"] = "sent"
+                note["email_sent_at"] = now()
+                note["email_delivery_evidence"] = {"reference": ref, "source": source,
+                                                    "recorded_by": (self.user or {}).get("username"),
+                                                    "recorded_at": now()}
+                note["email_next_retry_at"] = None
+                note["email_failure_reason"] = None
+            elif action == "failed":
+                if current != "queued":
+                    return self._json({"error": "only queued email can be marked failed"}, 409)
+                reason = str(data.get("reason") or "").strip()[:400]
+                if not reason:
+                    return self._json({"error": "failure reason required"}, 400)
+                attempts = int(note.get("email_attempts") or 0)+1
+                note["email_attempts"] = attempts
+                note["email_status"] = "exhausted" if attempts >= 3 else "failed"
+                note["email_failure_reason"] = reason
+                delay = (5, 30, 120)[min(attempts-1, 2)]
+                note["email_next_retry_at"] = (
+                    (datetime.now(timezone.utc)+timedelta(minutes=delay)).isoformat().replace("+00:00", "Z")
+                    if attempts < 3 else None
+                )
+            else:
+                if current != "failed":
+                    return self._json({"error": "only failed email can be requeued"}, 409)
+                try:
+                    due = datetime.fromisoformat(note["email_next_retry_at"].replace("Z", "+00:00"))
+                except (KeyError, AttributeError, ValueError):
+                    return self._json({"error": "retry not scheduled"}, 409)
+                if due > datetime.now(timezone.utc):
+                    return self._json({"error": "retry not due yet"}, 409)
+                note["email_status"] = "queued"
+                note["email_next_retry_at"] = None
+                note["email_requeued_at"] = now()
         else:
             return self._json({"error": "unsupported notification action"}, 400)
         self.audit(stage, {"actor": actor, "action": f"notification_{action}", "target": note["id"], "note": note.get("title", "")})
