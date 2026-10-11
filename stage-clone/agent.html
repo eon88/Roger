@@ -745,8 +745,9 @@ async function saveProspectStage(btn){
 function contractorProofPanel(reg){
   if(reg.role!=='trades')return '';
   const cv=reg.contractor_verification||{};
-  const verified=cv.status==='verified'&&cv.valid_until>=new Date().toISOString().slice(0,10);
-  const evidence=(docs||[]).filter(d=>d.party_id===reg.party_id&&d.document_type==='trades_document'&&d.status==='verified'&&!d.replaced_by_id);
+  const verified=cv.status==='verified'&&cv.valid_until>=new Date().toISOString().slice(0,10)&&
+    pool.some(t=>t.party_id===reg.party_id&&t.ready_for_new_repairs);
+  const evidence=(window._docs||[]).filter(d=>d.party_id===reg.party_id&&d.document_type==='trades_document'&&d.status==='verified'&&!d.replaced_by_id);
   const options='<option value="">Choose checked document</option>'+evidence.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.file_name||d.id)+' · '+esc(d.id)+' · expires '+esc(d.expiry_date||'not recorded')+'</option>').join('');
   if(!reg.party_id)return '<div class="fineprint hot">Contractor not linked to an active Party/account. Approve the registration, link the contractor in People, then upload and review evidence.</div>';
   return '<div class="card"><b>Contractor evidence status: '+esc(cv.status||'not independently checked')+'</b>'+
