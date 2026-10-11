@@ -2422,7 +2422,17 @@ class H(SimpleHTTPRequestHandler):
             self.sync_case(stage, job["case_id"], "in_progress")
             self.audit(stage, {"actor": actor, "action": "job_started", "target": job["id"]})
         elif action == "complete" and job["status"] == "in_progress":
-            job["invoice_pence"] = max(0, int(data.get("invoice_pence", 0)))
+            job["invoice_pence"] = proposed_invoice
+            job["invoice_number"] = invoice_number or None
+            job["invoice_number_status"] = "supplied" if invoice_number else "legacy_missing"
+            job["invoice_line_items"] = invoice_items["lines"] if invoice_items else []
+            job["invoice_net_pence"] = invoice_items["net_pence"] if invoice_items else None
+            job["invoice_vat_pence"] = invoice_items["vat_pence"] if invoice_items else None
+            job["invoice_itemisation_status"] = "itemised" if invoice_items else "legacy_lump_sum"
+            job["invoice_approved_quote_version"] = job.get("approved_quote_version")
+            job["invoice_approved_gross_limit_pence"] = job.get("approved_quote_pence")
+            job["payments"] = []
+            job["credit_notes"] = []
             job["completed_at"] = now()
             limit = stage.get("authority", {}).get("standing_limit_pence", 15000)
             # New jobs were authorised at the quoted price BEFORE work.
@@ -2480,18 +2490,48 @@ class H(SimpleHTTPRequestHandler):
             self.audit(stage, {"actor": actor, "action": "invoice_approved",
                                "target": job["id"], "note": f"£{job['invoice_pence']/100:.2f}"})
         elif action == "record_payment":
-            job["status"] = "paid"
-            job["paid_at"] = payment_date + "T00:00:00Z"
+            payment = {
+                "reference": reference, "date": parsed_date.isoformat(),
+                "amount_pence": payment_amount, "recorded_at": now(),
+                "recorded_by": (self.user or {}).get("username", "agent"),
+                "evidence_type": "manual_external_reference",
+            }
+            job.setdefault("payments", []).append(payment)
+            job["payment_reference"] = reference  # latest external reference, legacy UI compatibility
+            job["payment_amount_pence"] = sum(p["amount_pence"] for p in job["payments"])
             job["payment_recorded_at"] = now()
-            job["payment_reference"] = reference
-            job["payment_amount_pence"] = payment_amount
             job["payment_recorded_by"] = actor
             job["payment_evidence_type"] = "manual_external_reference"
+            balances = self.invoice_balance(job)
+            job["status"] = "paid" if balances["outstanding_pence"] == 0 else "partially_paid"
+            job["paid_at"] = parsed_date.isoformat() + "T00:00:00Z" if job["status"] == "paid" else None
+            job["balance_due_pence"] = balances["outstanding_pence"]
             self.post_msg(stage, job["case_id"],
-                          "The office recorded an external payment reference for the contractor invoice.",
+                          "The office recorded an external payment reference; remaining invoice balance "
+                          f"£{balances['outstanding_pence']/100:.2f}. No payment was sent by Roger.",
                           to=("trades", "landlord"))
             self.audit(stage, {"actor": actor, "action": "external_payment_recorded",
-                               "target": job["id"], "note": "External ref: " + reference})
+                               "target": job["id"], "note": f"{reference}: {payment_amount}p"})
+        elif action == "record_credit":
+            credit = {
+                "number": credit_number, "reason": credit_reason,
+                "amount_pence": credit_amount, "recorded_at": now(),
+                "recorded_by": (self.user or {}).get("username", "agent"),
+                "evidence_type": "supplier_credit_recorded",
+            }
+            job.setdefault("credit_notes", []).append(credit)
+            balances = self.invoice_balance(job)
+            job["balance_due_pence"] = balances["outstanding_pence"]
+            if balances["outstanding_pence"] == 0:
+                job["status"] = "paid" if balances["paid_pence"] > 0 else "credited"
+            else:
+                job["status"] = "partially_paid"
+            self.post_msg(stage, job["case_id"],
+                          "The office recorded a supplier credit note; invoice balance "
+                          f"£{balances['outstanding_pence']/100:.2f}. This is not a bank payment.",
+                          to=("trades", "landlord"))
+            self.audit(stage, {"actor": actor, "action": "supplier_credit_recorded",
+                               "target": job["id"], "note": f"{credit_number}: {credit_amount}p"})
         else:
             return self._json({"error": f"invalid action {action} for status {job['status']}"}, 400)
 
