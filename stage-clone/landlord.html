@@ -180,18 +180,18 @@ function render(){
   const pend=apps.filter(a=>a.status==='pending');
   document.getElementById('my-approvals').innerHTML=pend.length?pend.map(a=>{
     const job=jobs.find(j=>j.id===a.job_id)||{};
-    const lim=(stage.authority?.standing_limit_pence||15000)/100;
+    const lim=(a.mandate_snapshot?.limit_pence??stage.repair_authority?.[a.property_id]?.limit_pence??0)/100;
     return `<div class="card flagged"><div class="cardtop"><h3>${money(a.amount_pence)} — ${a.approval_type==='prework_quote'?'quote approval BEFORE work':'invoice approval (not payment)'}</h3><span class="meta">${when(a.requested_at)}</span></div>
       <div class="meta">${pTitle(a.property_id)}</div>
       <div class="details">“${esc(a.reason)}”</div>
       ${a.approval_type==='prework_quote'?`<div class="meta">Scope: ${esc(a.scope||'See the repair and quote with your agent')} · Your decision allows or blocks work; no payment happens here.</div>`:''}
       <table class="evidence">
-        <tr><td>Who did the work</td><td><b>${esc(a.evidence?.tradesperson||job.assigned_to||'unknown — chase your agent')}</b>${a.evidence?.tradesperson?' (credentials verified at sign-up)':''}</td></tr>
+        <tr><td>Who did the work</td><td><b>${esc(a.evidence?.tradesperson||job.assigned_to||'unknown — chase your agent')}</b> ${a.evidence?.tradesperson?'(check credentials with your agent)':''}</td></tr>
         <tr><td>Reported by tenant</td><td>${a.evidence?.job_created?new Date(a.evidence.job_created).toLocaleDateString('en-GB'):'—'}</td></tr>
         <tr><td>Work completed</td><td>${a.evidence?.work_completed?new Date(a.evidence.work_completed).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—'}</td></tr>
         <tr><td>Job reference</td><td>${esc(a.job_id)} · case #${esc(job.case_id??'—')}</td></tr>
       </table>
-      <div class="fineprint">Above the agency's current £${lim.toFixed(0)} spending limit. ${a.approval_type==='prework_quote'?'Work cannot start until you approve this exact quote.':'Approving an invoice does not record a payment.'}</div>
+      <div class="fineprint"> ${a.approval_type==='prework_quote'?'Above this property’s agreed £'+lim.toFixed(2)+' limit. Work cannot start until you approve this exact quote.':'Approving an invoice does not record a payment.'}</div>
       <div class="actions"><input placeholder="reason (required if declining)" id="rsn-${esc(a.id)}" autocomplete="off" style="max-width:260px">
         <button class="btn primary" onclick="decide(this,'${esc(a.id)}','approve')">Approve</button>
         <button class="btn danger" onclick="decide(this,'${esc(a.id)}','reject')">Decline</button>
@@ -206,14 +206,13 @@ function render(){
   const myJobs=jobs.filter(j=>pids.includes(j.property_id));
   const paid=myJobs.filter(j=>j.status==='paid');
   const paidTotal=paid.reduce((s,j)=>s+(j.invoice_pence||0),0);
-  const underLimit=paid.filter(j=>(j.invoice_pence||0)<=((stage.authority?.standing_limit_pence)||15000));
   const awaiting=myJobs.filter(j=>j.status==='awaiting_approval');
   const rentMo=props.reduce((s,p)=>s+p.rent,0);
   document.getElementById('statement').innerHTML=`<div class="card"><div class="grid2" style="gap:0">
     <div><div class="label">Scheduled monthly rent (your ${props.length} properties)</div><div class="money">${money(rentMo)}<span style="font-size:13px;color:var(--muted)"> /mo</span></div></div>
     <div><div class="label">Repairs paid all-time</div><div class="money">${money(paidTotal)}</div><div class="meta">${paid.length} recorded external payment${paid.length===1?'':'s'}; agent enters references manually</div></div>
     <div><div class="label">Awaiting decision</div><div class="money">${awaiting.length?money(awaiting.reduce((s,j)=>s+(j.invoice_pence||0),0)):'—'}</div><div class="meta">${awaiting.length?awaiting.map(j=>esc(j.id)).join(', '):'nothing waiting'}</div></div>
-    <div><div class="label">Standing authority</div><div class="money">£${((stage.authority?.standing_limit_pence||15000)/100).toFixed(0)}</div><div class="actions" style="margin-top:6px"><button class="btn ghost" onclick="changeLimit()">Change limit</button></div></div>
+    <div><div class="label">Agreed repair spending limits</div><div class="meta">${props.map(p=>esc(p.title)+': '+(stage.repair_authority?.[p.id]?'£'+(stage.repair_authority[p.id].limit_pence/100).toFixed(2):'not agreed')).join(' · ')||'No properties linked'}</div><div class="actions" style="margin-top:6px"><button class="btn ghost" onclick="changeLimit()">Ask agent to review</button></div></div>
   </div>
   <div class="fineprint">Scheduled rent is not the same as rent received. Actual payment dates, balances and arrears are shown below.</div></div>`;
   renderRentLedger(props);
