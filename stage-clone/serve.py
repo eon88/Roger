@@ -932,16 +932,28 @@ class H(SimpleHTTPRequestHandler):
         return created
 
     def approved_trades(self, stage):
-        """Companies an agent may put on a case: seeded profiles + approved registrations."""
+        """Display active approved registrations; mark dispatch eligibility."""
         out = []
-        for name, prof in TRADE_PROFILES.items():
-            out.append({"company": name, "trades": prof["trades"], "gas_safe": bool(prof.get("gas_safe"))})
-        for r in stage.get("registrations", []):
-            if (r.get("role") == "trades" and r.get("status") == "approved"
-                    and r.get("prospect_stage") not in ("suspended", "rejected")):
-                trades = [t for t in (r.get("trades") or []) if t]
-                out.append({"company": r["name"], "trades": trades or ["general"],
-                            "gas_safe": bool(r.get("gas_safe_number"))})
+        for reg in stage.get("registrations", []):
+            if (reg.get("role") != "trades" or reg.get("status") != "approved"
+                    or reg.get("prospect_stage") in ("suspended", "rejected")):
+                continue
+            pid = reg.get("party_id")
+            party = next((p for p in stage.get("parties", [])
+                          if p.get("id") == pid and p.get("status") == "active"
+                          and p.get("display_name") == reg.get("name")
+                          and "trades" in p.get("roles", []) and p.get("account_id")), None)
+            party_id = party["id"] if party else None
+            verified = (bool(party_id) and self.verified_contractor_for_new_repair(
+                stage, party_id, None))
+            out.append({
+                "company": reg.get("name", "Unknown contractor"),
+                "trades": reg.get("trades") or ["general"],
+                "gas_safe": bool(verified and reg.get("gas_safe_verified_at")
+                                 and reg.get("gas_safe_verification_reference")),
+                "party_id": party_id,
+                "ready_for_new_repairs": verified,
+            })
         return out
 
     # ---------- public site form (the cloned bundle posts here) ----------
