@@ -4,7 +4,8 @@ WORKDIR /app
 
 COPY stage-clone/ /app/
 RUN cp /app/stage.json /app/stage.seed.json \
-    && chmod +x /app/docker-entrypoint.sh
+    && chmod +x /app/docker-entrypoint.sh \
+    && python -m pip install --no-cache-dir "psycopg[binary]>=3.2,<4"
 
 ENV PYTHONUNBUFFERED=1 \
     DATA_DIR=/data \
