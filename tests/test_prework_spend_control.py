@@ -30,7 +30,7 @@ class PreworkCostApprovalTests(unittest.TestCase):
                       "assigned_to": None, "invoice_pence": None}],
             "approvals": [],
             "management_agreements": [{
-                "id": "management-a", "landlord_party_id": "owner-a",
+                "id": "management-a", "agreement_type": "full_management", "landlord_party_id": "owner-a",
                 "property_ids": ["home-a"], "status": "active",
                 "signed_at": "2026-10-01", "updated_at": "2026-10-01T10:00:00Z",
                 "spending_limit_pence": 15000,
