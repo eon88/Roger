@@ -103,48 +103,56 @@ class AtomicStorageTests(unittest.TestCase):
         response = []
         handler._json = lambda payload, status=200: response.append((payload, status))
         stage = {
-            "properties": [{"id": "home-1", "title": "Home"}],
+            "properties": [{"id": "home-1", "title": "Home", "tenant_party_id": "party-1"}],
             "cases": [{"id": 10, "property_id": "home-1", "appointment_ids": []}],
-            "jobs": [{"id": "job-1", "case_id": 10, "property_id": "home-1", "appointment_ids": []}],
-            "parties": [{"id": "party-1", "display_name": "Tenant", "roles": ["tenant"]}],
-            "appointments": [],
-            "audit_log": [],
+            "jobs": [{"id": "job-1", "case_id": 10, "property_id": "home-1", "appointment_ids": [],
+                      "assigned_to_party_id": "trade-1", "status": "assigned",
+                      "requires_prework_quote": True, "work_authorised_at": "2026-10-01T10:00:00Z"}],
+            "parties": [
+                {"id": "party-1", "display_name": "Tenant", "roles": ["tenant"],
+                 "account_id": "tenant-account", "status": "active"},
+                {"id": "trade-1", "display_name": "Trade", "roles": ["trades"],
+                 "account_id": "trade-account", "status": "active"},
+            ],
+            "appointments": [], "audit_log": [],
         }
         with patch.object(serve, "load_stage", return_value=stage), patch.object(serve, "save_stage"):
             serve.H.handle_appointment(handler, {
                 "property_id": "home-1",
-                "case_id": "10",
-                "job_id": "job-1",
-                "appointment_type": "contractor_visit",
-                "title": "Boiler visit",
-                "start_time": "2027-01-12T10:00:00Z",
-                "end_time": "2027-01-12T11:00:00Z",
+                "case_id": "10", "job_id": "job-1",
+                "appointment_type": "contractor_visit", "title": "Boiler visit",
+                "start_time": "2099-01-12T10:00:00Z",
+                "end_time": "2099-01-12T11:00:00Z",
                 "participant_roles": ["tenant", "trades"],
-                "participant_party_ids": ["party-1"],
-                "reminder_at": "2027-01-11T10:00:00Z",
+                "participant_party_ids": ["party-1", "trade-1"],
+                "reminder_at": "2099-01-11T10:00:00Z",
             })
+            self.assertEqual(response[-1][1], 200, response[-1][0])
             appt = stage["appointments"][0]
             serve.H.handle_appointment_action(handler, {
-                "id": appt["id"],
-                "action": "reschedule",
-                "start_time": "2027-01-13T12:00:00Z",
+                "id": appt["id"], "action": "reschedule",
+                "start_time": "2099-01-13T12:00:00Z",
                 "note": "Tenant asked for lunchtime",
             })
+            handler.user = {"username": "tenant", "role": "tenant",
+                            "display_name": "Tenant", "account_id": "tenant-account"}
+            serve.H.handle_appointment_action(handler, {"id": appt["id"], "action": "confirm"})
+            self.assertEqual(response[-1][1], 200, response[-1][0])
+            handler.user = {"username": "agent", "role": "agent", "display_name": "Agent"}
             serve.H.handle_appointment_action(handler, {
-                "id": appt["id"],
-                "action": "complete",
+                "id": appt["id"], "action": "complete",
                 "outcome": "Boiler serviced and certificate requested",
             })
-        self.assertEqual(response[0][1], 200)
+        self.assertEqual(response[-1][1], 200, response[-1][0])
         self.assertEqual(appt["appointment_type"], "contractor_visit")
         self.assertEqual(appt["case_id"], 10)
         self.assertEqual(appt["job_id"], "job-1")
         self.assertEqual(appt["participant_roles"], ["agent", "tenant", "trades"])
-        self.assertEqual(appt["participant_party_ids"], ["party-1"])
+        self.assertEqual(appt["participant_party_ids"], ["party-1", "trade-1"])
         self.assertEqual(stage["cases"][0]["appointment_ids"], [appt["id"]])
         self.assertEqual(stage["jobs"][0]["appointment_ids"], [appt["id"]])
-        self.assertEqual(appt["previous_start_time"], "2027-01-12T10:00:00Z")
-        self.assertEqual(appt["start_time"], "2027-01-13T12:00:00Z")
+        self.assertEqual(appt["previous_start_time"], "2099-01-12T10:00:00Z")
+        self.assertEqual(appt["start_time"], "2099-01-13T12:00:00Z")
         self.assertEqual(appt["status"], "completed")
         self.assertEqual(appt["outcome"], "Boiler serviced and certificate requested")
 
