@@ -1,0 +1,27 @@
+name: Check Roger production scripts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ops/**"
+      - ".github/workflows/deploy-roger.yml"
+      - ".github/workflows/rollback-roger.yml"
+      - ".github/workflows/rollback-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deployment and rollback syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n ops/deploy-roger-mvp.sh
+          bash -n ops/rollback-roger-mvp.sh
+          echo "PASS: both production scripts parse correctly."
