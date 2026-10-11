@@ -124,16 +124,16 @@ function render(){
       <button class="btn ghost" onclick="release(this,'${esc(j.id)}')">Hand it back</button></div></div>`;}).join('')
     :gated.length?'':`<div class="empty">Nothing in hand. Accept a job above and it lands here with the invoice box and the tenant's access notes.</div>`);
 
-  const done=jobs.filter(j=>['awaiting_approval','paid','rejected'].includes(j.status)).slice().reverse();
+  const done=jobs.filter(j=>['invoice_submitted','invoice_approved','awaiting_approval','paid','rejected'].includes(j.status)).slice().reverse();
   document.getElementById('done-jobs').innerHTML=done.length?done.map(j=>{
     const appr=(stage.approvals||[]).find(a=>a.job_id===j.id);
     const age=appr?` · waiting ${when(appr.requested_at)}`:'';
-    const label={awaiting_approval:`landlord sign-off pending${age} — the office chases if it sits`,paid:`settled ${j.paid_at?when(j.paid_at):'recently'} · reference ${esc(j.id)} (demo: settlement is simulated until a payment provider lands)`,rejected:`declined${appr?.reason_given?' — “'+esc(appr.reason_given)+'”':''} · the agent has a task to sort next steps`}[j.status];
+    const label={invoice_submitted:'invoice sent — agent reviewing; no payment recorded',invoice_approved:'invoice approved — awaiting external payment',awaiting_approval:`landlord sign-off pending${age} — no payment recorded`,paid:`external payment manually recorded ${j.paid_at?when(j.paid_at):''} · ref ${esc(j.payment_reference||'legacy entry')}`,rejected:`declined${appr?.reason_given?' — “'+esc(appr.reason_given)+'”':''} · the agent will follow up`}[j.status];
     return `<div class="card ${flips['j'+j.id]?'flash-once':''}"><div class="cardtop"><h3>${esc(j.id)} · ${money(j.invoice_pence??0)}</h3>
-      <span class="badge ${esc(j.status)}">${j.status==='paid'?'settled':j.status}</span></div>
+      <span class="badge ${esc(j.status)}">${j.status==='paid'?'payment recorded':j.status.replace(/_/g,' ')}</span></div>
       <div class="meta">${prop(j.property_id)}</div>
       <div class="fineprint">${label}</div></div>`;}).join('')
-    :`<div class="empty">No invoices filed yet. When a job is done, enter the amount on your in-progress card above — small ones settle the same day.</div>`;
+    :`<div class="empty">No invoices filed yet. Submit the invoice after your work; the agent checks it and records payment separately.</div>`;
   document.getElementById('my-docs').innerHTML=docs.length?docs.map(d=>`<div class="card"><div class="docrow">
       <a class="filechip" href="/api/document/${esc(d.id)}/file" target="_blank" rel="noopener">${esc(d.file_name||d.id)}</a>
       <span class="badge ${esc(d.status)}">${esc(d.status)}</span>
@@ -154,7 +154,7 @@ async function accept(btn,id){ await busy(btn,async()=>{ try{ await post('/api/j
 async function complete(btn,id){ const v=parseFloat(document.getElementById('inv-'+id).value||'0');
   if(v<=0){toast('Enter the invoice amount first.','bad');return;}
   await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'complete',invoice_pence:Math.round(v*100),tradesperson:ME});
-  toast(v*100<=(stage.authority?.standing_limit_pence||15000)?'Invoice filed — settles under standing authority today.':'Invoice filed — the landlord signs off anything over the limit.'); load(); }catch(e){} }); }
+  toast(v*100<=(stage.authority?.standing_limit_pence||15000)?'Invoice submitted — waiting on agency review; not paid.':'Invoice submitted — waiting on landlord approval; not paid.'); load(); }catch(e){} }); }
 async function release(btn,id){ await busy(btn,async()=>{ try{ await post('/api/job-action',{id,action:'release',tradesperson:ME});
   toast('Handed back — it returns to the open board.'); load(); }catch(e){} }); }
 boot(); setInterval(load,20000);
