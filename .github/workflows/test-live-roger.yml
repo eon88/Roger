@@ -1,0 +1,83 @@
+name: Test Live Roger (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run during a production deploy or rollback.
+concurrency:
+  group: roger-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  live-smoke:
+    if: github.ref == 'refs/heads/main'
+    name: Verify live site health and role access gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Use reviewed live-check script from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Check shell syntax
+        shell: bash
+        run: bash -n ops/check-roger-live-readonly.sh
+
+      - name: Run read-only checks over pinned SSH
+        shell: bash
+        env:
+          ROGER_HOST: ${{ secrets.ROGER_SSH_HOST }}
+          ROGER_KEY: ${{ secrets.ROGER_SSH_PRIVATE_KEY }}
+          ROGER_KNOWN_HOSTS: ${{ secrets.ROGER_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ROGER_HOST" || -z "$ROGER_KEY" || -z "$ROGER_KNOWN_HOSTS" ]]; then
+            echo "::error::Roger deployment SSH secrets are not configured."
+            exit 1
+          fi
+          if [[ ! "$ROGER_HOST" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            echo "::error::ROGER_SSH_HOST must contain only the hostname or IP."
+            exit 1
+          fi
+
+          key_file="$RUNNER_TEMP/roger_check_key"
+          hosts_file="$RUNNER_TEMP/roger_check_hosts"
+          if [[ "$ROGER_KEY" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
+            printf '%s\n' "$ROGER_KEY" | tr -d '\r' > "$key_file"
+          else
+            printf '%s' "$ROGER_KEY" | tr -d '[:space:]' | base64 --decode > "$key_file"
+          fi
+          chmod 600 "$key_file"
+          ssh-keygen -y -P '' -f "$key_file" >/dev/null
+
+          host_key="$(printf '%s\n' "$ROGER_KNOWN_HOSTS" | tr -d '\r' | awk '
+            $2 == "ssh-ed25519" { print $2 " " $3; exit }
+            $1 == "ssh-ed25519" { print $1 " " $2; exit }
+          ')"
+          if [[ ! "$host_key" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]]; then
+            echo "::error::Trusted SSH host key is missing or invalid."
+            exit 1
+          fi
+          printf '%s %s\n' "$ROGER_HOST" "$host_key" > "$hosts_file"
+          chmod 600 "$hosts_file"
+          ssh-keygen -lf "$hosts_file" >/dev/null
+
+          ssh -i "$key_file" \
+            -o UserKnownHostsFile="$hosts_file" \
+            -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            "root@$ROGER_HOST" 'bash -s' < ops/check-roger-live-readonly.sh
+
+      - name: Results
+        if: success()
+        run: |
+          echo "### Live Roger passed read-only smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "App and PostgreSQL healthy; public routes work; protected role routes reject anonymous users." >> "$GITHUB_STEP_SUMMARY"
+          echo "No data was changed. Full role-to-role business workflows require separate test accounts." >> "$GITHUB_STEP_SUMMARY"
