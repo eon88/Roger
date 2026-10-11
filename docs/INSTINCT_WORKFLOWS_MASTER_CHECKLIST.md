@@ -50,7 +50,8 @@ These seven unfinished P0 jobs are taken from `docs/REPAIRS_PILOT_PROGRESS.md` a
   - [x] Manual email outbox with Party-address validation, duplicate request IDs, required external sent-message evidence, failure reasons, timed requeue and three-attempt limit; no simulated delivery.
   - [x] Urgent maintenance intake creates one agent-only in-app alert; account revocation invalidates active non-agent sessions and future logins, preserving records.
   - [x] Agent controls, audit entries and synthetic regression tests added to the development branch.
-  - [ ] Remaining: real agency review/publication, actual SMTP/provider delivery + worker/retries, recovery/MFA, full backup-restore drill, production resilience and populated browser checks.
+  - [x] Disposable offline file-backend restore rehearsal script + tests validate JSON records, copied checksums and missing/corrupt document rejection (synthetic, no live data).
+  - [ ] Remaining: real agency review/publication, actual SMTP/provider delivery + worker/retries, administrator recovery/MFA, real Hostinger backup-restore drill, production resilience and populated browser checks.
   - **Status: PARTIAL — tested code, manual email outbox only, no real contacts configured, not deployed.**
 - [ ] **06 Database and tenant isolation** — safe concurrent writes and two-agency/two-tenancy API/document denial tests; PostgreSQL development must remain isolated until reviewed. *(S1, S4)*
 - [ ] **07 Full populated browser pilot** — exercise real clicks across Agent, Tenant, Landlord and Trades for report → approval → trade visit → tenant result → invoice/external payment record. *(All P0 items)*
