@@ -954,10 +954,12 @@ class H(SimpleHTTPRequestHandler):
             out.append({
                 "company": reg.get("name", "Unknown contractor"),
                 "trades": reg.get("trades") or ["general"],
-                "gas_safe": bool(verified and reg.get("gas_safe_verified_at")
-                                 and reg.get("gas_safe_verification_reference")),
+                "gas_safe": bool(verified and self.verified_contractor_for_new_repair(
+                    stage, party_id, "gas")),
                 "party_id": party_id,
                 "ready_for_new_repairs": verified,
+                "verification_valid_until": (reg.get("contractor_verification") or {}).get("valid_until"),
+                "service_areas": (reg.get("contractor_verification") or {}).get("service_areas", []),
             })
         return out
 
@@ -2100,7 +2102,7 @@ class H(SimpleHTTPRequestHandler):
             checked_at = datetime.fromisoformat(verify["checked_at"].replace("Z", "+00:00"))
         except (KeyError, ValueError, TypeError):
             return False
-        if (expires < today or insurance_end < today or checked_at.tzinfo is None
+        if (expires < today or insurance_end < expires or checked_at.tzinfo is None
                 or checked_at.astimezone(timezone.utc).date() > today):
             return False
         for kind in ("insurance", "qualification"):
@@ -2311,6 +2313,14 @@ class H(SimpleHTTPRequestHandler):
                 return self._json(
                     {"error": "unverified contractor identity"}, 409
                 )
+
+        # Regulated jobs never rely on the legacy in-memory/claimed certificate profile.
+        if (job.get("required_trade") in CERT_REQUIRED
+                and action in ("assign", "accept", "request_quote", "verify_approve", "start")):
+            regulated_party = selected_party_id or job.get("assigned_to_party_id")
+            if not self.verified_contractor_for_new_repair(
+                    stage, regulated_party, job.get("required_trade"), job.get("property_id")):
+                return self._json({"error": "regulated work requires current independent trade register evidence and service area"}, 409)
 
         # Newly triaged repairs cannot skip quote and work authorisation.
         if job.get("requires_prework_quote"):
