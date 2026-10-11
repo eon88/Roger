@@ -1092,6 +1092,8 @@ class H(SimpleHTTPRequestHandler):
 
     def handle_contractor_verification(self, data):
         """Human-reviewed independent checks: keep evidence references, never assert automated verification."""
+        if (self.user or {}).get("role") != "agent":
+            return self._json({"error": "only agents may attest independent contractor checks"}, 403)
         stage = load_stage()
         reg = next((r for r in stage.get("registrations", [])
                     if r.get("id") == data.get("registration_id") and r.get("role") == "trades"), None)
