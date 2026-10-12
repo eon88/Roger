@@ -113,23 +113,68 @@ async function run(){
     console.log('PASS real property modal and viewing request delivered to Roger cases');
 
     await page.locator('#closeButton').click();
-    await page.locator('#landlordName').fill('Pilot Owner');
-    await page.locator('#landlordEmail').fill('owner@example.test');
-    await page.locator('#landlordArea').fill('Leeds');
-    await page.locator('#landlordMessage').fill('Please explain full management');
-    await page.locator('#contact-landlords [name=consent]').check();
-    await page.locator('#contact-landlords button[type=submit]').click();
-    await page.locator('#contact-landlords .result').getByText(/Sent. Reference/).waitFor();
-    await page.locator('#tradesName').fill('Pilot Electrician');
-    await page.locator('#tradesEmail').fill('trade@example.test');
-    await page.locator('#tradesArea').fill('Electrical, Leeds');
-    await page.locator('#tradesMessage').fill('Insurance available for human review');
-    await page.locator('#contact-trades [name=consent]').check();
-    await page.locator('#contact-trades button[type=submit]').click();
-    await page.locator('#contact-trades .result').getByText(/Sent. Reference/).waitFor();
-    written=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
-    assert.deepEqual(written.registrations.map(r=>r.role),['landlord','trades']);
-    console.log('PASS landlord and contractor forms create genuine pending registrations');
+    assert.equal(await page.locator('#exampleCards .example-card').count(),6);
+    assert.equal(await page.locator('#exampleCards button').count(),0,'fictional properties cannot offer viewings');
+    assert.match(await page.locator('#exampleCards').innerText(),/FICTIONAL EXAMPLE/);
+    console.log('PASS six visibly fictional sample listings, separate from real property API');
+
+    // One guided enquiry form creates three distinct backend lead types.
+    await page.locator('#prospectName').fill('Pilot Home Hunter');
+    await page.locator('#prospectEmail').fill('renter@example.test');
+    await page.locator('#prospectArea').fill('Leeds');
+    await page.locator('#prospectBeds').selectOption('2');
+    await page.locator('#prospectMaxRent').fill('1300');
+    await page.locator('#prospectMessage').fill('Moving soon');
+    await page.locator('#prospectForm [name=consent]').check();
+    await page.locator('#prospectSubmit').click();
+    await page.locator('#prospectResult').getByText(/Thank you/).waitFor();
+    let saved=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
+    assert.equal(saved.cases.length,2);
+    assert.equal(saved.cases[1].requirements.bedrooms,'2');
+    assert.equal(saved.cases[1].prospect_stage,'enquiry');
+
+    await page.locator('#prospectKind').selectOption('landlord');
+    assert.equal(await page.locator('#landlordFields').isVisible(),true);
+    assert.equal(await page.locator('#tenantFields').isVisible(),false);
+    await page.locator('#prospectName').fill('Pilot Owner');
+    await page.locator('#prospectEmail').fill('owner@example.test');
+    await page.locator('#prospectArea').fill('Leeds');
+    await page.locator('#prospectService').selectOption('management');
+    await page.locator('#prospectMessage').fill('I need full management');
+    await page.locator('#prospectForm [name=consent]').check();
+    await page.locator('#prospectSubmit').click();
+    await page.locator('#prospectResult').getByText(/Thank you/).waitFor();
+
+    await page.locator('#prospectKind').selectOption('trades');
+    assert.equal(await page.locator('#tradesFields').isVisible(),true);
+    await page.locator('#prospectName').fill('Pilot Electrician');
+    await page.locator('#prospectEmail').fill('trade@example.test');
+    await page.locator('#prospectArea').fill('Leeds');
+    await page.locator('#prospectTrade').selectOption('electrical');
+    await page.locator('#prospectMessage').fill('Insurance available on request');
+    await page.locator('#prospectForm [name=consent]').check();
+    await page.locator('#prospectSubmit').click();
+    await page.locator('#prospectResult').getByText(/Thank you/).waitFor();
+    saved=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
+    assert.deepEqual(saved.registrations.map(r=>r.role),['landlord','trades']);
+    assert.equal(saved.registrations[0].prospect_stage,'lead');
+    assert.equal(saved.registrations[1].prospect_stage,'applicant');
+    assert.equal(saved.registrations[1].status,'pending');
+    assert.equal(saved.registrations[1].verification_required,true);
+    console.log('PASS full tenant, landlord, trade intake flows and safe initial stages');
+
+    await page.locator('#newsletterName').fill('Newsletter Reader');
+    await page.locator('#newsletterEmail').fill('reader@example.test');
+    await page.locator('#newsletterAudience').selectOption('landlord');
+    await page.locator('#newsletterForm [name=marketing_consent]').check();
+    await page.locator('#newsletterSubmit').click();
+    await page.locator('#newsletterResult').getByText(/Interest recorded/).waitFor();
+    saved=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
+    assert.equal(saved.newsletter_subscriptions.length,1);
+    assert.equal(saved.newsletter_subscriptions[0].audience,'landlord');
+    assert.equal(saved.newsletter_subscriptions[0].status,'pending_confirmation');
+    assert.ok(saved.newsletter_subscriptions[0].consented_at);
+    console.log('PASS niche newsletter interest, independent marketing consent and no sending claim');
 
     // Small viewport: fully navigable, without horizontal overflow or script errors.
     await page.setViewportSize({width:390,height:844});
