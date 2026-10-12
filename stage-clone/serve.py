@@ -288,7 +288,7 @@ class H(SimpleHTTPRequestHandler):
 
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/signin", "/invite", "/for-agents", "/register/landlord", "/register/trades",
-              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami", "/api/agency-info"}
+              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/invite.js", "/api/whoami", "/api/agency-info"}
     PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo", "/api/invite/validate", "/api/invite/accept"}
 
     def parse_cookies(self):
@@ -511,6 +511,8 @@ class H(SimpleHTTPRequestHandler):
             return self.serve_file("login.html")
         if path == "/invite":
             return self.serve_file("invite.html")
+        if path == "/invite.js":
+            return self.serve_file("invite.js", "application/javascript; charset=utf-8")
         if path == "/change-password":
             if not self.require():
                 return
