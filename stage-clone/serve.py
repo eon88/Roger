@@ -258,7 +258,7 @@ class H(SimpleHTTPRequestHandler):
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/signin", "/register/landlord", "/register/trades",
               "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
-    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry"}
+    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -308,7 +308,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -488,6 +488,15 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"office": self.safe_office_settings(load_stage(), u)})
+        if path == "/api/newsletter-subscriptions":
+            if not self.require({"agent"}):
+                return
+            records = load_stage().get("newsletter_subscriptions", [])
+            return self._json({"subscriptions": [
+                {k: r.get(k) for k in ("id", "name", "email", "audience",
+                 "status", "source", "consented_at", "created_at", "confirmed_at",
+                 "unsubscribed_at") if k in r}
+                for r in records if isinstance(r, dict)]})
         if path == "/api/notifications":
             u = self.require({"agent", "tenant", "landlord", "trades"})
             if not u:
@@ -939,6 +948,9 @@ class H(SimpleHTTPRequestHandler):
             "/register/landlord": lambda d: self.handle_registration("landlord", d),
             "/register/trades": lambda d: self.handle_registration("trades", d),
             "/api/enquiry": self.handle_enquiry,
+            "/api/prospect-intake": self.handle_prospect_intake,
+            "/api/newsletter": self.handle_newsletter_signup,
+            "/api/newsletter-action": self.handle_newsletter_action,
             "/api/appointment": self.handle_appointment,
             "/api/appointment-action": self.handle_appointment_action,
             "/api/invitation": self.handle_invitation,
@@ -2027,6 +2039,154 @@ class H(SimpleHTTPRequestHandler):
                            "note": kind + ": " + previous + " -> " + next_stage})
         save_stage(stage)
         self._json({"success": True, "stage": next_stage, "updated_at": at})
+
+    # ---------- public segmented marketing & prospect intake ----------
+    MARKETING_AUDIENCES = ("prospective_tenant", "tenant", "landlord", "trades")
+    PROSPECT_KINDS = ("tenant", "landlord", "trades")
+
+    @staticmethod
+    def valid_public_contact(data):
+        name = data.get("name")
+        email = data.get("email")
+        if (not isinstance(name, str) or not 2 <= len(name.strip()) <= 100
+                or not isinstance(email, str) or len(email) > 254
+                or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip())):
+            return None
+        return name.strip(), email.strip().lower()
+
+    def handle_prospect_intake(self, data):
+        """Route a first enquiry to the existing, human-reviewed Prospect pipeline.
+
+        A prospect is never a linked portal account, approved trade, or tenancy.
+        Newsletter marketing consent is collected separately.
+        """
+        if data.get("website"):
+            return self._json({"success": True, "reference": "received"})
+        if data.get("consent") is not True:
+            return self._json({"error": "agree to be contacted about your enquiry"}, 400)
+        contact = self.valid_public_contact(data)
+        if not contact:
+            return self._json({"error": "enter a valid name and email"}, 400)
+        kind = data.get("kind")
+        if kind not in self.PROSPECT_KINDS:
+            return self._json({"error": "choose tenant, landlord or trades"}, 400)
+        name, email = contact
+        phone = str(data.get("phone") or "").strip()[:40]
+        area = str(data.get("area") or "").strip()[:160]
+        message = str(data.get("message") or "").strip()[:1200]
+        if not (area or message):
+            return self._json({"error": "tell us your area or what you need"}, 400)
+        at = now()
+        source = "public-homepage"
+        stage = load_stage()
+        details = {
+            "location": area,
+            "message": message,
+            "service": str(data.get("service") or "").strip()[:80] if kind == "landlord" else "",
+            "trade": str(data.get("trade") or "").strip()[:80] if kind == "trades" else "",
+            "bedrooms": str(data.get("bedrooms") or "").strip()[:3] if kind == "tenant" else "",
+            "max_rent": str(data.get("max_rent") or "").strip()[:15] if kind == "tenant" else "",
+        }
+        if kind == "tenant":
+            case_id = stage.get("next_case_id", 490)
+            stage["next_case_id"] = case_id + 1
+            case = {
+                "id": case_id, "type": "enquiry", "role": "renter",
+                "name": name, "email": email, "phone": phone,
+                "message": message or "Interested in homes around " + area,
+                "requirements": details, "lead_source": source,
+                "status": "new", "prospect_stage": "enquiry",
+                "consent": True, "contact_consent_at": at,
+                "submitted_at": at,
+            }
+            self.case_next(case, "agent", "Review tenant search requirements and follow up",
+                           self.internal_case_target())
+            stage.setdefault("cases", []).append(case)
+            ref = "case-" + str(case_id)
+        else:
+            numbers = [int(m.group(1)) for r in stage.get("registrations", [])
+                       if isinstance(r, dict)
+                       for m in [re.fullmatch(r"reg-(\d+)", str(r.get("id", "")))] if m]
+            reg_id = "reg-" + str(max(numbers, default=0) + 1)
+            record = {
+                "id": reg_id, "role": kind, "name": name, "email": email,
+                "phone": phone, "details": (area + " | " + message).strip(" |"),
+                "requirements": details, "lead_source": source,
+                "status": "pending", "prospect_stage": "lead" if kind == "landlord" else "applicant",
+                "consent": True, "contact_consent_at": at,
+                "submitted_at": at,
+            }
+            if kind == "trades":
+                record["verification_required"] = True
+                record["trades"] = [details["trade"]] if details["trade"] else []
+                record["coverage"] = area
+            else:
+                record["property_address"] = area
+            stage.setdefault("registrations", []).append(record)
+            ref = reg_id
+        self.audit(stage, {"actor": "public-site", "action": "prospect_intake",
+                           "target": ref, "note": kind + " · " + source})
+        save_stage(stage)
+        return self._json({"success": True, "reference": ref,
+                           "message": "Your enquiry is with the agency team."})
+
+    def handle_newsletter_signup(self, data):
+        """Record separately consented niche interest, PENDING confirmation.
+
+        No mailing worker or double-opt-in sender is implemented. Do not claim
+        anyone is subscribed or send campaign emails from these records.
+        """
+        if data.get("website"):
+            return self._json({"success": True, "status": "pending_confirmation"})
+        contact = self.valid_public_contact(data)
+        audience = data.get("audience")
+        if not contact or audience not in self.MARKETING_AUDIENCES:
+            return self._json({"error": "enter a name, email and newsletter category"}, 400)
+        if data.get("marketing_consent") is not True:
+            return self._json({"error": "separate newsletter consent is required"}, 400)
+        name, email = contact
+        stage = load_stage()
+        records = stage.setdefault("newsletter_subscriptions", [])
+        at = now()
+        previous = next((r for r in records
+                         if r.get("email") == email and r.get("audience") == audience), None)
+        if previous:
+            if previous.get("status") == "unsubscribed":
+                previous.update({"status": "pending_confirmation", "name": name,
+                                 "consented_at": at, "confirmed_at": None,
+                                 "unsubscribed_at": None, "consent_text_version": "newsletter-v1"})
+                self.audit(stage, {"actor": "public-site", "action": "newsletter_reoptin",
+                                   "target": previous["id"]})
+                save_stage(stage)
+            return self._json({"success": True, "status": "pending_confirmation"})
+        ref = "news-" + secrets.token_hex(10)
+        records.append({"id": ref, "name": name, "email": email,
+                        "audience": audience, "status": "pending_confirmation",
+                        "source": "public-homepage", "created_at": at,
+                        "consented_at": at, "confirmed_at": None,
+                        "consent_text_version": "newsletter-v1"})
+        self.audit(stage, {"actor": "public-site", "action": "newsletter_consent_recorded",
+                           "target": ref, "note": audience})
+        save_stage(stage)
+        return self._json({"success": True, "status": "pending_confirmation"})
+
+    def handle_newsletter_action(self, data):
+        """Agent may suppress marketing immediately; confirmation requires future proof."""
+        if data.get("action") != "unsubscribe":
+            return self._json({"error": "only unsubscribe is supported"}, 400)
+        stage = load_stage()
+        sub = next((r for r in stage.get("newsletter_subscriptions", [])
+                    if r.get("id") == data.get("id")), None)
+        if not sub:
+            return self._json({"error": "newsletter contact not found"}, 404)
+        if sub.get("status") != "unsubscribed":
+            sub["status"] = "unsubscribed"
+            sub["unsubscribed_at"] = now()
+            sub["confirmed_at"] = None
+            self.audit(stage, {"actor": (self.user or {}).get("username", "agent"),
+                               "action": "newsletter_unsubscribed", "target": sub["id"]})
+            save_stage(stage)
+        return self._json({"success": True, "status": "unsubscribed"})
 
     # ---------- enquiries (public connect form) ----------
     def handle_enquiry(self, data):
