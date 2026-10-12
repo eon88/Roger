@@ -62,6 +62,7 @@ jobs:
           sha="$(git -C application rev-parse HEAD)"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           bash -n ops/deploy-roger-mvp.sh
+          bash -n ops/rebuild-roger-rollback-image.sh
           python3 -m py_compile application/stage-clone/serve.py
           test -f application/Dockerfile
           tar -czf "$RUNNER_TEMP/roger-$sha.tar.gz" \
@@ -145,10 +146,16 @@ jobs:
           scp "${ssh_opts[@]}" "$RUNNER_TEMP/roger-$SOURCE_SHA.tar.gz" \
             "root@$ROGER_HOST:/root/roger-deploy/incoming/$archive_name"
 
-          # The reviewed deployment script is taken from default branch, NOT
-          # from the branch whose application code is being deployed.
+          # The backup recovery helper is also taken from reviewed main.
+          # It reconstructs the previous app only if Docker pruned that image.
+          recovery_name="$SOURCE_SHA-recovery.sh"
+          scp "${ssh_opts[@]}" ops/rebuild-roger-rollback-image.sh \
+            "root@$ROGER_HOST:/root/roger-deploy/incoming/$recovery_name"
+
+          # Both the deploy script and recovery helper are reviewed on main,
+          # NOT taken from the application branch being released.
           ssh "${ssh_opts[@]}" "root@$ROGER_HOST" \
-            "bash -s -- '$SOURCE_SHA' '/root/roger-deploy/incoming/$archive_name'" \
+            "bash -s -- '$SOURCE_SHA' '/root/roger-deploy/incoming/$archive_name' '/root/roger-deploy/incoming/$recovery_name'" \
             < ops/deploy-roger-mvp.sh
 
       - name: Deployment result
