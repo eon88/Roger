@@ -339,7 +339,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -363,6 +363,17 @@ class H(SimpleHTTPRequestHandler):
             else:
                 self.send_response(302)
                 self.send_header("Location", "/login")
+                self.end_headers()
+            return None
+        # A provisioned account must replace its temporary password before
+        # accessing ANY authenticated portal or business API.
+        path = self.path.split("?")[0]
+        if u.get("password_change_required") and path not in ("/change-password", "/api/change-password"):
+            if path.startswith("/api/"):
+                self._json({"error": "password change required", "password_change_required": True}, 403)
+            else:
+                self.send_response(303)
+                self.send_header("Location", "/change-password")
                 self.end_headers()
             return None
         if roles and u["role"] not in roles:
@@ -410,7 +421,8 @@ class H(SimpleHTTPRequestHandler):
             self.session_cookie_header(tok)
         )
         self.end_headers()
-        self.wfile.write(json.dumps({"ok": True, "role": u["role"]}).encode())
+        self.wfile.write(json.dumps({"ok": True, "role": u["role"],
+                                     "password_change_required": bool(u.get("password_change_required"))}).encode())
 
     # ---------- routes ----------
     def do_HEAD(self):
@@ -435,6 +447,50 @@ class H(SimpleHTTPRequestHandler):
         self.send_header("Location", "/login")
         self.end_headers()
 
+    def do_POST_change_password(self, data):
+        """Change own password after checking the current one; end all sessions."""
+        actor = self.user or self.session_user()
+        if not actor:
+            return self._json({"error": "authentication required"}, 401)
+        current = data.get("current_password")
+        replacement = data.get("new_password")
+        if not isinstance(current, str) or not isinstance(replacement, str):
+            return self._json({"error": "current and new passwords are required"}, 400)
+        if len(replacement) < 14 or len(replacement) > 128 or len(replacement.encode("utf-8")) > 512:
+            return self._json({"error": "new password must contain 14 to 128 characters"}, 400)
+        if replacement.strip() != replacement or actor["username"].casefold() in replacement.casefold():
+            return self._json({"error": "avoid surrounding spaces and your username"}, 400)
+        ip = self.client_address[0]
+        if login_throttled(ip):
+            return self._json({"error": "too many attempts — try again in 5 minutes"}, 429)
+        users = load_users()
+        person = next((x for x in users["users"] if x["username"] == actor["username"]), None)
+        if not person or person.get("disabled_at"):
+            return self._json({"error": "authentication required"}, 401)
+        current_hash = hashlib.scrypt(current.encode(), salt=bytes.fromhex(person["salt"]),
+                                      n=2**14, r=8, p=1).hex()
+        if not hmac.compare_digest(current_hash, person["hash"]):
+            login_note(ip, ok=False)
+            return self._json({"error": "current password incorrect"}, 401)
+        if hmac.compare_digest(current, replacement):
+            return self._json({"error": "choose a different password"}, 400)
+        person["salt"] = secrets.token_hex(16)
+        person["hash"] = hashlib.scrypt(replacement.encode(), salt=bytes.fromhex(person["salt"]),
+                                        n=2**14, r=8, p=1).hex()
+        person.pop("password_change_required", None)
+        users["sessions"] = {token: session for token, session in users.get("sessions", {}).items()
+                             if session.get("username") != person["username"]}
+        save_users(users)
+        login_note(ip, ok=True)
+        payload = json.dumps({"ok": True, "login_required": True}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Set-Cookie", self.session_cookie_header("", revoke=True))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_GET(self):
         try:
             return self._do_GET_with_agency_boundary()
@@ -453,6 +509,10 @@ class H(SimpleHTTPRequestHandler):
                                "saas": saas_mode, "powered_by": "Roger"})
         if path == "/login":
             return self.serve_file("login.html")
+        if path == "/change-password":
+            if not self.require():
+                return
+            return self.serve_file("change-password.html")
         if path == "/logout":
             self.send_response(405)
             self.send_header("Allow", "POST")
@@ -923,6 +983,7 @@ class H(SimpleHTTPRequestHandler):
             self.user = u
         limits = {
             "/login": 8 * 1024,
+            "/api/change-password": 8 * 1024,
             "/api/document": 8 * 1024 * 1024,
             "/api/tenant/issue": 32 * 1024 * 1024,
         }
@@ -983,6 +1044,7 @@ class H(SimpleHTTPRequestHandler):
         handlers = {
             "/login": self.do_POST_login,
             "/logout": self.do_POST_logout,
+            "/api/change-password": self.do_POST_change_password,
             "/api/public": self.handle_public_post,
             "/register/landlord": lambda d: self.handle_registration("landlord", d),
             "/register/trades": lambda d: self.handle_registration("trades", d),

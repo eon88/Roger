@@ -18,6 +18,7 @@
     <div class="actions"><button class="btn primary" id="go" onclick="login()">Sign in</button>
       <span class="who" id="err" role="alert" style="color:var(--danger)"></span></div>
     <p class="fineprint">Need access for a developer or a new landlord? Ask the agency desk — accounts are created by hand.</p>
+    <p class="fineprint" id="changed" role="status" style="color:var(--success,green)"></p>
   </main>
 </div>
 <script>
@@ -42,13 +43,14 @@ async function login(){
       body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value})});
     const j=await r.json();
     if(!r.ok){document.getElementById('err').textContent=j.error||'Login failed';return;}
-    location.href=LANDING[j.role]||'/agent';
+    location.href=j.password_change_required?'/change-password':(LANDING[j.role]||'/agent');
   }catch(e){document.getElementById('err').textContent='Could not reach the portal.';}
   finally{b.disabled=false;b.textContent='Sign in';}
 }
 document.getElementById('p').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 document.getElementById('u').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('p').focus();});
 const q=new URLSearchParams(location.search); if(q.get('u'))document.getElementById('u').value=q.get('u');
+if(q.get('changed')==='1')document.getElementById('changed').textContent='Password changed. Please sign in again.';
 </script>
 </body>
 </html>
