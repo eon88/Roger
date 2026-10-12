@@ -14,6 +14,9 @@ import stat
 
 import serve
 
+# Must be a Docker tmpfs mount. Never write recovery secrets to /data.
+RECOVERY_TMPFS_DIR = Path("/run/roger-recovery")
+
 
 def recover_admin(output, expected_agency):
     configured = os.environ.get("ROGER_AGENCY_ID")
@@ -25,6 +28,8 @@ def recover_admin(output, expected_agency):
     if not path.is_absolute() or path.exists() or path.is_symlink():
         raise ValueError("use a new, absolute credential file path")
     parent = path.parent
+    if parent != RECOVERY_TMPFS_DIR or not parent.is_mount():
+        raise ValueError("recovery credentials must be written to the dedicated ephemeral tmpfs mount")
     if (not parent.is_dir() or parent.is_symlink()
             or stat.S_IMODE(parent.stat().st_mode) & 0o077
             or parent.stat().st_uid != os.getuid()):
@@ -80,7 +85,7 @@ def main():
     parser.add_argument("--agency", required=True,
                         help="Must exactly equal this container's ROGER_AGENCY_ID")
     parser.add_argument("--output", required=True,
-                        help="New file under an operator-only (0700) directory")
+                        help="New file in the agency app's private /run/roger-recovery tmpfs directory")
     args = parser.parse_args()
     result = recover_admin(args.output, args.agency)
     print("Recovery credential file:", result["credential_file"])
