@@ -280,8 +280,15 @@
       '<article class="example-card"><div class="example-photo" aria-hidden="true"><span class="example-badge">FICTIONAL EXAMPLE</span></div>'+
       '<div class="example-body"><h3>'+esc(p.title)+'</h3><p>⌖ '+esc(p.area)+' · '+esc(p.type)+' · '+esc(p.beds)+'</p>'+
       '<strong>'+esc(p.rent)+' <small>example pcm</small></strong>'+
-      '<a class="button secondary small" href="#contact">Register similar requirements →</a></div></article>'
+      '<a class="button secondary small example-search-link" href="#contact" data-area="'+esc(p.area)+'" data-beds="'+(p.beds.match(/^\d+/)?.[0]||'')+'">Register similar requirements →</a></div></article>'
     ).join('');
+    document.getElementById('exampleCards').addEventListener('click',event=>{
+      const link=event.target.closest('.example-search-link');
+      if(!link)return;
+      selectJourney('tenant');
+      document.getElementById('prospectArea').value=link.dataset.area||'';
+      document.getElementById('prospectBeds').value=link.dataset.beds||'';
+    });
     const prospectForm=document.getElementById('prospectForm');
     const prospectKind=document.getElementById('prospectKind');
     function selectJourney(kind){
