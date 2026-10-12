@@ -5,6 +5,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
+const crypto=require('node:crypto');
 const {spawn}=require('node:child_process');
 
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'roger-public-redesign-'));
@@ -14,7 +15,13 @@ for(const key of ['properties','cases','registrations','jobs','approvals','appoi
 stage.next_case_id=900;
 function save(){fs.writeFileSync(path.join(root,'stage.json'),JSON.stringify(stage));}
 save();
-fs.writeFileSync(path.join(root,'users.json'),JSON.stringify({users:[],sessions:{}}));
+const agentSalt=crypto.randomBytes(16).toString('hex');
+const agentPassword='preview-only-agent-password';
+const users={users:[{username:'preview-agent',display_name:'Preview agent',
+  role:'agent',account_id:'preview-agent-account',salt:agentSalt,
+  hash:crypto.scryptSync(agentPassword,Buffer.from(agentSalt,'hex'),64,
+    {N:16384,r:8,p:1,maxmem:64*1024*1024}).toString('hex')}],sessions:{}};
+fs.writeFileSync(path.join(root,'users.json'),JSON.stringify(users));
 const server=spawn('python3',['stage-clone/serve.py'],{
   cwd:process.cwd(),env:{...process.env,DATA_DIR:root,BIND_HOST:'127.0.0.1',PORT:'8922',
     ROGER_STORAGE_BACKEND:'file',ROGER_ENV:'security-lab',ROGER_LAB_HTTP_COOKIES:'1',
@@ -175,6 +182,42 @@ async function run(){
     assert.equal(saved.newsletter_subscriptions[0].status,'pending_confirmation');
     assert.ok(saved.newsletter_subscriptions[0].consented_at);
     console.log('PASS niche newsletter interest, independent marketing consent and no sending claim');
+
+    // Marketing data is private: no public / non-agent access.
+    const unsignedCode=await page.evaluate(async()=>
+      (await fetch('/api/newsletter-subscriptions')).status);
+    assert.equal(unsignedCode,401);
+
+    const agentContext=await browser.newContext();
+    const agent=await agentContext.newPage();
+    const agentErrors=[];
+    agent.on('pageerror',e=>agentErrors.push(e.message));
+    try{
+      await agent.goto(base+'/login');
+      await agent.locator('#u').fill('preview-agent');
+      await agent.locator('#p').fill(agentPassword);
+      await Promise.all([agent.waitForURL(base+'/agent'),agent.locator('#go').click()]);
+      await agent.locator('#main[aria-busy="false"]').waitFor();
+      const extraMenu=agent.locator('nav details.mvp-more');
+      if(await extraMenu.count())await extraMenu.locator('summary').click();
+      await agent.locator('nav a[data-view="prospects"]').click();
+      await agent.locator('#view-prospects').waitFor({state:'visible'});
+      await agent.getByRole('heading',{name:/Newsletter interests/}).waitFor();
+      assert.match(await agent.locator('#view-prospects').innerText(),/reader@example.test/);
+      assert.match(await agent.locator('#view-prospects').innerText(),/Renter Update|Landlord Brief/);
+      assert.match(await agent.locator('#view-prospects').innerText(),/PENDING EMAIL CONFIRMATION/);
+      agent.once('dialog',dialog=>dialog.accept());
+      await agent.locator('#view-prospects button[data-id^="news-"]').click();
+      for(let i=0;i<20;i++){
+        const next=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
+        if(next.newsletter_subscriptions[0].status==='unsubscribed')break;
+        await sleep(100);
+      }
+      const final=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
+      assert.equal(final.newsletter_subscriptions[0].status,'unsubscribed');
+      assert.deepEqual(agentErrors,[]);
+      console.log('PASS private agent newsletter view and audited unsubscribe action');
+    }finally{await agentContext.close();}
 
     // Small viewport: fully navigable, without horizontal overflow or script errors.
     await page.setViewportSize({width:390,height:844});
