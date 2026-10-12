@@ -138,7 +138,7 @@
   <div class="modal" id="detailModal" aria-hidden="true">
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="dialog-grid">
-        <div class="dialog-photo"><img id="modalImage" alt="Property image" src="/sample-home.jpg" /></div>
+        <div class="dialog-photo"><img id="modalImage" alt="Property photograph" hidden /><span class="photo-empty" id="modalNoPhoto">Property photographs coming soon</span></div>
         <div class="dialog-body">
           <button class="close" id="closeButton" type="button" aria-label="Close">×</button>
           <p class="eyebrow" id="modalArea"></p>
@@ -161,7 +161,10 @@
     const cards=document.getElementById('cards');
     const empty=document.getElementById('empty');
     const count=document.getElementById('propertyCount');
-    const statHomes=document.getElementById('statHomes');
+    const searchAction=document.getElementById('searchAction');
+    const menuToggle=document.getElementById('menuToggle');
+    const siteNav=document.getElementById('siteNav');
+    document.getElementById('year').textContent=String(new Date().getFullYear());
     const detailModal=document.getElementById('detailModal');
     const closeButton=document.getElementById('closeButton');
     const modalArea=document.getElementById('modalArea');
@@ -182,7 +185,7 @@
         if(!res.ok)throw new Error('listing request failed');
         const data=await res.json();
         if(!Array.isArray(data.properties))throw new Error('invalid listing response');
-        state.properties=data.properties.map(p=>({...p,deposit:p.deposit||Math.round((p.rent||0)*1.15),photo:p.photo||'/sample-home.jpg'}));
+        state.properties=data.properties.map(p=>({...p,deposit:p.deposit||null,photo:typeof p.photo==='string'&&/^\/public-media\/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)$/.test(p.photo)?p.photo:null}));
         listingsUnavailable=false;
       }catch(e){
         state.properties=[];
@@ -191,20 +194,24 @@
       renderHomes();
     }
     function filtered(){const q=searchBox.value.toLowerCase().trim();const beds=Number(bedsFilter.value||0);const max=Number(rentFilter.value||0);return state.properties.filter(p=>(!q||[p.title,p.area,p.description].join(' ').toLowerCase().includes(q))&&(!beds||Number(p.beds)>=beds)&&(!max||Number(p.rent)<=max));}
-    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo"><img src="${esc(p.photo)}" alt="${esc(p.title)}"><span class="badge">${p.sample?'Sample':'Available'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="muted">${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span></div><p>${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View details</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.textContent=listingsUnavailable?'Listings are temporarily unavailable. Please try again later.':(state.properties.length===0?'There are no homes advertised right now. Contact the agency about future availability.':'No homes match your filters. Clear the filters or send a general enquiry.');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'property':'properties'}`;statHomes.textContent=items.length;}
+    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo">${p.photo?`<img src="${esc(p.photo)}" alt="${esc(p.title)}" loading="lazy">`:`<span class="photo-empty" role="img" aria-label="No photograph provided for ${esc(p.title)}">Property photographs coming soon</span>`}<span class="badge">${'To let'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="card-area">⌖ ${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>⌂ ${Number(p.beds)||0} bed${Number(p.beds)===1?'':'s'}</span>${p.deposit?`<span>Deposit ${money(p.deposit).replace(' pcm','')}</span>`:''}${p.availableFrom?`<span>Available ${esc(p.availableFrom)}</span>`:''}</div><p class="card-intro">${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View property →</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.textContent=listingsUnavailable?'Listings are temporarily unavailable. Please try again later.':(state.properties.length===0?'No homes advertised right now. Contact us about your search.':'No homes match your filters. Clear the filters or send a general enquiry.');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'home':'homes'} available`;}
     document.querySelectorAll('#searchBox,#bedsFilter,#rentFilter').forEach(el=>el.addEventListener('input',renderHomes));
     document.getElementById('clearFilters').addEventListener('click',()=>{searchBox.value='';bedsFilter.value='';rentFilter.value='';renderHomes();});
     cards.addEventListener('click',e=>{const id=e.target.dataset.open||e.target.dataset.quick;if(!id)return;openProperty(id,e.target.dataset.quick?'enquiry':null);});
-    function openProperty(id,form){const p=state.properties.find(x=>x.id===id);if(!p)return;state.selected=p;modalArea.textContent=p.area||'';modalTitle.textContent=p.title||'Property';modalRent.textContent=money(p.rent);modalImage.src=p.photo||'/sample-home.jpg';modalMeta.innerHTML=`<span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span>`;modalDescription.textContent=p.description||'';detailModal.classList.add('open');detailModal.setAttribute('aria-hidden','false');activateForm(form||'enquiry');}
-    function closeDetailModal(){detailModal.classList.remove('open');detailModal.setAttribute('aria-hidden','true');}
+    function openProperty(id,form){const p=state.properties.find(x=>x.id===id);if(!p)return;state.selected=p;modalArea.textContent=p.area||'';modalTitle.textContent=p.title||'Property';modalRent.textContent=money(p.rent);modalImage.hidden=!p.photo;modalImage.removeAttribute('src');if(p.photo)modalImage.src=p.photo;document.getElementById('modalNoPhoto').hidden=!!p.photo;modalMeta.innerHTML=`<span>⌂ ${Number(p.beds)||0} bed${Number(p.beds)===1?'':'s'}</span>${p.deposit?`<span>Deposit ${money(p.deposit).replace(' pcm','')}</span>`:''}${p.availableFrom?`<span>Available ${esc(p.availableFrom)}</span>`:''}`;modalDescription.textContent=p.description||'';detailModal.classList.add('open');detailModal.setAttribute('aria-hidden','false');activateForm(form||'enquiry');}
+    function closeDetailModal(){detailModal.classList.remove('open');detailModal.setAttribute('aria-hidden','true');state.selected=null;}
     closeButton.addEventListener('click',closeDetailModal);detailModal.addEventListener('click',e=>{if(e.target===detailModal)closeDetailModal();});
     document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetailModal();});
     document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>activateForm(btn.dataset.form)));
     function activateForm(name){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.form===name));document.querySelectorAll('.form-panel').forEach(f=>f.classList.toggle('active',f.dataset.action===name));}
     async function postJson(url,payload){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});let data={};try{data=await res.json();}catch(e){}if(!res.ok||data.error)throw new Error(data.error||'Request failed');return data;}
-    document.querySelectorAll('.form-panel').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const action=form.dataset.action;const p=state.selected||{};let message=data.message||'';if(action==='viewing')message=`Viewing request for ${p.title}: preferred time ${data.time}. ${message}`;if(action==='application')message=`Application started for ${p.title}. ${message}`;const result=form.querySelector('.result');result.textContent='Sending...';try{const out=await postJson('/api/enquiry',{role:'renter',property_id:p.id,name:data.name,email:data.email,phone:data.phone||'',message});result.textContent=`Sent. Case ${out.case_id} is now with the Agent Desk.`;form.reset();}catch(err){result.textContent=err.message;}}));
+    document.querySelectorAll('.form-panel').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const action=form.dataset.action;const p=state.selected||{};let message=data.message||'';if(action==='viewing')message=`Viewing request for ${p.title}: preferred time ${data.time}. ${message}`;if(action==='application')message=`Application started for ${p.title}. ${message}`;const result=form.querySelector('.result');result.textContent='Sending...';try{const out=await postJson('/api/enquiry',{role:'renter',property_id:p.id,name:data.name,email:data.email,phone:data.phone||'',message});result.textContent=`Thank you. Your enquiry has reached our team (reference ${out.case_id}).`;form.reset();}catch(err){result.textContent=err.message;}}));
     document.querySelectorAll('form[data-kind]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const result=form.querySelector('.result');result.textContent='Sending...';try{const details=[data.property,data.message].filter(Boolean).join('\n\n');const out=await postJson('/api/public',{kind:form.dataset.kind,name:data.name,email:data.email,message:details,consent:Boolean(data.consent),website:data.website||''});result.textContent=`Sent. Reference ${out.reference}.`;form.reset();}catch(err){result.textContent=err.message;}}));
     const ttTop=document.querySelector('.tt-top');addEventListener('scroll',()=>ttTop.classList.toggle('visible',window.scrollY>240),{passive:true});ttTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+    searchAction.addEventListener('click',()=>{renderHomes();document.getElementById('homes').scrollIntoView({behavior:'smooth'});});
+    searchBox.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchAction.click();}});
+    menuToggle.addEventListener('click',()=>{const open=siteNav.classList.toggle('open');menuToggle.setAttribute('aria-expanded',String(open));menuToggle.setAttribute('aria-label',open?'Close menu':'Open menu');});
+    siteNav.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{siteNav.classList.remove('open');menuToggle.setAttribute('aria-expanded','false');menuToggle.setAttribute('aria-label','Open menu');}));
     loadHomes();
   </script>
 </body>
