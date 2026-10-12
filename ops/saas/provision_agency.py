@@ -113,6 +113,10 @@ services:
       BIND_HOST: 0.0.0.0
       PORT: "8901"
     volumes: [agency_files:/data]
+    # An ephemeral RAM-backed directory for manual credential recovery.
+    # Unlike /data this is never persisted to the agency files volume.
+    tmpfs:
+      - /run/roger-recovery:mode=0700,size=1048576
     networks: [private, public]
     ports: ["127.0.0.1:{port}:8901"]
     healthcheck:
