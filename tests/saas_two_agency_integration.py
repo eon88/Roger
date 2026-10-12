@@ -55,6 +55,27 @@ def agency_client(root):
     # because only the GH runner's loopback HTTP diagnostic port is used.
     assert "Secure" in set_cookie
     cookie = set_cookie.split(";", 1)[0]
+    assert payload.get("password_change_required") is True, payload
+    # The initial one-time credential cannot access the business APIs.
+    status, blocked, _ = request(base, "/api/stage", cookie=cookie)
+    assert status == 403 and blocked.get("password_change_required") is True, (status, blocked)
+    rotated_password = "new-unique-agency-password-" + m["agency_id"]
+    status, changed, expired = request(base, "/api/change-password", {
+        "current_password": creds["PASSWORD"], "new_password": rotated_password,
+    }, cookie=cookie, hostname=m["hostname"])
+    assert status == 200 and changed.get("login_required"), (status, changed)
+    assert "Max-Age=0" in expired
+    status, rejected, _ = request(base, "/api/stage", cookie=cookie)
+    assert status == 401, (status, rejected)
+    status, rejected, _ = request(base, "/login", {
+        "username": creds["USERNAME"], "password": creds["PASSWORD"]
+    }, hostname=m["hostname"])
+    assert status == 401, (status, rejected)
+    code, payload, set_cookie = request(base, "/login", {
+        "username": creds["USERNAME"], "password": rotated_password
+    }, hostname=m["hostname"])
+    assert code == 200 and payload.get("password_change_required") is False
+    cookie = set_cookie.split(";", 1)[0]
     status, stage, _ = request(base, "/api/stage", cookie=cookie)
     assert status == 200 and stage.get("agency_id") == m["agency_id"], (status, stage)
     assert not stage["properties"] and not stage["cases"] and not stage["registrations"]
@@ -71,7 +92,7 @@ def main():
     mb, base_b, cookie_b = agency_client(B)
     assert ma["agency_id"] != mb["agency_id"]
     assert ma["port"] != mb["port"]
-    print("PASS: two agency admins can access only their own fresh stages")
+    print("PASS: two agency admins rotated temporary passwords before accessing their separate fresh stages")
 
     code, body, _ = request(base_b, "/api/stage", cookie=cookie_a)
     assert code == 401, (code, body)
