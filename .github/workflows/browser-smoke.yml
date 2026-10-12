@@ -116,7 +116,7 @@ jobs:
               const publicPage = await publicContext.newPage();
               await publicPage.goto(base + '/');
               await publicPage.waitForFunction(() =>
-                document.getElementById('propertyCount').textContent === '0 properties',
+                document.getElementById('propertyCount').textContent === '0 homes available',
                 {timeout: 12000}
               );
               assert.equal(await publicPage.locator('#cards article').count(), 0);
@@ -234,6 +234,18 @@ jobs:
           JS
       - name: Exercise full role-based repair journey with Chromium
         run: node tests/full_repair_browser.cjs
+      - name: Verify redesigned public homepage, lead forms and mobile layout
+        run: node tests/public_homepage_browser.cjs
+      - name: Upload public homepage visual previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roger-public-redesign-preview
+          path: |
+            browser-results/roger-redesigned-desktop.png
+            browser-results/roger-redesigned-mobile.png
+            browser-results/roger-redesign-error.png
+          if-no-files-found: ignore
       - name: Upload browser failure screenshots
         if: failure()
         uses: actions/upload-artifact@v4

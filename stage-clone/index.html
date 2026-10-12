@@ -3,93 +3,202 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Roger | Homes to Rent</title>
-  <meta name="description" content="Browse homes to rent, request a viewing, apply for a property, register as a landlord, or join Roger's trades network." />
+  <title>Roger Lettings | Homes to Rent & Property Management</title>
+  <meta name="description" content="Explore homes to rent with Roger Lettings. Search by area, rent and bedrooms, enquire about a property, book a viewing or ask about landlord management services." />
+  <meta name="theme-color" content="#173d37" />
   <link rel="shortcut icon" href="/favicon.svg" />
   <link rel="icon" href="/favicon.svg" />
   <style>
-    :root{color-scheme:light;--ink:#14211c;--muted:#5f6f68;--line:#d9e2de;--soft:#f3f7f5;--panel:#fff;--green:#14503a;--green-2:#1f6b4e;--amber:#f5b941;--shadow:0 14px 40px rgba(20,33,28,.10)}
-    *{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fbfdfc;color:var(--ink);line-height:1.5}a{color:inherit}.site-shell{min-height:100vh}.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px clamp(18px,4vw,44px);background:rgba(255,255,255,.94);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;font-weight:850;font-size:22px;text-decoration:none}.brand-mark{width:34px;height:34px;border-radius:10px;background:var(--green);color:#fff;display:grid;place-items:center;font-size:18px}.nav{display:flex;align-items:center;gap:18px;color:var(--muted);font-weight:700;font-size:14px}.nav a{text-decoration:none}.signin{border:1px solid var(--line);border-radius:999px;padding:9px 14px;background:#fff;color:var(--green);font-weight:800;text-decoration:none}.hero{padding:56px clamp(18px,4vw,44px) 24px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:34px;align-items:center}.hero h1{font-size:clamp(42px,7vw,78px);line-height:.95;margin:10px 0 18px;letter-spacing:0}.eyebrow{text-transform:uppercase;letter-spacing:.14em;color:var(--green);font-weight:900;font-size:12px;margin:0}.hero-copy{font-size:19px;color:var(--muted);max-width:720px}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}.button{appearance:none;border:0;border-radius:999px;padding:12px 18px;font-weight:850;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}.button.primary{background:var(--green);color:#fff}.button.secondary{background:#fff;color:var(--green);border:1px solid var(--line)}.hero-panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:22px}.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}.stat{background:var(--soft);border-radius:8px;padding:14px}.stat strong{display:block;font-size:24px}.section{padding:28px clamp(18px,4vw,44px)}.section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:16px}.section-head h2{font-size:32px;line-height:1.05;margin:0}.count-pill{background:var(--soft);color:var(--green);border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:850}.filters{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;margin-bottom:18px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:12px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.input,.select,.textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:11px 12px;font:inherit}.textarea{min-height:94px;resize:vertical}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.card{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 6px 24px rgba(20,33,28,.07)}.photo{height:190px;background:linear-gradient(135deg,#dce8e3,#f8faf8);position:relative}.photo img{width:100%;height:100%;object-fit:cover;display:block}.photo .badge{position:absolute;left:12px;top:12px;background:#fff;border-radius:999px;padding:7px 10px;font-weight:900;color:var(--green);box-shadow:0 6px 16px rgba(20,33,28,.14)}.card-body{padding:16px}.card h3{margin:0 0 5px;font-size:20px}.muted{color:var(--muted)}.price{font-size:22px;font-weight:900;margin:12px 0}.meta{display:flex;gap:8px;flex-wrap:wrap}.meta span{background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:6px 9px;font-size:13px;font-weight:800}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.funnels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.funnel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:22px;box-shadow:0 6px 24px rgba(20,33,28,.07)}.funnel h3{font-size:26px;margin:6px 0 10px}.checklist{display:grid;gap:8px;margin:16px 0;padding:0;list-style:none}.checklist li{display:flex;gap:8px;align-items:flex-start}.checklist li:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--amber);margin-top:8px;flex:0 0 auto}.mini-form{display:grid;gap:10px;margin-top:16px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.result{font-weight:800;color:var(--green);min-height:24px}.empty{border:1px dashed var(--line);border-radius:8px;background:var(--soft);padding:24px;text-align:center;color:var(--muted)}.modal{position:fixed;inset:0;background:rgba(9,18,14,.56);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}.modal.open{display:flex}.dialog{background:#fff;border-radius:8px;max-width:860px;width:min(860px,100%);max-height:92vh;overflow:auto;box-shadow:0 24px 80px rgba(0,0,0,.28)}.dialog-grid{display:grid;grid-template-columns:.9fr 1.1fr}.dialog-photo{min-height:420px;background:#e8efeb}.dialog-photo img{width:100%;height:100%;object-fit:cover}.dialog-body{padding:24px}.close{float:right;border:1px solid var(--line);background:#fff;border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:22px;line-height:1}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-weight:850;cursor:pointer}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}.form-panel{display:none}.form-panel.active{display:grid;gap:10px}.footer{padding:30px clamp(18px,4vw,44px);border-top:1px solid var(--line);display:flex;justify-content:space-between;color:var(--muted)}.tt-top{position:fixed;right:18px;bottom:18px;z-index:40;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--green);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(33,29,24,.15);opacity:0;transform:translateY(8px);transition:opacity .16s ease-out,transform .16s ease-out;pointer-events:none}.tt-top.visible{opacity:1;transform:none;pointer-events:auto}.hidden{display:none!important}@media(max-width:900px){.hero,.dialog-grid,.funnels{grid-template-columns:1fr}.cards{grid-template-columns:1fr 1fr}.filters{grid-template-columns:1fr 1fr}.hero{padding-top:34px}.dialog-photo{min-height:260px}}@media(max-width:620px){.nav{display:none}.cards,.filters,.two{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}.footer{flex-direction:column;gap:8px}.hero h1{font-size:42px}}
+    :root{color-scheme:light;--ink:#20352f;--muted:#657570;--forest:#173d37;--forest2:#255549;--cream:#f8f7f3;--linen:#eeefe8;--line:#e1e7e0;--gold:#d6b783;--white:#fff;--shadow:0 14px 42px rgba(28,54,45,.075)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:96px}body{margin:0;font-family:Inter,"Segoe UI",Arial,sans-serif;background:var(--cream);color:var(--ink);line-height:1.56}a{color:inherit}button,input,select,textarea{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #a3ae63;outline-offset:2px}.site-shell{min-height:100vh;overflow:hidden}.site-width{width:min(1190px,calc(100% - 48px));margin-inline:auto}
+    .topbar{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;box-shadow:0 2px 16px rgba(20,45,37,.035)}.topbar-inner{height:82px;display:flex;align-items:center;gap:34px}.brand{display:inline-flex;gap:10px;align-items:center;text-decoration:none;white-space:nowrap;color:var(--forest);font-weight:850;letter-spacing:-.06em;font-size:27px}.brand-mark{height:39px;width:39px;display:grid;place-items:center;color:var(--white);background:var(--forest);border-radius:11px;font-family:Georgia,serif;font-size:28px;font-weight:500;letter-spacing:0}.brand-sub{font-weight:650;color:var(--muted);font-size:10px;letter-spacing:.24em;text-transform:uppercase;display:block;margin-top:-6px}.nav{margin-left:auto;display:flex;align-items:center;gap:31px}.nav a{text-decoration:none;font-size:13px;font-weight:700;transition:color .2s}.nav a:hover{color:#4b7b62}.signin{border:1px solid #cedbd2;background:white;border-radius:8px;padding:10px 16px;text-decoration:none;color:var(--forest);font-weight:750;font-size:13px;white-space:nowrap}.signin:hover{background:#f5f9f6}.menu-toggle{display:none;border:1px solid var(--line);border-radius:9px;background:#fff;width:42px;height:42px;font-size:24px;color:var(--forest)}
+    .hero{background:var(--forest);position:relative;isolation:isolate;color:#fff;min-height:470px;display:flex;align-items:center;padding:65px 0 88px;overflow:hidden}.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(12,45,37,.96) 3%,rgba(15,51,41,.88) 47%,rgba(15,51,41,.20) 100%),url('/sample-home.jpg') center 52%/cover;z-index:-1}.hero::after{content:"";position:absolute;left:-14%;bottom:-260px;width:600px;height:410px;background:radial-gradient(ellipse,rgba(214,183,131,.16),transparent 70%);z-index:-1}.eyebrow{color:#50715d;letter-spacing:.15em;text-transform:uppercase;font-size:11px;font-weight:850;margin:0}.hero .eyebrow{color:#e1ca9f}.hero h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(48px,6.2vw,82px);line-height:1.07;letter-spacing:-.06em;font-weight:400;margin:17px 0 19px;max-width:720px}.hero h1 em{font-weight:400;font-style:italic;color:#e8d2ac}.hero-copy{font-size:17px;line-height:1.65;color:#e5ebe6;max-width:530px;margin:0}.hero-caption{font-size:11px;color:#c6d7cc;position:absolute;bottom:20px;right:max(24px,calc((100% - 1190px)/2));text-align:right}.hero-actions{margin-top:28px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}.hero-link{font-size:13px;font-weight:750;color:#fff;text-underline-offset:5px}.button{appearance:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;border:1px solid transparent;border-radius:8px;padding:12px 19px;text-decoration:none;font-size:13px;font-weight:790;transition:background .15s,transform .15s}.button:hover{transform:translateY(-1px)}.button.primary{color:#fff;background:var(--forest)}.button.primary:hover{background:var(--forest2)}.hero .button.primary{color:var(--forest);background:#f1ede0}.button.secondary{background:#fff;border-color:#dce4dc;color:var(--forest)}.button.secondary:hover{background:#f3f7f3}.button.wide{width:100%}.button.small{padding:10px 14px}
+    .search-wrap{position:relative;z-index:2;margin-top:-54px}.search-panel{background:#fff;border:1px solid var(--line);border-radius:13px;padding:22px 24px 26px;box-shadow:0 24px 60px rgba(20,45,37,.16)}.search-panel-top{display:flex;gap:14px;align-items:center;justify-content:space-between;margin-bottom:16px}.search-panel-top strong{font-family:Georgia,serif;font-size:23px;letter-spacing:-.03em;font-weight:500}.search-panel-top span{font-size:12px;color:var(--muted)}.filters{display:grid;grid-template-columns:minmax(210px,2fr) minmax(118px,1fr) minmax(145px,1fr) auto;gap:11px;align-items:end}.field{display:flex;flex-direction:column;gap:7px}.field label{font-weight:800;color:#51665c;font-size:11px;letter-spacing:.035em}.input,.select,.textarea{width:100%;background:#fff;border:1px solid #dce4dd;border-radius:7px;min-height:46px;padding:10px 13px;color:var(--ink)}.textarea{resize:vertical;min-height:100px}.field .input::placeholder{color:#89958e}.search-button{min-height:46px}.filters .button{min-height:46px}.filters-footer{margin-top:13px;display:flex;justify-content:space-between;gap:12px;align-items:center}.filters-footer small{color:var(--muted);font-size:12px}.text-button{border:0;background:transparent;color:var(--forest);font-weight:750;text-decoration:underline;text-underline-offset:3px;font-size:12px;padding:4px}
+    .section{padding:82px 0}.section-title{font-family:Georgia,serif;letter-spacing:-.045em;line-height:1.15;font-size:clamp(31px,3.3vw,47px);font-weight:400;margin:9px 0 8px}.section-description{color:var(--muted);max-width:550px;margin:0}.section-head{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:29px}.count-pill{border:1px solid #d9e4da;padding:8px 13px;border-radius:7px;font-size:12px;font-weight:750;color:var(--forest);background:#fff;white-space:nowrap}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}.card{min-width:0;background:#fff;border:1px solid #e5eae4;border-radius:10px;overflow:hidden;box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s}.card:hover{transform:translateY(-3px);box-shadow:0 20px 55px rgba(26,51,41,.12)}.photo{height:222px;position:relative;overflow:hidden;background:linear-gradient(135deg,#e7ebe5,#dbe4de);display:flex;align-items:center;justify-content:center}.photo img{width:100%;height:100%;object-fit:cover}.photo-empty{font-family:Georgia,serif;font-style:italic;font-size:17px;color:#657a70}.photo .badge{position:absolute;left:16px;top:16px;background:#fff;color:#2b5946;font-weight:850;font-size:11px;padding:7px 11px;border-radius:5px;box-shadow:0 4px 15px #1d342221}.card-body{padding:21px}.card h3{font-size:19px;line-height:1.28;letter-spacing:-.025em;margin:0 0 6px;font-weight:740}.muted{color:var(--muted)}.card-area{font-size:13px;color:var(--muted);margin:0 0 8px}.price{color:var(--forest);font-size:23px;letter-spacing:-.04em;font-weight:850;margin:12px 0}.price small{letter-spacing:0;font-size:12px;color:var(--muted);font-weight:600}.meta{display:flex;gap:13px;flex-wrap:wrap;font-size:12px;color:#5b6c61}.meta span{display:inline-flex;align-items:center;gap:5px}.card-intro{font-size:13px;color:#64736a;line-height:1.65;margin:16px 0 0;min-height:42px}.card-actions{display:flex;gap:8px;margin-top:19px}.card-actions .button{flex:1}.empty{border:1px solid #d7e1d8;background:#fff;border-radius:12px;padding:45px;text-align:center}.empty h3{font-family:Georgia,serif;font-size:25px;font-weight:400;margin:0 0 9px}.empty p{font-size:14px;color:var(--muted);margin:0 auto 16px;max-width:480px}.hidden{display:none!important}
+    .promise{background:#edf1eb;border-block:1px solid #e1e7de}.promise-inner{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;padding-block:31px}.promise-item{display:flex;gap:13px;align-items:flex-start}.promise-icon{flex-shrink:0;width:36px;height:36px;border:1px solid #bdd0c0;border-radius:10px;display:grid;place-items:center;color:var(--forest);font-size:17px}.promise-item b{display:block;font-size:13px;margin:0 0 3px}.promise-item p{font-size:12px;color:var(--muted);margin:0}
+    .services-section{padding:84px 0 90px}.service-head{margin-bottom:27px}.services-grid{display:grid;grid-template-columns:1.14fr .86fr;gap:22px}.service-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}.service-card.landlords{background:var(--forest);color:#fff;border-color:var(--forest)}.service-content{padding:36px}.service-card .eyebrow{color:#b8d4c2}.service-card h3{font-family:Georgia,serif;font-size:32px;line-height:1.18;font-weight:400;letter-spacing:-.04em;margin:15px 0}.service-card p{font-size:14px;line-height:1.7;color:#d3e1d7}.service-card:not(.landlords) p{color:var(--muted)}.service-list{display:grid;gap:9px;margin:20px 0 23px;padding:0;list-style:none}.service-list li{font-size:13px}.service-list li:before{content:"✓";margin-right:11px;color:#e8d3a6}.service-card:not(.landlords) .service-list li:before{color:var(--forest)}.service-card .button{background:#f4efe2;color:var(--forest)}.service-card:not(.landlords) .button{background:var(--forest);color:#fff}
+    .enquiries{padding:0 0 84px}.enquiry-panels{display:grid;grid-template-columns:1fr 1fr;gap:22px}.enquiry-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:30px}.enquiry-panel h3{font-family:Georgia,serif;font-size:27px;font-weight:400;margin:4px 0 5px}.enquiry-panel p{font-size:13px;color:var(--muted);margin:0 0 18px}.mini-form{display:grid;gap:13px}.mini-form label{font-size:12px;font-weight:750;color:#59685e}.mini-form .button{width:100%}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.result{color:#236246;font-size:12px;font-weight:750;min-height:19px}.consent{display:flex;align-items:flex-start;gap:9px;font-size:12px!important;line-height:1.5}.consent input{margin-top:3px}.more-link{display:inline-block;font-size:12px;font-weight:750;margin-top:15px;text-underline-offset:4px}.footer{color:#b9cec0;background:#152f2a;padding:40px 0}.footer-inner{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:22px}.footer .brand{color:#fff}.footer .brand-mark{background:#fff;color:var(--forest)}.footer p{font-size:12px;max-width:290px;margin:11px 0 0}.footer-links{display:flex;gap:27px;flex-wrap:wrap}.footer-links a{font-size:12px;text-decoration:none}.footer-links a:hover{text-decoration:underline}.footer-legal{border-top:1px solid #3b5149;margin-top:30px;padding-top:15px;color:#9cb8a5;font-size:11px}
+    .modal{position:fixed;inset:0;background:rgba(15,32,28,.72);display:none;align-items:center;justify-content:center;padding:16px;z-index:60}.modal.open{display:flex}.dialog{background:#fff;width:min(850px,100%);max-height:92vh;overflow-y:auto;border-radius:12px;box-shadow:0 35px 100px rgba(0,0,0,.25)}.dialog-grid{display:grid;grid-template-columns:.83fr 1.17fr}.dialog-photo{background:#e7ece5;min-height:450px;display:flex;align-items:center;justify-content:center}.dialog-photo img{width:100%;height:100%;object-fit:cover}.dialog-body{padding:28px}.close{float:right;width:36px;height:36px;background:#fff;border:1px solid var(--line);border-radius:50%;font-size:24px;line-height:1}.dialog-body h2{font-family:Georgia,serif;font-size:31px;font-weight:400;margin:7px 0}.dialog-body .price{margin:14px 0}.tabs{display:flex;gap:6px;margin:18px 0}.tab{border:1px solid var(--line);background:white;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:750}.tab.active{background:var(--forest);color:white}.form-panel{display:none}.form-panel.active{display:grid;gap:12px}.form-panel .button{justify-self:start}.tt-top{position:fixed;bottom:20px;right:20px;border:1px solid var(--line);border-radius:50%;width:42px;height:42px;opacity:0;pointer-events:none;transform:translateY(8px);transition:.2s;background:#fff;color:var(--forest);box-shadow:var(--shadow)}.tt-top.visible{opacity:1;pointer-events:auto;transform:none}
+    @media(max-width:980px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.services-grid{grid-template-columns:1fr 1fr}.hero::before{background:linear-gradient(90deg,rgba(12,45,37,.98) 0%,rgba(15,51,41,.74) 65%,rgba(15,51,41,.34)),url('/sample-home.jpg') center/cover}}
+    @media(max-width:740px){.site-width{width:min(100% - 32px,1190px)}.topbar-inner{height:70px;gap:12px}.nav{display:none;position:absolute;top:70px;left:0;right:0;background:#fff;border-bottom:1px solid var(--line);padding:14px 20px 20px;flex-direction:column;align-items:stretch;gap:0;box-shadow:var(--shadow)}.nav.open{display:flex}.nav a{padding:11px 8px}.menu-toggle{display:grid;place-items:center;margin-left:auto}.signin{padding:9px 12px}.hero{padding:50px 0 86px;min-height:420px}.hero::before{background:linear-gradient(90deg,rgba(12,45,37,.96),rgba(15,51,41,.7)),url('/sample-home.jpg') center/cover}.hero h1{font-size:clamp(44px,9vw,62px)}.hero-caption{font-size:10px;bottom:15px;right:16px}.search-wrap{margin-top:-43px}.search-panel{padding:20px}.search-panel-top{display:block}.search-panel-top span{display:block;margin-top:3px}.filters{grid-template-columns:1fr 1fr}.filters .field:first-child{grid-column:1/-1}.filters .search-button{grid-column:1/-1}.promise-inner{grid-template-columns:1fr;gap:17px;padding-block:25px}.section{padding:62px 0}.services-grid,.enquiry-panels{grid-template-columns:1fr}.dialog-grid{grid-template-columns:1fr}.dialog-photo{min-height:185px;max-height:230px}.dialog-body{padding:22px}.enquiries{padding-bottom:60px}}
+    @media(max-width:490px){.cards,.two{grid-template-columns:1fr}.section-head{display:block}.count-pill{display:inline-block;margin-top:15px}.hero h1{font-size:43px}.hero-copy{font-size:15px}.search-panel-top strong{font-size:21px}.filters{grid-template-columns:1fr}.filters .field:first-child,.filters .search-button{grid-column:auto}.filters-footer{align-items:start;flex-direction:column}.service-content{padding:26px}.enquiry-panel{padding:22px}.footer-inner{display:block}.footer-links{margin-top:24px}.hero-caption{max-width:185px}.card-actions{flex-wrap:wrap}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+
+    /* Content-led acquisition: examples never appear in /api/public listings. */
+    .examples-section{padding:0 0 70px}.examples-panel{background:#f0f2ec;border:1px solid #e2e8df;border-radius:14px;padding:28px}.examples-head{display:flex;gap:22px;justify-content:space-between;align-items:end;margin-bottom:22px}.examples-head .section-title{font-size:32px}.example-note{font-size:12px;color:#4e665c;max-width:280px;line-height:1.6}.examples-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.example-card{border:1px solid #dbe2d8;background:#fff;border-radius:10px;overflow:hidden}.example-photo{height:140px;background:linear-gradient(125deg,#bdcbbd,#e8dccb);display:grid;place-items:center;position:relative;isolation:isolate}.example-photo::before{content:"";position:absolute;width:118px;height:73px;bottom:20px;background:#faf7ed;box-shadow:0 -36px 0 -20px #668574,45px 0 0 -12px #d6ad86;border:7px solid #688577;border-bottom:12px solid #627c6c;z-index:-1}.example-photo::after{content:"";position:absolute;bottom:26px;width:33px;height:44px;background:linear-gradient(90deg,#8aa6a0 50%,#4c756c 50%);box-shadow:44px 2px 0 -5px #8aa6a0,-44px 2px 0 -5px #8aa6a0;z-index:-1}.example-card:nth-child(2n) .example-photo{background:linear-gradient(145deg,#b5c6d3,#e9dec8)}.example-card:nth-child(3n) .example-photo{background:linear-gradient(145deg,#c2c0ad,#e7d2c0)}.example-badge{position:absolute;top:11px;left:11px;background:#fff;padding:4px 8px;border-radius:4px;color:#385648;font-size:10px;font-weight:850}.example-body{padding:17px}.example-body h3{font-size:16px;margin:0 0 5px}.example-body p{font-size:12px;color:var(--muted);margin:0 0 10px}.example-body strong{color:var(--forest);font-size:16px}.example-body small{font-size:11px;font-weight:500}.example-body .button{display:block;margin-top:13px;text-align:center}.example-disclaimer{font-size:12px;color:#496354;margin:20px 0 0}
+    .funnel-panel{padding:34px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:var(--shadow);max-width:850px}.funnel-heading{margin:0 0 21px;color:var(--muted);font-size:13px}.prospect-form{display:grid;gap:16px}.prospect-form .field label{font-size:12px}.prospect-detail{border-top:1px solid var(--line);padding-top:17px;display:grid;gap:13px}.form-note{font-size:12px;color:var(--muted)}.newsletter-section{background:var(--forest);color:#fff;padding:65px 0}.newsletter-grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:45px;align-items:center}.newsletter-section .eyebrow{color:#e1c899}.newsletter-section .section-title{max-width:490px}.newsletter-section p{color:#d7e3da;font-size:14px}.newsletter-niches{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:20px}.newsletter-niches span{border:1px solid #496c5e;border-radius:7px;padding:10px;font-size:12px}.newsletter-form{background:#fff;color:var(--ink);border-radius:12px;padding:29px;display:grid;gap:13px}.newsletter-form h3{margin:0;font-family:Georgia,serif;font-size:25px;font-weight:400}.newsletter-form p{font-size:12px;color:var(--muted);margin:0}.newsletter-form .consent{font-weight:500;color:var(--muted)}.newsletter-form .result{font-size:12px}
+    @media(max-width:800px){.examples-grid{grid-template-columns:repeat(2,1fr)}.newsletter-grid{grid-template-columns:1fr;gap:25px}.examples-head{display:block}}
+    @media(max-width:520px){.examples-panel{padding:17px}.examples-grid{grid-template-columns:1fr}.funnel-panel{padding:21px}.newsletter-form{padding:20px}.newsletter-niches{grid-template-columns:1fr 1fr}.newsletter-section{padding:48px 0}}
   </style>
 </head>
 <body>
   <div class="site-shell">
     <header class="topbar">
-      <a class="brand" href="/"><span class="brand-mark">R</span>Roger</a>
-      <nav class="nav" aria-label="Public navigation"><a href="#homes">Homes</a><a href="#landlords">Landlords</a><a href="#trades">Trades</a></nav>
-      <a class="signin" href="/signin">Sign in</a>
+      <div class="site-width topbar-inner">
+        <a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a>
+        <nav class="nav" id="siteNav" aria-label="Main navigation">
+          <a href="#homes">Properties to rent</a><a href="#services">For landlords</a><a href="#work-with-us">Work with us</a><a href="#newsletter">Newsletter</a><a href="#contact">Start here</a>
+        </nav>
+        <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">☰</button>
+        <a class="signin" href="/signin">Portal sign in <span aria-hidden="true">↗</span></a>
+      </div>
     </header>
 
-    <main>
-      <section class="hero">
-        <div>
-          <p class="eyebrow">Lettings and property management</p>
-          <h1>One agent. One operating desk.</h1>
-          <p class="hero-copy">Find homes to rent, request viewings, apply for a property, register a landlord instruction, or join the contractor network from one public front end.</p>
-          <div class="hero-actions"><a class="button primary" href="#homes">Browse homes</a><a class="button secondary" href="#landlords">Register a property</a><a class="button secondary" href="#trades">Join as trades</a></div>
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="site-width">
+          <p class="eyebrow">Roger · Lettings &amp; property management</p>
+          <h1 id="hero-title">A place to <em>call home.</em></h1>
+          <p class="hero-copy">Explore homes to rent and book your next viewing. Straightforward lettings, helpful communication, and a simpler way to find your next place.</p>
+          <div class="hero-actions"><a class="button primary" href="#homes">Explore available homes <span aria-hidden="true">→</span></a><a class="hero-link" href="#services">Own a rental property? Explore our services ↗</a></div>
         </div>
-        <aside class="hero-panel" aria-label="How Roger works">
-          <p class="eyebrow">Acquisition funnels</p>
-          <h2>Every public request becomes work for the Agent Desk.</h2>
-          <p class="muted">Tenant enquiries become cases. Viewing and application requests keep the property context. Landlord and contractor registrations feed their approval pipelines.</p>
-          <div class="stat-grid"><div class="stat"><strong id="statHomes">0</strong><span>available homes</span></div><div class="stat"><strong>3</strong><span>public funnels</span></div><div class="stat"><strong>1</strong><span>agent desk</span></div></div>
-        </aside>
+        <span class="hero-caption">Illustrative photography · not an advertised property</span>
       </section>
 
-      <section id="homes" class="section">
-        <div class="section-head"><div><p class="eyebrow">Tenant acquisition</p><h2>Properties to rent</h2></div><span class="count-pill" id="propertyCount">Loading homes</span></div>
-        <div class="filters" role="search">
-          <div class="field"><label for="searchBox">Search</label><input id="searchBox" class="input" type="search" placeholder="Area, property name, description" /></div>
-          <div class="field"><label for="bedsFilter">Bedrooms</label><select id="bedsFilter" class="select"><option value="">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></div>
-          <div class="field"><label for="rentFilter">Max rent</label><select id="rentFilter" class="select"><option value="">Any</option><option value="150000">Up to £1,500</option><option value="200000">Up to £2,000</option><option value="250000">Up to £2,500</option><option value="300000">Up to £3,000</option></select></div>
-          <button class="button secondary" id="clearFilters" type="button">Clear</button>
-        </div>
-        <div id="cards" class="cards"></div>
-        <div id="empty" class="empty hidden">No matching homes right now. Clear the filters or send a general enquiry.</div>
+      <div class="site-width search-wrap">
+        <section class="search-panel" aria-label="Search rental properties">
+          <div class="search-panel-top"><strong>Find your next home</strong><span>Search homes currently advertised through Roger</span></div>
+          <div class="filters" role="search">
+            <div class="field"><label for="searchBox">Where would you like to live?</label><input id="searchBox" class="input" type="search" placeholder="Town, area or property keyword" autocomplete="off" /></div>
+            <div class="field"><label for="bedsFilter">Bedrooms</label><select id="bedsFilter" class="select"><option value="">Any bedrooms</option><option value="1">1+ beds</option><option value="2">2+ beds</option><option value="3">3+ beds</option><option value="4">4+ beds</option></select></div>
+            <div class="field"><label for="rentFilter">Maximum monthly rent</label><select id="rentFilter" class="select"><option value="">Any price</option><option value="100000">£1,000 pcm</option><option value="150000">£1,500 pcm</option><option value="200000">£2,000 pcm</option><option value="250000">£2,500 pcm</option><option value="300000">£3,000 pcm</option><option value="400000">£4,000 pcm</option></select></div>
+            <button class="button primary search-button" id="searchAction" type="button">Search homes <span aria-hidden="true">→</span></button>
+          </div>
+          <div class="filters-footer"><small>Only approved, available listings appear here.</small><button class="text-button" id="clearFilters" type="button">Clear search and filters</button></div>
+        </section>
+      </div>
+
+      <section id="homes" class="section site-width" aria-labelledby="homes-title">
+        <div class="section-head"><div><p class="eyebrow">Homes to rent</p><h2 class="section-title" id="homes-title">Discover available properties</h2><p class="section-description">Browse rental homes and speak to the team about viewings, availability and applications.</p></div><span class="count-pill" id="propertyCount" aria-live="polite">Checking available homes…</span></div>
+        <div class="cards" id="cards" aria-live="polite"></div>
+        <div id="empty" class="empty hidden" role="status"><h3>No properties advertised right now</h3><p>New homes will appear here when they become available. You can still get in touch about your search.</p><a href="#contact" class="button secondary">Contact the lettings team</a></div>
       </section>
 
-      <section class="section funnels" aria-label="Landlord and trades acquisition">
-        <article id="landlords" class="funnel">
-          <p class="eyebrow">Landlord acquisition</p>
-          <h3>Let or manage your property with Roger.</h3>
-          <p class="muted">Use this to request a valuation, ask about let-only or full management, or start the registration process.</p>
-          <ul class="checklist"><li>Valuation and appraisal request</li><li>Let-only and full management terms</li><li>Progresses into the landlord CRM pipeline</li></ul>
-          <form class="mini-form" data-kind="Landlord enquiry">
-            <input class="hidden" name="website" autocomplete="off" tabindex="-1" />
-            <div class="two"><div class="field"><label>Name</label><input class="input" name="name" required /></div><div class="field"><label>Email</label><input class="input" name="email" type="email" required /></div></div>
-            <div class="field"><label>Property address or area</label><input class="input" name="property" placeholder="Example: Kingston, two-bed flat" /></div>
-            <div class="field"><label>What do you need?</label><textarea class="textarea" name="message" required placeholder="Valuation, full management, let-only, portfolio question..."></textarea></div>
-            <label><input type="checkbox" name="consent" required /> I agree Roger can contact me about this enquiry.</label>
-            <button class="button primary" type="submit">Send landlord enquiry</button><div class="result" aria-live="polite"></div>
-          </form>
-          <p><a href="/register/landlord">Open the full landlord registration form</a></p>
-        </article>
 
-        <article id="trades" class="funnel">
-          <p class="eyebrow">Trades acquisition</p>
-          <h3>Join the contractor network.</h3>
-          <p class="muted">Tell the agency what work you cover, where you work, and what credentials need checking.</p>
-          <ul class="checklist"><li>Trade categories and coverage area</li><li>Gas Safe, licence and insurance details</li><li>Progresses into the contractor approval pipeline</li></ul>
-          <form class="mini-form" data-kind="Trade application">
-            <input class="hidden" name="website" autocomplete="off" tabindex="-1" />
-            <div class="two"><div class="field"><label>Company or name</label><input class="input" name="name" required /></div><div class="field"><label>Email</label><input class="input" name="email" type="email" required /></div></div>
-            <div class="field"><label>Trade and coverage</label><input class="input" name="property" placeholder="Example: plumbing, heating, Richmond and Kingston" /></div>
-            <div class="field"><label>Credentials</label><textarea class="textarea" name="message" required placeholder="Insurance expiry, Gas Safe number, categories, availability..."></textarea></div>
-            <label><input type="checkbox" name="consent" required /> I agree Roger can contact me about this application.</label>
-            <button class="button primary" type="submit">Send trades application</button><div class="result" aria-live="polite"></div>
+      <section class="examples-section site-width" aria-labelledby="example-title">
+        <div class="examples-panel">
+          <div class="examples-head">
+            <div><p class="eyebrow">Explore the possibilities</p><h2 class="section-title" id="example-title">Find the kind of home you love</h2></div>
+            <p class="example-note">These are fictional examples, not properties available to rent. They show the kinds of rental searches we can help you plan.</p>
+          </div>
+          <div class="examples-grid" id="exampleCards"></div>
+          <p class="example-disclaimer"><b>Illustrative properties only.</b> Locations, prices and illustrations are fictional examples. They cannot be booked or applied for. Real available homes appear in the section above.</p>
+        </div>
+      </section>
+
+      <div class="promise" aria-label="How Roger can help">
+        <div class="site-width promise-inner">
+          <div class="promise-item"><span class="promise-icon" aria-hidden="true">⌕</span><div><b>Find a home that fits</b><p>Search by location, bedrooms and monthly rent.</p></div></div>
+          <div class="promise-item"><span class="promise-icon" aria-hidden="true">⌂</span><div><b>Enquire with ease</b><p>Ask about a property or request a viewing directly.</p></div></div>
+          <div class="promise-item"><span class="promise-icon" aria-hidden="true">✓</span><div><b>Clear next steps</b><p>Your enquiry goes to the agency team for review.</p></div></div>
+        </div>
+      </div>
+
+      <section id="services" class="services-section site-width" aria-labelledby="services-title">
+        <div class="service-head"><p class="eyebrow">More than finding a home</p><h2 class="section-title" id="services-title">Property services, handled thoughtfully.</h2><p class="section-description">A simple place for landlords, tenants and the people who look after properties.</p></div>
+        <div class="services-grid">
+          <article class="service-card landlords"><div class="service-content">
+            <p class="eyebrow">For landlords</p><h3>Let your property.<br />Without the guesswork.</h3>
+            <p>Whether you're looking to find a tenant or discuss ongoing management, tell us about your property and we'll take it from there.</p>
+            <ul class="service-list"><li>Tenant finding and viewings</li><li>Let-only and managed property enquiries</li><li>Repairs, communication and oversight</li></ul>
+            <a class="button" href="#contact">Talk to us about your property <span aria-hidden="true">→</span></a>
+          </div></article>
+          <article class="service-card" id="work-with-us"><div class="service-content">
+            <p class="eyebrow">For trusted contractors</p><h3>Good properties need<br />good people.</h3>
+            <p>We welcome enquiries from professional tradespeople interested in supporting managed rental homes.</p>
+            <ul class="service-list"><li>Tell us your specialities and coverage</li><li>Provide details for credential review</li><li>Hear from the agency when opportunities arise</li></ul>
+            <a class="button" href="#contact">Apply to work with Roger <span aria-hidden="true">→</span></a>
+          </div></article>
+        </div>
+      </section>
+
+      <section id="contact" class="enquiries site-width" aria-labelledby="contact-title">
+        <p class="eyebrow">Get started with Roger</p>
+        <h2 class="section-title" id="contact-title">Tell us how we can help</h2>
+        <p class="section-description" style="margin-bottom:26px">One simple starting point. We'll route your request to the right team and record the next step.</p>
+        <div class="funnel-panel">
+          <p class="funnel-heading">Choose your journey. This is an enquiry, not a tenancy application, property instruction or contractor approval.</p>
+          <form id="prospectForm" class="prospect-form">
+            <input name="website" class="hidden" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
+            <div class="field"><label for="prospectKind">I'm here because…</label><select id="prospectKind" name="kind" class="select" required>
+              <option value="tenant">I'm looking for a home</option>
+              <option value="landlord">I own a property</option>
+              <option value="trades">I'm a tradesperson</option>
+            </select></div>
+            <div class="two">
+              <div class="field"><label for="prospectName">Your name</label><input id="prospectName" class="input" name="name" autocomplete="name" required minlength="2" maxlength="100" /></div>
+              <div class="field"><label for="prospectEmail">Email address</label><input id="prospectEmail" class="input" type="email" name="email" autocomplete="email" required maxlength="254" /></div>
+            </div>
+            <div class="field"><label for="prospectPhone">Phone number (optional)</label><input id="prospectPhone" class="input" type="tel" name="phone" autocomplete="tel" maxlength="40" /></div>
+            <div class="field"><label for="prospectArea" id="prospectAreaLabel">Where would you like to live?</label><input id="prospectArea" class="input" name="area" maxlength="160" placeholder="Town or preferred area" /></div>
+            <div id="tenantFields" class="prospect-detail">
+              <p class="form-note">Tell us what you're looking for so we can follow up with relevant options.</p>
+              <div class="two">
+                <div class="field"><label for="prospectBeds">Bedrooms</label><select id="prospectBeds" name="bedrooms" class="select"><option value="">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></div>
+                <div class="field"><label for="prospectMaxRent">Maximum monthly rent (£)</label><input id="prospectMaxRent" class="input" type="number" min="100" max="20000" name="max_rent" placeholder="e.g. 1200" /></div>
+              </div>
+            </div>
+            <div id="landlordFields" class="prospect-detail hidden">
+              <p class="form-note">No obligation — tell us which service you'd like to discuss.</p>
+              <div class="field"><label for="prospectService">Landlord service</label><select id="prospectService" name="service" class="select" disabled>
+                <option value="valuation">Rental valuation</option><option value="let-only">Tenant-find / let-only</option><option value="management">Full property management</option><option value="unsure">I'm not sure yet</option>
+              </select></div>
+            </div>
+            <div id="tradesFields" class="prospect-detail hidden">
+              <p class="form-note">Working with Roger requires later evidence and independent checks. This form does not approve you for work.</p>
+              <div class="field"><label for="prospectTrade">Your main trade</label><select id="prospectTrade" name="trade" class="select" disabled>
+                <option value="plumbing">Plumbing</option><option value="electrical">Electrical</option><option value="heating">Heating</option><option value="gas">Gas (separate Gas Safe verification required)</option><option value="general">General maintenance</option><option value="other">Other</option>
+              </select></div>
+            </div>
+            <div class="field"><label for="prospectMessage">Anything else you'd like us to know?</label><textarea id="prospectMessage" name="message" class="textarea" maxlength="1200" placeholder="Your timescale, goals or questions…"></textarea></div>
+            <label class="consent"><input name="consent" type="checkbox" required /> I agree that Roger can contact me to respond to this enquiry. This does not sign me up for marketing emails.</label>
+            <button class="button primary" type="submit" id="prospectSubmit">Send my enquiry →</button>
+            <div id="prospectResult" role="status" aria-live="polite" class="result"></div>
           </form>
-          <p><a href="/register/trades">Open the full trades registration form</a></p>
-        </article>
+          <p class="form-note" style="margin:14px 0 0">Already have an account? <a href="/signin">Sign in to your portal</a>.</p>
+        </div>
+      </section>
+
+      <section id="newsletter" class="newsletter-section" aria-labelledby="newsletter-title">
+        <div class="site-width newsletter-grid">
+          <div><p class="eyebrow">Roger's newsletters</p><h2 class="section-title" id="newsletter-title">The right updates, for your corner of property.</h2>
+            <p>We're preparing practical updates tailored to what matters to you. Join the interest list for new rental homes, tenancy guidance, landlord insights or contractor news.</p>
+            <div class="newsletter-niches"><span>⌂ Home hunters</span><span>☀ Current tenants</span><span>▦ Landlords</span><span>⚒ Tradespeople</span></div>
+            <p class="form-note">Emails are not being sent yet. Your request stays pending until a proper confirmation service is available.</p>
+          </div>
+          <form class="newsletter-form" id="newsletterForm">
+            <h3>Register your interest</h3>
+            <p>Pick your newsletter. Marketing consent is separate from general enquiries.</p>
+            <input name="website" class="hidden" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
+            <div class="field"><label for="newsletterName">Name</label><input id="newsletterName" class="input" name="name" required minlength="2" maxlength="100" /></div>
+            <div class="field"><label for="newsletterEmail">Email address</label><input id="newsletterEmail" class="input" name="email" type="email" required maxlength="254" /></div>
+            <div class="field"><label for="newsletterAudience">Which updates interest you?</label><select id="newsletterAudience" class="select" name="audience" required>
+              <option value="prospective_tenant">Renter Update — new homes and rental tips</option>
+              <option value="tenant">Tenant Update — home care and services</option>
+              <option value="landlord">Landlord Brief — letting and management</option>
+              <option value="trades">Contractor Bulletin — standards and opportunities</option>
+            </select></div>
+            <label class="consent"><input type="checkbox" name="marketing_consent" required /> I would like to receive marketing newsletters for my chosen category. I understand confirmation and an unsubscribe option will be provided before emails are sent.</label>
+            <button class="button primary" type="submit" id="newsletterSubmit">Join the interest list →</button>
+            <div class="result" id="newsletterResult" role="status" aria-live="polite"></div>
+          </form>
+        </div>
       </section>
     </main>
 
-    <footer class="footer"><strong>Roger</strong><span>Lettings, connected.</span></footer>
+    <footer class="footer">
+      <div class="site-width">
+        <div class="footer-inner"><div><a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a><p>Homes to rent and rental property services, brought together in one place.</p></div>
+        <nav class="footer-links" aria-label="Footer navigation"><a href="#homes">Properties</a><a href="#services">Landlords</a><a href="#newsletter">Newsletter</a><a href="#contact">Start here</a><a href="/signin">Portal sign in</a></nav></div>
+        <div class="footer-legal">© <span id="year"></span> Roger Lettings. Agency contact and regulatory details will be published only when verified.</div>
+      </div>
+    </footer>
   </div>
 
   <div class="modal" id="detailModal" aria-hidden="true">
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="dialog-grid">
-        <div class="dialog-photo"><img id="modalImage" alt="Property image" src="/sample-home.jpg" /></div>
+        <div class="dialog-photo"><img id="modalImage" alt="Property photograph" hidden /><span class="photo-empty" id="modalNoPhoto">Property photographs coming soon</span></div>
         <div class="dialog-body">
           <button class="close" id="closeButton" type="button" aria-label="Close">×</button>
           <p class="eyebrow" id="modalArea"></p>
@@ -112,7 +221,10 @@
     const cards=document.getElementById('cards');
     const empty=document.getElementById('empty');
     const count=document.getElementById('propertyCount');
-    const statHomes=document.getElementById('statHomes');
+    const searchAction=document.getElementById('searchAction');
+    const menuToggle=document.getElementById('menuToggle');
+    const siteNav=document.getElementById('siteNav');
+    document.getElementById('year').textContent=String(new Date().getFullYear());
     const detailModal=document.getElementById('detailModal');
     const closeButton=document.getElementById('closeButton');
     const modalArea=document.getElementById('modalArea');
@@ -133,7 +245,7 @@
         if(!res.ok)throw new Error('listing request failed');
         const data=await res.json();
         if(!Array.isArray(data.properties))throw new Error('invalid listing response');
-        state.properties=data.properties.map(p=>({...p,deposit:p.deposit||Math.round((p.rent||0)*1.15),photo:p.photo||'/sample-home.jpg'}));
+        state.properties=data.properties.map(p=>({...p,deposit:p.deposit||null,photo:typeof p.photo==='string'&&/^\/public-media\/[a-zA-Z0-9/_-]+\.(?:jpg|jpeg|png|webp)$/.test(p.photo)?p.photo:null}));
         listingsUnavailable=false;
       }catch(e){
         state.properties=[];
@@ -142,20 +254,108 @@
       renderHomes();
     }
     function filtered(){const q=searchBox.value.toLowerCase().trim();const beds=Number(bedsFilter.value||0);const max=Number(rentFilter.value||0);return state.properties.filter(p=>(!q||[p.title,p.area,p.description].join(' ').toLowerCase().includes(q))&&(!beds||Number(p.beds)>=beds)&&(!max||Number(p.rent)<=max));}
-    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo"><img src="${esc(p.photo)}" alt="${esc(p.title)}"><span class="badge">${p.sample?'Sample':'Available'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="muted">${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span></div><p>${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View details</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.textContent=listingsUnavailable?'Listings are temporarily unavailable. Please try again later.':(state.properties.length===0?'There are no homes advertised right now. Contact the agency about future availability.':'No homes match your filters. Clear the filters or send a general enquiry.');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'property':'properties'}`;statHomes.textContent=items.length;}
+    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo">${p.photo?`<img src="${esc(p.photo)}" alt="${esc(p.title)}" loading="lazy">`:`<span class="photo-empty" role="img" aria-label="No photograph provided for ${esc(p.title)}">Property photographs coming soon</span>`}<span class="badge">${'To let'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="card-area">⌖ ${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>⌂ ${Number(p.beds)||0} bed${Number(p.beds)===1?'':'s'}</span>${p.deposit?`<span>Deposit ${money(p.deposit).replace(' pcm','')}</span>`:''}${p.availableFrom?`<span>Available ${esc(p.availableFrom)}</span>`:''}</div><p class="card-intro">${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View property →</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.textContent=listingsUnavailable?'Listings are temporarily unavailable. Please try again later.':(state.properties.length===0?'No homes advertised right now. Contact us about your search.':'No homes match your filters. Clear the filters or send a general enquiry.');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'home':'homes'} available`;}
     document.querySelectorAll('#searchBox,#bedsFilter,#rentFilter').forEach(el=>el.addEventListener('input',renderHomes));
     document.getElementById('clearFilters').addEventListener('click',()=>{searchBox.value='';bedsFilter.value='';rentFilter.value='';renderHomes();});
     cards.addEventListener('click',e=>{const id=e.target.dataset.open||e.target.dataset.quick;if(!id)return;openProperty(id,e.target.dataset.quick?'enquiry':null);});
-    function openProperty(id,form){const p=state.properties.find(x=>x.id===id);if(!p)return;state.selected=p;modalArea.textContent=p.area||'';modalTitle.textContent=p.title||'Property';modalRent.textContent=money(p.rent);modalImage.src=p.photo||'/sample-home.jpg';modalMeta.innerHTML=`<span>${Number(p.beds)||0} bed</span><span>Deposit ${money(p.deposit).replace(' pcm','')}</span><span>${esc(p.availableFrom||'Ask agent')}</span>`;modalDescription.textContent=p.description||'';detailModal.classList.add('open');detailModal.setAttribute('aria-hidden','false');activateForm(form||'enquiry');}
-    function closeDetailModal(){detailModal.classList.remove('open');detailModal.setAttribute('aria-hidden','true');}
+    function openProperty(id,form){const p=state.properties.find(x=>x.id===id);if(!p)return;state.selected=p;modalArea.textContent=p.area||'';modalTitle.textContent=p.title||'Property';modalRent.textContent=money(p.rent);modalImage.hidden=!p.photo;modalImage.removeAttribute('src');if(p.photo)modalImage.src=p.photo;document.getElementById('modalNoPhoto').hidden=!!p.photo;modalMeta.innerHTML=`<span>⌂ ${Number(p.beds)||0} bed${Number(p.beds)===1?'':'s'}</span>${p.deposit?`<span>Deposit ${money(p.deposit).replace(' pcm','')}</span>`:''}${p.availableFrom?`<span>Available ${esc(p.availableFrom)}</span>`:''}`;modalDescription.textContent=p.description||'';detailModal.classList.add('open');detailModal.setAttribute('aria-hidden','false');activateForm(form||'enquiry');}
+    function closeDetailModal(){detailModal.classList.remove('open');detailModal.setAttribute('aria-hidden','true');state.selected=null;}
     closeButton.addEventListener('click',closeDetailModal);detailModal.addEventListener('click',e=>{if(e.target===detailModal)closeDetailModal();});
     document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetailModal();});
     document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>activateForm(btn.dataset.form)));
     function activateForm(name){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.form===name));document.querySelectorAll('.form-panel').forEach(f=>f.classList.toggle('active',f.dataset.action===name));}
     async function postJson(url,payload){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});let data={};try{data=await res.json();}catch(e){}if(!res.ok||data.error)throw new Error(data.error||'Request failed');return data;}
-    document.querySelectorAll('.form-panel').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const action=form.dataset.action;const p=state.selected||{};let message=data.message||'';if(action==='viewing')message=`Viewing request for ${p.title}: preferred time ${data.time}. ${message}`;if(action==='application')message=`Application started for ${p.title}. ${message}`;const result=form.querySelector('.result');result.textContent='Sending...';try{const out=await postJson('/api/enquiry',{role:'renter',property_id:p.id,name:data.name,email:data.email,phone:data.phone||'',message});result.textContent=`Sent. Case ${out.case_id} is now with the Agent Desk.`;form.reset();}catch(err){result.textContent=err.message;}}));
+    document.querySelectorAll('.form-panel').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const action=form.dataset.action;const p=state.selected||{};let message=data.message||'';if(action==='viewing')message=`Viewing request for ${p.title}: preferred time ${data.time}. ${message}`;if(action==='application')message=`Application started for ${p.title}. ${message}`;const result=form.querySelector('.result');result.textContent='Sending...';try{const out=await postJson('/api/enquiry',{role:'renter',property_id:p.id,name:data.name,email:data.email,phone:data.phone||'',message});result.textContent=`Thank you. Your enquiry has reached our team (reference ${out.case_id}).`;form.reset();}catch(err){result.textContent=err.message;}}));
     document.querySelectorAll('form[data-kind]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const result=form.querySelector('.result');result.textContent='Sending...';try{const details=[data.property,data.message].filter(Boolean).join('\n\n');const out=await postJson('/api/public',{kind:form.dataset.kind,name:data.name,email:data.email,message:details,consent:Boolean(data.consent),website:data.website||''});result.textContent=`Sent. Reference ${out.reference}.`;form.reset();}catch(err){result.textContent=err.message;}}));
+    // Six examples are advertising illustrations ONLY, and never enter /api/public.
+    const exampleProperties=[
+      {title:'Light-filled two-bed flat',area:'Leeds',type:'Apartment',rent:'£1,250',beds:'2 beds'},
+      {title:'City-centre studio',area:'Bristol',type:'Studio',rent:'£820',beds:'Studio'},
+      {title:'Three-bed family home',area:'Sheffield',type:'House',rent:'£1,450',beds:'3 beds'},
+      {title:'One-bed garden flat',area:'Nottingham',type:'Flat',rent:'£925',beds:'1 bed'},
+      {title:'Character terrace',area:'York',type:'House',rent:'£1,180',beds:'2 beds'},
+      {title:'Professional house share',area:'Manchester',type:'Room in shared house',rent:'£650',beds:'Room price'}
+    ];
+    document.getElementById('exampleCards').innerHTML=exampleProperties.map(p=>
+      '<article class="example-card"><div class="example-photo" aria-hidden="true"><span class="example-badge">FICTIONAL EXAMPLE</span></div>'+
+      '<div class="example-body"><h3>'+esc(p.title)+'</h3><p>⌖ '+esc(p.area)+' · '+esc(p.type)+' · '+esc(p.beds)+'</p>'+
+      '<strong>'+esc(p.rent)+' <small>example pcm</small></strong>'+
+      '<a class="button secondary small example-search-link" href="#contact" data-area="'+esc(p.area)+'" data-beds="'+(p.beds.match(/^\d+/)?.[0]||'')+'">Register similar requirements →</a></div></article>'
+    ).join('');
+    document.getElementById('exampleCards').addEventListener('click',event=>{
+      const link=event.target.closest('.example-search-link');
+      if(!link)return;
+      selectJourney('tenant');
+      document.getElementById('prospectArea').value=link.dataset.area||'';
+      document.getElementById('prospectBeds').value=link.dataset.beds||'';
+    });
+    const prospectForm=document.getElementById('prospectForm');
+    const prospectKind=document.getElementById('prospectKind');
+    function selectJourney(kind){
+      if(!['tenant','landlord','trades'].includes(kind))kind='tenant';
+      prospectKind.value=kind;
+      for(const role of ['tenant','landlord','trades']){
+        const group=document.getElementById(role+'Fields');
+        const active=kind===role;
+        group.classList.toggle('hidden',!active);
+        group.querySelectorAll('input,select,textarea').forEach(el=>el.disabled=!active);
+      }
+      document.getElementById('prospectAreaLabel').textContent={
+        tenant:'Where would you like to live?',
+        landlord:'Where is your property located?',
+        trades:'Which area do you cover?'
+      }[kind];
+    }
+    prospectKind.addEventListener('change',()=>selectJourney(prospectKind.value));
+    selectJourney(prospectKind.value);
+    async function formSend(form,url,payload,resultId,buttonId,successMessage){
+      const result=document.getElementById(resultId);
+      const button=document.getElementById(buttonId);
+      button.disabled=true;
+      result.textContent='Sending your request…';
+      try{
+        await postJson(url,payload);
+        result.textContent=successMessage;
+        form.reset();
+        if(form===prospectForm)selectJourney('tenant');
+      }catch(error){result.textContent=error.message||'Unable to send your request. Please try again.';}
+      finally{button.disabled=false;}
+    }
+    prospectForm.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const data=Object.fromEntries(new FormData(prospectForm).entries());
+      await formSend(prospectForm,'/api/prospect-intake',{
+        kind:data.kind,name:data.name,email:data.email,phone:data.phone||'',area:data.area||'',
+        bedrooms:data.bedrooms||'',max_rent:data.max_rent||'',service:data.service||'',
+        trade:data.trade||'',message:data.message||'',
+        consent:Boolean(data.consent),website:data.website||''
+      },'prospectResult','prospectSubmit',
+      "Thank you — your enquiry has been recorded. Our team will review the next step.");
+    });
+    const requestedNewsletter=new URLSearchParams(window.location.search).get('newsletter');
+    if(['prospective_tenant','tenant','landlord','trades'].includes(requestedNewsletter)){
+      document.getElementById('newsletterAudience').value=requestedNewsletter;
+    }
+    const newsletterForm=document.getElementById('newsletterForm');
+    newsletterForm.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const data=Object.fromEntries(new FormData(newsletterForm).entries());
+      await formSend(newsletterForm,'/api/newsletter',{
+        name:data.name,email:data.email,audience:data.audience,
+        marketing_consent:Boolean(data.marketing_consent),website:data.website||''
+      },'newsletterResult','newsletterSubmit',
+      "Interest recorded. You're not yet subscribed; we'll need to confirm your email before any newsletters are sent.");
+    });
+    document.querySelectorAll('#services a[href="#contact"]').forEach(link=>{
+      link.addEventListener('click',()=>{
+        selectJourney(link.closest('.landlords')?'landlord':'trades');
+      });
+    });
     const ttTop=document.querySelector('.tt-top');addEventListener('scroll',()=>ttTop.classList.toggle('visible',window.scrollY>240),{passive:true});ttTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+    searchAction.addEventListener('click',()=>{renderHomes();document.getElementById('homes').scrollIntoView({behavior:'smooth'});});
+    searchBox.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchAction.click();}});
+    menuToggle.addEventListener('click',()=>{const open=siteNav.classList.toggle('open');menuToggle.setAttribute('aria-expanded',String(open));menuToggle.setAttribute('aria-label',open?'Close menu':'Open menu');});
+    siteNav.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{siteNav.classList.remove('open');menuToggle.setAttribute('aria-expanded','false');menuToggle.setAttribute('aria-label','Open menu');}));
     loadHomes();
   </script>
 </body>
