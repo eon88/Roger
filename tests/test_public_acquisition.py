@@ -113,6 +113,29 @@ class PublicAcquisitionTests(unittest.TestCase):
         self.assertEqual(self.stage["newsletter_subscriptions"][0]["status"],"pending_confirmation")
         self.assertEqual(len(self.stage["newsletter_subscriptions"]),1)
 
+    def test_non_agent_cannot_read_newsletter_contact_list(self):
+        self.h.path="/api/newsletter-subscriptions"
+        self.h.session_user=lambda:{"role":"tenant","username":"tenant"}
+        self.h._do_GET_with_agency_boundary()
+        self.assertEqual(self.sent[-1][1],403)
+
+    def test_unauthenticated_cannot_read_newsletter_contact_list(self):
+        self.h.path="/api/newsletter-subscriptions"
+        self.h.session_user=lambda:None
+        self.h._do_GET_with_agency_boundary()
+        self.assertEqual(self.sent[-1][1],401)
+
+    def test_newsletter_contacts_not_exposed_via_tenant_scoped_stage(self):
+        self.h.handle_newsletter_signup({"name":"Test Person","email":"personal@example.test",
+            "audience":"landlord","marketing_consent":True})
+        self.h.session_user=lambda:{"role":"tenant","display_name":"Tenant",
+                                    "account_id":"tenant-account"}
+        self.h.serve_scoped_stage()
+        data,status=self.sent[-1]
+        self.assertEqual(status,200)
+        self.assertNotIn("newsletter_subscriptions",data)
+        self.assertNotIn("personal@example.test",str(data))
+
     def test_cannot_manually_mark_unverified_subscriber_confirmed(self):
         self.h.handle_newsletter_action({"action":"confirm","id":"guess"})
         self.assertEqual(self.sent[-1][1],400)
