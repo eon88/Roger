@@ -7,6 +7,7 @@ umask 077
 
 SHA="${1:-}"
 ARCHIVE="${2:-}"
+RECOVERY_SCRIPT="${3:-}"
 if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
   echo "ERROR: expected a 40-character commit SHA" >&2
   exit 2
@@ -15,6 +16,12 @@ if [[ "$ARCHIVE" != "/root/roger-deploy/incoming/$SHA.tar.gz" || ! -s "$ARCHIVE"
   echo "ERROR: exact uploaded release archive is missing" >&2
   exit 2
 fi
+
+if [[ "$RECOVERY_SCRIPT" != "/root/roger-deploy/incoming/$SHA-recovery.sh" || ! -s "$RECOVERY_SCRIPT" ]]; then
+  echo "ERROR: reviewed previous-image recovery script is missing" >&2
+  exit 2
+fi
+bash -n "$RECOVERY_SCRIPT"
 
 exec 9>/var/lock/roger-mvp-deploy.lock
 if ! flock -n 9; then
@@ -58,20 +65,50 @@ echo "=== TAKE RESTORABLE BACKUPS ==="
 install -d -m 700 "$BACKUP/data"
 cp -p "$BASE" "$BACKUP/docker-compose.yml"
 cp -p "$OVERRIDE" "$BACKUP/docker-compose.override.yml"
-# The running container may reference an image ID whose tag and underlying
-# image metadata were pruned by Docker. A running container is NOT proof that
-# docker image tag <old-id> will work. In that case snapshot the container
-# filesystem/config into a usable rollback image BEFORE stopping anything.
+# Docker may have pruned the previous image's contents while its existing
+# container remains healthy. Never stop that container until a distinct,
+# runnable previous image exists and has been verified.
 PREVIOUS_IMAGE_ID="$(docker inspect roger --format '{{.Image}}')"
+verify_rollback_image() {
+  docker image inspect "$ROLLBACK_IMAGE" >/dev/null 2>&1 &&
+  docker run --rm --entrypoint python "$ROLLBACK_IMAGE" -c '
+import psycopg, py_compile
+py_compile.compile("/app/serve.py", doraise=True)
+'
+}
+ROLLBACK_READY=0
 if docker image inspect "$PREVIOUS_IMAGE_ID" >/dev/null 2>&1; then
-  echo "Saving the existing Roger image for rollback."
-  docker image tag "$PREVIOUS_IMAGE_ID" "$ROLLBACK_IMAGE"
-else
-  echo "Original image metadata was pruned; snapshotting the running Roger container for rollback."
-  docker commit --pause=false roger "$ROLLBACK_IMAGE" >/dev/null
+  echo "Checking preserved previous Roger image."
+  if docker image tag "$PREVIOUS_IMAGE_ID" "$ROLLBACK_IMAGE" &&
+       verify_rollback_image; then
+    ROLLBACK_READY=1
+  else
+    echo "Previous image tag is unusable; attempting safe reconstruction."
+  fi
+fi
+if [[ "$ROLLBACK_READY" != "1" ]]; then
+  # docker commit can itself fail with "content digest not found". If so,
+  # fall back to reading only /app from the still-running container.
+  echo "Original image unavailable; checking whether Docker can snapshot the live container."
+  if docker commit --pause=false roger "$ROLLBACK_IMAGE" > "$BACKUP/docker-commit.log" 2>&1 &&
+       verify_rollback_image; then
+    ROLLBACK_READY=1
+  else
+    echo "Docker could not commit its missing layers. Reconstructing from verified live /app code."
+    bash "$RECOVERY_SCRIPT" "$ROLLBACK_IMAGE" "$RELEASE/Dockerfile" "$BACKUP/previous-app"
+    verify_rollback_image
+    ROLLBACK_READY=1
+  fi
+fi
+if [[ "$ROLLBACK_READY" != "1" ]]; then
+  echo "ERROR: cannot verify rollback image; refusing to stop existing Roger" >&2
+  exit 1
 fi
 docker image inspect "$ROLLBACK_IMAGE" >/dev/null
+test "$(docker image inspect "$ROLLBACK_IMAGE" --format '{{json .Config.Entrypoint}}')" = \
+     "$(docker inspect roger --format '{{json .Config.Entrypoint}}')"
 test -n "$(docker image inspect "$ROLLBACK_IMAGE" --format '{{json .Config.Entrypoint}}')"
+echo "Verified recoverable previous application image: $ROLLBACK_IMAGE"
 printf '%s\n' "$SHA" > "$BACKUP/new_release_sha"
 
 # Write the selected local image into the existing override, preserving all
