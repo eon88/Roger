@@ -64,6 +64,7 @@ def single_admin(admin_email):
             "display_name": "Agency Administrator", "email": admin_email,
             "account_id": "account-" + secrets.token_hex(16),
             "salt": salt, "hash": pw_hash,
+            "password_change_required": True,
         }],
         "sessions": {},
     }, password
