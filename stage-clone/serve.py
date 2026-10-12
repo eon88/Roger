@@ -256,9 +256,9 @@ class H(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=ROOT, **kw)
 
     # ---------- auth plumbing ----------
-    PUBLIC_GET = {"/", "/login", "/signin", "/register/landlord", "/register/trades",
+    PUBLIC_GET = {"/", "/login", "/signin", "/for-agents", "/register/landlord", "/register/trades",
               "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
-    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter"}
+    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -502,6 +502,8 @@ class H(SimpleHTTPRequestHandler):
             if not u:
                 return
             return self._json({"notifications": self.scoped_notifications(u)})
+        if path == "/api/public-site":
+            return self._json(self.public_site_info())
         if path == "/api/public":
             return self.serve_public_listings()
         if path == "/api/whoami":
@@ -543,6 +545,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/public": "api-public.json",
             "/api/stage": "__scoped_stage__",
             "/signin": "signin.html",
+            "/for-agents": "for-agents.html",
             "/register/landlord": "register-landlord.html",
             "/register/trades": "register-trades.html",
             "/agent": "agent.html",
@@ -950,6 +953,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/enquiry": self.handle_enquiry,
             "/api/prospect-intake": self.handle_prospect_intake,
             "/api/newsletter": self.handle_newsletter_signup,
+            "/api/agent-demo": self.handle_agent_demo,
             "/api/newsletter-action": self.handle_newsletter_action,
             "/api/appointment": self.handle_appointment,
             "/api/appointment-action": self.handle_appointment_action,
@@ -2039,6 +2043,69 @@ class H(SimpleHTTPRequestHandler):
                            "note": kind + ": " + previous + " -> " + next_stage})
         save_stage(stage)
         self._json({"success": True, "stage": next_stage, "updated_at": at})
+
+    # ---------- explicitly configured, public marketing details ----------
+    @staticmethod
+    def public_site_info():
+        """Only allowlisted values from this release's verified config.
+        No private internal office contacts or admin data are exposed.
+        """
+        config_path = os.path.join(ROOT, "public-site.json")
+        try:
+            with open(config_path, encoding="utf-8") as fd:
+                config = json.load(fd)
+        except (OSError, ValueError):
+            config = {}
+        if not isinstance(config, dict):
+            config = {}
+        email_value = config.get("contact_email")
+        phone_value = config.get("contact_phone")
+        areas = config.get("areas_served")
+        privacy = config.get("privacy_url")
+        return {
+            "contact_email": email_value.strip() if isinstance(email_value, str)
+                and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email_value.strip())
+                and len(email_value) <= 254 else None,
+            "contact_phone": phone_value.strip() if isinstance(phone_value, str)
+                and re.fullmatch(r"\+?[0-9()\s-]{7,35}", phone_value.strip()) else None,
+            "areas_served": [item.strip() for item in areas[:10]
+                if isinstance(item, str) and 2 <= len(item.strip()) <= 60]
+                if isinstance(areas, list) else [],
+            "privacy_url": privacy.strip() if isinstance(privacy, str)
+                and len(privacy) <= 300
+                and (privacy.strip().startswith("https://")
+                     or privacy.strip().startswith("/privacy"))
+                and not any(c.isspace() for c in privacy) else None
+        }
+
+    def handle_agent_demo(self, data):
+        """Request a platform demo without creating a tenant or contractor account."""
+        if data.get("website"):
+            return self._json({"success": True, "reference": "received"})
+        if data.get("consent") is not True:
+            return self._json({"error": "please agree to be contacted about the demo"}, 400)
+        contact = self.valid_public_contact(data)
+        company = data.get("company")
+        if not contact or not isinstance(company, str) or not 2 <= len(company.strip()) <= 140:
+            return self._json({"error": "name, email and agency name are required"}, 400)
+        name, email = contact
+        stage = load_stage()
+        record = {
+            "id": "demo-" + secrets.token_hex(10),
+            "kind": "letting_agent_demo", "name": name, "email": email,
+            "company": company.strip(),
+            "area": str(data.get("area") or "").strip()[:160],
+            "message": str(data.get("message") or "").strip()[:1200],
+            "status": "new", "source": "for-agents",
+            "contact_consent_at": now(), "created_at": now(),
+        }
+        if stage.get("agency_id"):
+            record["agency_id"] = stage["agency_id"]
+        stage.setdefault("agency_demo_requests", []).append(record)
+        self.audit(stage, {"actor": "public-site", "action": "agency_demo_requested",
+                           "target": record["id"], "note": "for-agents"})
+        save_stage(stage)
+        return self._json({"success": True, "reference": record["id"]})
 
     # ---------- public segmented marketing & prospect intake ----------
     MARKETING_AUDIENCES = ("prospective_tenant", "tenant", "landlord", "trades")
