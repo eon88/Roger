@@ -166,6 +166,10 @@ def provision(slug, name, admin_email, port, image, base_domain, output):
         file.chmod(0o600)
     write("compose.yaml", compose_text(slug, hostname, port).replace("DOLLAR{", chr(36) + "{"))
     write("bootstrap.sql", bootstrap)
+    # The postgres container runs its init scripts as its own non-root UID.
+    # SQL contains ONLY scrypt password hashes, not plaintext credentials.
+    # The enclosing agency directory remains 0700 on the host.
+    (output / "bootstrap.sql").chmod(0o644)
     write(".env", (
         "ROGER_IMAGE=" + image + "\n"
         + "ROGER_DATABASE_PASSWORD=" + secrets.token_urlsafe(42) + "\n"
