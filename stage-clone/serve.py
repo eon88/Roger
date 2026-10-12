@@ -4173,7 +4173,7 @@ class H(SimpleHTTPRequestHandler):
                       and not p.get("account_id")), None)
         prop = self.find_prop(stage, inv.get("property_id"))
         if not party or not prop or not inv.get("email") or (
-                party.get("email", "").strip().casefold() != inv["email"].casefold()):
+                str(party.get("email") or "").strip().casefold() != inv["email"].casefold()):
             return None
         if role in ("tenant", "landlord") and not self.has_party_link(prop, role, {party["id"]}):
             return None
@@ -4270,12 +4270,14 @@ class H(SimpleHTTPRequestHandler):
         bind_new_agency_records(stage)
         require_single_agency(stage)
         with postgres_connection() as conn:
-            conn.execute(
+            users_update = conn.execute(
                 "UPDATE roger_users_snapshot SET payload=%s::jsonb, imported_at=now() WHERE singleton_id=1",
                 (json.dumps(users),))
-            conn.execute(
+            stage_update = conn.execute(
                 "UPDATE roger_stage_snapshot SET payload=%s::jsonb, imported_at=now() WHERE singleton_id=1",
                 (json.dumps(stage),))
+            if users_update.rowcount != 1 or stage_update.rowcount != 1:
+                raise RuntimeError("agency snapshots missing; invitation redemption rolled back")
 
     def handle_invite_acceptance(self, data):
         if os.environ.get("ROGER_SAAS_MODE") != "1":
