@@ -45,9 +45,12 @@ are deleted at the end. The existing four-role browser suite still runs.
 4. Inspect the agency-specific Docker image, private credentials and compose
    configuration; configure DNS and HTTPS. Provision only with explicit
    permission, then verify login and access denial.
-5. Privately hand the business owner the one-time admin credentials, rotate
-   them, enter their verified agency contact and privacy details and onboard
-   staff. Initial username is agency-admin.
+5. Privately hand the business owner the one-time admin credentials. On first
+   login, Roger now blocks normal portal access until the admin replaces that
+   temporary password with a unique password of at least 14 characters.
+   All previous sessions for that account are revoked after the change, and
+   the admin must sign in again. Delete the plaintext handoff file securely.
+   Then enter the verified agency contact and privacy details and onboard staff. Initial username is agency-admin.
 6. Each agency runs its own daily portal. Roger's operator manages software
    updates, per-agency backups, billing and technical support.
 7. On cancellation, follow a documented notice, export, access suspension and
@@ -80,6 +83,20 @@ resolution and Hostinger Traefik networking must be verified on a staging
 machine before launching a genuine agency. Running multiple PostgreSQL
 containers needs more RAM/CPU than the current one-agency MVP; capacity tests
 are mandatory before any commercial scale.
+
+## First-login password security (development branch)
+
+Newly provisioned agency administrators are marked
+`password_change_required=true`. The sign-in response routes them to
+`/change-password`. The server refuses the normal authenticated portal pages
+and business APIs until they change the password; knowing a temporary password
+alone does not unlock the business functions. Changing a password verifies the
+current secret, requires at least 14 characters, uses a new scrypt salt and
+invalidates all sessions on the account. Login is required again.
+
+This does not yet offer self-service password recovery, invitations, MFA or
+email-based provisioning. Losing the admin password requires a carefully
+controlled operator recovery procedure, not ad hoc database modification.
 
 ## What is still required before paid launch
 
