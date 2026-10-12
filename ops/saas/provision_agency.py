@@ -84,7 +84,7 @@ services:
     environment:
       POSTGRES_USER: roger
       POSTGRES_DB: roger
-      POSTGRES_PASSWORD: DOLLAR{ROGER_DATABASE_PASSWORD:?missing}
+      POSTGRES_PASSWORD: DOLLAR{{ROGER_DATABASE_PASSWORD:?missing}}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./bootstrap.sql:/docker-entrypoint-initdb.d/010-roger.sql:ro
@@ -95,7 +95,7 @@ services:
       timeout: 5s
       retries: 10
   app:
-    image: DOLLAR{ROGER_IMAGE:?missing}
+    image: DOLLAR{{ROGER_IMAGE:?missing}}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -104,10 +104,10 @@ services:
       ROGER_SAAS_MODE: "1"
       ROGER_STORAGE_BACKEND: postgres
       ROGER_AGENCY_ID: "{slug}"
-      ROGER_AGENCY_NAME: DOLLAR{ROGER_AGENCY_NAME:?missing}
+      ROGER_AGENCY_NAME: DOLLAR{{ROGER_AGENCY_NAME:?missing}}
       ROGER_PUBLIC_BASE_URL: "https://{hostname}"
       ROGER_ALLOWED_ORIGINS: "https://{hostname}"
-      DATABASE_URL: "postgresql://roger:DOLLAR{ROGER_DATABASE_PASSWORD:?missing}@postgres:5432/roger"
+      DATABASE_URL: "postgresql://roger:DOLLAR{{ROGER_DATABASE_PASSWORD:?missing}}@postgres:5432/roger"
       DATA_DIR: /data
       BIND_HOST: 0.0.0.0
       PORT: "8901"
