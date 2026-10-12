@@ -43,8 +43,10 @@ class AgencyProvisionTests(unittest.TestCase):
             self.assertIn("agency_files:/data", compose)
             self.assertNotIn("roster", compose)
             self.assertNotIn("roger_data:/data", compose)
+            self.assertEqual(root.stat().st_mode & 0o077, 0)
             for f in root.iterdir():
-                self.assertEqual(f.stat().st_mode & 0o077, 0, f.name)
+                expected = 0o644 if f.name == "bootstrap.sql" else 0o600
+                self.assertEqual(f.stat().st_mode & 0o777, expected, f.name)
         self.assertNotEqual((a / ".env").read_text(), (b / ".env").read_text())
         self.assertNotEqual(
             (a / "initial-admin-credentials.txt").read_text(),
