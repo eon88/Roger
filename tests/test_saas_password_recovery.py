@@ -18,6 +18,13 @@ class AgencyRecoveryTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.private = Path(self.temp.name) / "private"
         self.private.mkdir(mode=0o700)
+        mount_patch = patch.object(agency_recovery, "RECOVERY_TMPFS_DIR", self.private)
+        mount_patch.start()
+        self.addCleanup(mount_patch.stop)
+        # Unit fixtures stand in for the real container tmpfs.
+        is_mount_patch = patch.object(Path, "is_mount", return_value=True)
+        is_mount_patch.start()
+        self.addCleanup(is_mount_patch.stop)
         self.out = self.private / "one-time.txt"
         self.data = {"users": [
             {"username": "agency-admin", "role": "agent", "salt": "a" * 32,
@@ -81,6 +88,12 @@ class AgencyRecoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             agency_recovery.recover_admin(self.out, "oaklettings")
         self.assertEqual(self.out.read_text(), "DO NOT OVERWRITE")
+
+    def test_file_outside_tmpfs_is_rejected(self):
+        elsewhere = Path(self.temp.name) / "elsewhere"
+        elsewhere.mkdir(mode=0o700)
+        with self.assertRaises(ValueError):
+            agency_recovery.recover_admin(elsewhere / "wrong.txt", "oaklettings")
 
     def test_world_readable_directory_denied(self):
         self.private.chmod(0o755)
