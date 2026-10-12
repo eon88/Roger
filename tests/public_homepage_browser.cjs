@@ -52,11 +52,30 @@ async function run(){
     page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+'/',{waitUntil:'domcontentloaded'});
     await page.locator('#propertyCount').getByText('0 homes available').waitFor();
-    assert.match(await page.locator('#empty').innerText(),/No homes advertised right now/);
+    assert.match(await page.locator('#empty').innerText(),/No homes advertised at present/);
     assert.equal(await page.locator('#cards .card').count(),0);
     assert.match(await page.locator('h1').innerText(),/A place to call home/);
     assert.equal(await page.getByText('One operating desk.').count(),0);
     console.log('PASS honest empty listings, new branding and property-first layout');
+
+    await page.locator('#searchBox').fill('Manchester');
+    await page.locator('#bedsFilter').selectOption('3');
+    await page.locator('#rentFilter').selectOption('150000');
+    await page.locator('#registerRequirements').click();
+    assert.equal(await page.locator('#prospectArea').inputValue(),'Manchester');
+    assert.equal(await page.locator('#prospectBeds').inputValue(),'3');
+    assert.equal(await page.locator('#prospectMaxRent').inputValue(),'1500');
+    assert.match(await page.locator('#empty').innerText(),/does not subscribe you to property alerts/);
+    await page.locator('#clearFilters').click();
+    console.log('PASS empty search carries area, bedrooms and budget into honest enquiry');
+
+    const publicInfo=await (await fetch(base+'/api/public-site')).json();
+    assert.equal(publicInfo.contact_email,null);
+    assert.equal(publicInfo.privacy_url,null);
+    assert.match(await page.locator('#siteEmail').innerText(),/to be confirmed/i);
+    assert.match(await page.locator('#siteAreas').innerText(),/to be confirmed/i);
+    assert.match(await page.locator('#sitePrivacy').innerText(),/not yet published/i);
+    console.log('PASS default footer slots show no invented contact or legal details');
 
     // Reload with two valid listings; never show unadvertised or occupied ones.
     const live=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
@@ -120,10 +139,10 @@ async function run(){
     console.log('PASS real property modal and viewing request delivered to Roger cases');
 
     await page.locator('#closeButton').click();
-    assert.equal(await page.locator('#exampleCards .example-card').count(),6);
+    assert.equal(await page.locator('#exampleCards .example-card').count(),1);
     assert.equal(await page.locator('#exampleCards button').count(),0,'fictional properties cannot offer viewings');
-    assert.match(await page.locator('#exampleCards').innerText(),/FICTIONAL EXAMPLE/);
-    console.log('PASS six visibly fictional sample listings, separate from real property API');
+    assert.match(await page.locator('#exampleCards').innerText(),/DEMO · NOT A REAL LISTING/);
+    console.log('PASS one clearly marked illustrative example, separate from live inventory');
 
     await page.locator('#exampleCards .example-search-link').first().click();
     assert.equal(await page.locator('#prospectKind').inputValue(),'tenant');
@@ -146,7 +165,13 @@ async function run(){
     assert.equal(saved.cases[1].requirements.bedrooms,'2');
     assert.equal(saved.cases[1].prospect_stage,'enquiry');
 
-    await page.locator('#prospectKind').selectOption('landlord');
+    await page.locator('#services .landlords a[href="#contact"]').click();
+    assert.equal(await page.locator('#prospectKind').inputValue(),'landlord');
+    assert.equal(await page.locator('#prospectArea').inputValue(),'');
+    assert.equal(await page.locator('#prospectBeds').inputValue(),'');
+    assert.equal(await page.locator('#prospectMaxRent').inputValue(),'');
+    assert.equal(await page.locator('#prospectMessage').inputValue(),'');
+    console.log('PASS landlord CTA clears incompatible tenant search location and requirements');
     assert.equal(await page.locator('#landlordFields').isVisible(),true);
     assert.equal(await page.locator('#tenantFields').isVisible(),false);
     await page.locator('#prospectName').fill('Pilot Owner');
@@ -189,6 +214,27 @@ async function run(){
     assert.ok(saved.newsletter_subscriptions[0].consented_at);
     console.log('PASS niche newsletter interest, independent marketing consent and no sending claim');
 
+    const agencyPage=await context.newPage();
+    agencyPage.on('pageerror',e=>errors.push(e.message));
+    await agencyPage.goto(base+'/for-agents');
+    await agencyPage.getByRole('heading',{name:/One place to manage/i}).waitFor();
+    await agencyPage.locator('#agentDemoForm [name=name]').fill('Agent Pilot');
+    await agencyPage.locator('#agentDemoForm [name=email]').fill('agent@example.test');
+    await agencyPage.locator('#agentDemoForm [name=company]').fill('Pilot Lettings Ltd');
+    await agencyPage.locator('#agentDemoForm [name=area]').fill('Surrey');
+    await agencyPage.locator('#agentDemoForm [name=message]').fill('Would like to understand repairs');
+    await agencyPage.locator('#agentDemoForm [name=consent]').check();
+    await agencyPage.locator('#requestDemo').click();
+    await agencyPage.locator('#agentDemoResult').getByText(/Demo request recorded/).waitFor();
+    saved=JSON.parse(fs.readFileSync(path.join(root,'stage.json'),'utf8'));
+    assert.equal(saved.agency_demo_requests.length,1);
+    assert.equal(saved.agency_demo_requests[0].status,'new');
+    assert.equal(saved.agency_demo_requests[0].company,'Pilot Lettings Ltd');
+    await agencyPage.setViewportSize({width:390,height:844});
+    assert.equal(await agencyPage.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
+    await agencyPage.close();
+    console.log('PASS separate letting agents pitch, responsive layout, and real demo lead');
+
     // Marketing data is private: no public / non-agent access.
     const unsignedCode=await page.evaluate(async()=>
       (await fetch('/api/newsletter-subscriptions')).status);
@@ -212,6 +258,8 @@ async function run(){
       assert.match(await agent.locator('#view-prospects').innerText(),/reader@example.test/);
       assert.match(await agent.locator('#view-prospects').innerText(),/Renter Update|Landlord Brief/);
       assert.match(await agent.locator('#view-prospects').innerText(),/PENDING EMAIL CONFIRMATION/);
+      assert.match(await agent.locator('#view-prospects').innerText(),/Pilot Lettings Ltd/);
+      assert.match(await agent.locator('#view-prospects').innerText(),/agent@example.test/);
       agent.once('dialog',dialog=>dialog.accept());
       await agent.locator('#view-prospects button[data-id^="news-"]').click();
       for(let i=0;i<20;i++){

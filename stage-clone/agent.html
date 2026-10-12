@@ -834,7 +834,17 @@ function renderProspects(){
  const trades=(stage.registrations||[]).filter(r=>r.role==='trades');
  document.getElementById('view-prospects').innerHTML='<div class="move">acquisition pipelines</div><p class="fineprint">Record progress as people move from first contact toward a tenancy, management agreement or approved trade. Registration approval remains a separate decision.</p>'+
  renderProspectGroup('tenant','Tenant prospects',tenants)+renderProspectGroup('landlord','Landlord prospects',landlords)+renderProspectGroup('trades','Trades applicants',trades)+
-  renderNewsletterProspects();
+  renderNewsletterProspects()+renderAgencyDemoProspects();
+}
+function renderAgencyDemoProspects(){
+  const demos=stage.agency_demo_requests||[];
+  return '<section><h2>Letting agency demo requests <span class="badge">'+demos.length+'</span></h2>'+
+    '<p class="fineprint">Requests from the separate For letting agents page. Human follow-up only; no demo is automatically scheduled.</p>'+
+    '<div class="grid2">'+(demos.length?demos.slice().reverse().map(d=>'<div class="card">'+
+    '<div class="cardtop"><h3>'+esc(d.company||'Agency')+'</h3><span class="badge">'+esc(d.status||'new')+'</span></div>'+
+    '<div class="meta">'+esc(d.name||'')+' · '+esc(d.email||'')+' · '+esc(d.area||'')+' · '+when(d.created_at)+'</div>'+
+    '<div class="details">'+esc(d.message||'Demo requested')+'</div></div>').join(''):
+    '<div class="empty">No letting-agency demo requests yet.</div>')+'</div></section>';
 }
 function renderNewsletterProspects(){
   const subs=stage.newsletter_subscriptions||[];

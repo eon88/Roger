@@ -29,6 +29,7 @@
     .funnel-panel{padding:34px;border:1px solid var(--line);border-radius:13px;background:#fff;box-shadow:var(--shadow);max-width:850px}.funnel-heading{margin:0 0 21px;color:var(--muted);font-size:13px}.prospect-form{display:grid;gap:16px}.prospect-form .field label{font-size:12px}.prospect-detail{border-top:1px solid var(--line);padding-top:17px;display:grid;gap:13px}.form-note{font-size:12px;color:var(--muted)}.newsletter-section{background:var(--forest);color:#fff;padding:65px 0}.newsletter-grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:45px;align-items:center}.newsletter-section .eyebrow{color:#e1c899}.newsletter-section .section-title{max-width:490px}.newsletter-section p{color:#d7e3da;font-size:14px}.newsletter-niches{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:20px}.newsletter-niches span{border:1px solid #496c5e;border-radius:7px;padding:10px;font-size:12px}.newsletter-form{background:#fff;color:var(--ink);border-radius:12px;padding:29px;display:grid;gap:13px}.newsletter-form h3{margin:0;font-family:Georgia,serif;font-size:25px;font-weight:400}.newsletter-form p{font-size:12px;color:var(--muted);margin:0}.newsletter-form .consent{font-weight:500;color:var(--muted)}.newsletter-form .result{font-size:12px}
     @media(max-width:800px){.examples-grid{grid-template-columns:repeat(2,1fr)}.newsletter-grid{grid-template-columns:1fr;gap:25px}.examples-head{display:block}}
     @media(max-width:520px){.examples-panel{padding:17px}.examples-grid{grid-template-columns:1fr}.funnel-panel{padding:21px}.newsletter-form{padding:20px}.newsletter-niches{grid-template-columns:1fr 1fr}.newsletter-section{padding:48px 0}}
+    .footer-site-info{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:25px;border-top:1px solid #3b5149;margin-top:29px;padding-top:22px}.footer-site-info>div{display:flex;flex-direction:column;gap:7px}.footer-site-info strong{font-size:12px;color:#fff}.footer-site-info span,.footer-site-info a{font-size:12px;color:#bbcdc1;text-decoration:none;overflow-wrap:anywhere}.footer-site-info a{text-decoration:underline;text-underline-offset:3px}.examples-grid{grid-template-columns:minmax(220px,340px)}.examples-panel{padding:22px}.examples-section{padding-bottom:52px}.examples-head .section-title{font-size:29px}.newsletter-section{padding:38px 0}.newsletter-section .section-title{font-size:32px}@media(max-width:620px){.footer-site-info{grid-template-columns:1fr}.examples-grid{grid-template-columns:1fr}.newsletter-section{padding:32px 0}}
   </style>
 </head>
 <body>
@@ -37,7 +38,7 @@
       <div class="site-width topbar-inner">
         <a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a>
         <nav class="nav" id="siteNav" aria-label="Main navigation">
-          <a href="#homes">Properties to rent</a><a href="#services">For landlords</a><a href="#work-with-us">Work with us</a><a href="#newsletter">Newsletter</a><a href="#contact">Start here</a>
+          <a href="#homes">Properties to rent</a><a href="#services">For landlords</a><a href="#work-with-us">Work with us</a><a href="#contact">Start here</a>
         </nav>
         <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">☰</button>
         <a class="signin" href="/signin">Portal sign in <span aria-hidden="true">↗</span></a>
@@ -71,18 +72,18 @@
       <section id="homes" class="section site-width" aria-labelledby="homes-title">
         <div class="section-head"><div><p class="eyebrow">Homes to rent</p><h2 class="section-title" id="homes-title">Discover available properties</h2><p class="section-description">Browse rental homes and speak to the team about viewings, availability and applications.</p></div><span class="count-pill" id="propertyCount" aria-live="polite">Checking available homes…</span></div>
         <div class="cards" id="cards" aria-live="polite"></div>
-        <div id="empty" class="empty hidden" role="status"><h3>No properties advertised right now</h3><p>New homes will appear here when they become available. You can still get in touch about your search.</p><a href="#contact" class="button secondary">Contact the lettings team</a></div>
+        <div id="empty" class="empty hidden" role="status"></div>
       </section>
 
 
       <section class="examples-section site-width" aria-labelledby="example-title">
         <div class="examples-panel">
           <div class="examples-head">
-            <div><p class="eyebrow">Explore the possibilities</p><h2 class="section-title" id="example-title">Find the kind of home you love</h2></div>
-            <p class="example-note">These are fictional examples, not properties available to rent. They show the kinds of rental searches we can help you plan.</p>
+            <div><p class="eyebrow">Website demonstration · not real availability</p><h2 class="section-title" id="example-title">An example of what you could find</h2></div>
+            <p class="example-note">This is a fictional illustration, not an available property. You can register the type of home you are looking for.</p>
           </div>
           <div class="examples-grid" id="exampleCards"></div>
-          <p class="example-disclaimer"><b>Illustrative properties only.</b> Locations, prices and illustrations are fictional examples. They cannot be booked or applied for. Real available homes appear in the section above.</p>
+          <p class="example-disclaimer"><b>Demo illustration only.</b> The property, location and rent are fictional. You cannot book a viewing. Real adverts, if any, appear above.</p>
         </div>
       </section>
 
@@ -161,10 +162,10 @@
 
       <section id="newsletter" class="newsletter-section" aria-labelledby="newsletter-title">
         <div class="site-width newsletter-grid">
-          <div><p class="eyebrow">Roger's newsletters</p><h2 class="section-title" id="newsletter-title">The right updates, for your corner of property.</h2>
-            <p>We're preparing practical updates tailored to what matters to you. Join the interest list for new rental homes, tenancy guidance, landlord insights or contractor news.</p>
+          <div><p class="eyebrow">Roger's newsletters</p><h2 class="section-title" id="newsletter-title">Newsletter interest list</h2>
+            <p>Optional updates for renters, existing tenants, landlords and tradespeople. Emails will start only after confirmation and unsubscribe controls are in place.</p>
             <div class="newsletter-niches"><span>⌂ Home hunters</span><span>☀ Current tenants</span><span>▦ Landlords</span><span>⚒ Tradespeople</span></div>
-            <p class="form-note">Emails are not being sent yet. Your request stays pending until a proper confirmation service is available.</p>
+            <p class="form-note">Newsletter emails are not being sent yet. This is an interest list, not an active subscription.</p>
           </div>
           <form class="newsletter-form" id="newsletterForm">
             <h3>Register your interest</h3>
@@ -189,8 +190,13 @@
     <footer class="footer">
       <div class="site-width">
         <div class="footer-inner"><div><a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a><p>Homes to rent and rental property services, brought together in one place.</p></div>
-        <nav class="footer-links" aria-label="Footer navigation"><a href="#homes">Properties</a><a href="#services">Landlords</a><a href="#newsletter">Newsletter</a><a href="#contact">Start here</a><a href="/signin">Portal sign in</a></nav></div>
-        <div class="footer-legal">© <span id="year"></span> Roger Lettings. Agency contact and regulatory details will be published only when verified.</div>
+        <nav class="footer-links" aria-label="Footer navigation"><a href="#homes">Properties</a><a href="#services">Landlords</a><a href="#newsletter">Newsletter</a><a href="/for-agents">For letting agents</a><a href="#contact">Start here</a><a href="/signin">Portal sign in</a></nav></div>
+        <div class="footer-site-info" aria-label="Agency information">
+          <div><strong>Contact</strong><span id="siteEmail">Contact email to be confirmed</span><span id="sitePhone">Telephone to be confirmed</span></div>
+          <div><strong>Areas served</strong><span id="siteAreas">Service areas to be confirmed</span></div>
+          <div><strong>Privacy</strong><span id="sitePrivacy">Privacy notice link not yet published</span></div>
+        </div>
+        <div class="footer-legal">© <span id="year"></span> Roger Lettings. Contact, coverage and policy information is shown only when configured and verified.</div>
       </div>
     </footer>
   </div>
@@ -254,7 +260,10 @@
       renderHomes();
     }
     function filtered(){const q=searchBox.value.toLowerCase().trim();const beds=Number(bedsFilter.value||0);const max=Number(rentFilter.value||0);return state.properties.filter(p=>(!q||[p.title,p.area,p.description].join(' ').toLowerCase().includes(q))&&(!beds||Number(p.beds)>=beds)&&(!max||Number(p.rent)<=max));}
-    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo">${p.photo?`<img src="${esc(p.photo)}" alt="${esc(p.title)}" loading="lazy">`:`<span class="photo-empty" role="img" aria-label="No photograph provided for ${esc(p.title)}">Property photographs coming soon</span>`}<span class="badge">${'To let'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="card-area">⌖ ${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>⌂ ${Number(p.beds)||0} bed${Number(p.beds)===1?'':'s'}</span>${p.deposit?`<span>Deposit ${money(p.deposit).replace(' pcm','')}</span>`:''}${p.availableFrom?`<span>Available ${esc(p.availableFrom)}</span>`:''}</div><p class="card-intro">${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View property →</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.textContent=listingsUnavailable?'Listings are temporarily unavailable. Please try again later.':(state.properties.length===0?'No homes advertised right now. Contact us about your search.':'No homes match your filters. Clear the filters or send a general enquiry.');empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'home':'homes'} available`;}
+    function renderHomes(){const items=filtered();cards.innerHTML=items.map(p=>`<article class="card"><div class="photo">${p.photo?`<img src="${esc(p.photo)}" alt="${esc(p.title)}" loading="lazy">`:`<span class="photo-empty" role="img" aria-label="No photograph provided for ${esc(p.title)}">Property photographs coming soon</span>`}<span class="badge">${'To let'}</span></div><div class="card-body"><h3>${esc(p.title)}</h3><p class="card-area">⌖ ${esc(p.area)}</p><p class="price">${money(p.rent)}</p><div class="meta"><span>⌂ ${Number(p.beds)||0} bed${Number(p.beds)===1?'':'s'}</span>${p.deposit?`<span>Deposit ${money(p.deposit).replace(' pcm','')}</span>`:''}${p.availableFrom?`<span>Available ${esc(p.availableFrom)}</span>`:''}</div><p class="card-intro">${esc(String(p.description||'').slice(0,140))}${String(p.description||'').length>140?'...':''}</p><div class="card-actions"><button class="button primary" type="button" data-open="${esc(p.id)}">View property →</button><button class="button secondary" type="button" data-quick="${esc(p.id)}">Enquire</button></div></div></article>`).join('');empty.innerHTML= '<h3>'+ (listingsUnavailable?'Listings temporarily unavailable':items.length===0&&state.properties.length===0?'No homes advertised at present':'No homes match your search')+'</h3>'+
+'<p>'+(listingsUnavailable?'We cannot check available homes right now. You can still register your requirements.':state.properties.length===0?'There are no advertised homes at present. Tell us what you need and the team can review your enquiry.':'Try adjusting the search, or tell us what you are looking for.')+'</p>'+
+'<a id="registerRequirements" href="#contact" class="button primary">Register your requirements →</a>'+
+'<p class="form-note">This sends an enquiry to Roger. It does not subscribe you to property alerts or guarantee a reply.</p>';empty.classList.toggle('hidden',items.length>0);count.textContent=`${items.length} ${items.length===1?'home':'homes'} available`;}
     document.querySelectorAll('#searchBox,#bedsFilter,#rentFilter').forEach(el=>el.addEventListener('input',renderHomes));
     document.getElementById('clearFilters').addEventListener('click',()=>{searchBox.value='';bedsFilter.value='';rentFilter.value='';renderHomes();});
     cards.addEventListener('click',e=>{const id=e.target.dataset.open||e.target.dataset.quick;if(!id)return;openProperty(id,e.target.dataset.quick?'enquiry':null);});
@@ -269,15 +278,10 @@
     document.querySelectorAll('form[data-kind]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const result=form.querySelector('.result');result.textContent='Sending...';try{const details=[data.property,data.message].filter(Boolean).join('\n\n');const out=await postJson('/api/public',{kind:form.dataset.kind,name:data.name,email:data.email,message:details,consent:Boolean(data.consent),website:data.website||''});result.textContent=`Sent. Reference ${out.reference}.`;form.reset();}catch(err){result.textContent=err.message;}}));
     // Six examples are advertising illustrations ONLY, and never enter /api/public.
     const exampleProperties=[
-      {title:'Light-filled two-bed flat',area:'Leeds',type:'Apartment',rent:'£1,250',beds:'2 beds'},
-      {title:'City-centre studio',area:'Bristol',type:'Studio',rent:'£820',beds:'Studio'},
-      {title:'Three-bed family home',area:'Sheffield',type:'House',rent:'£1,450',beds:'3 beds'},
-      {title:'One-bed garden flat',area:'Nottingham',type:'Flat',rent:'£925',beds:'1 bed'},
-      {title:'Character terrace',area:'York',type:'House',rent:'£1,180',beds:'2 beds'},
-      {title:'Professional house share',area:'Manchester',type:'Room in shared house',rent:'£650',beds:'Room price'}
+      {title:'Illustrative two-bed flat',area:'Leeds',type:'Apartment',rent:'£1,250',beds:'2 beds'}
     ];
     document.getElementById('exampleCards').innerHTML=exampleProperties.map(p=>
-      '<article class="example-card"><div class="example-photo" aria-hidden="true"><span class="example-badge">FICTIONAL EXAMPLE</span></div>'+
+      '<article class="example-card"><div class="example-photo" aria-hidden="true"><span class="example-badge">DEMO · NOT A REAL LISTING</span></div>'+
       '<div class="example-body"><h3>'+esc(p.title)+'</h3><p>⌖ '+esc(p.area)+' · '+esc(p.type)+' · '+esc(p.beds)+'</p>'+
       '<strong>'+esc(p.rent)+' <small>example pcm</small></strong>'+
       '<a class="button secondary small example-search-link" href="#contact" data-area="'+esc(p.area)+'" data-beds="'+(p.beds.match(/^\d+/)?.[0]||'')+'">Register similar requirements →</a></div></article>'
@@ -291,8 +295,20 @@
     });
     const prospectForm=document.getElementById('prospectForm');
     const prospectKind=document.getElementById('prospectKind');
-    function selectJourney(kind){
+    let activeJourney=null;
+    function selectJourney(kind,{resetOnSwitch=true}={}){
       if(!['tenant','landlord','trades'].includes(kind))kind='tenant';
+      // Keep contact identity, but never carry tenant requirements, a previous
+      // message, or a home-hunter's area into a landlord/trades request.
+      if(activeJourney&&activeJourney!==kind&&resetOnSwitch){
+        for(const id of ['prospectArea','prospectMessage','prospectMaxRent']){
+          document.getElementById(id).value='';
+        }
+        document.getElementById('prospectBeds').value='';
+        document.getElementById('prospectService').selectedIndex=0;
+        document.getElementById('prospectTrade').selectedIndex=0;
+      }
+      activeJourney=kind;
       prospectKind.value=kind;
       for(const role of ['tenant','landlord','trades']){
         const group=document.getElementById(role+'Fields');
@@ -306,6 +322,17 @@
         trades:'Which area do you cover?'
       }[kind];
     }
+    function registerSearchRequirements(){
+      selectJourney('tenant');
+      document.getElementById('prospectArea').value=searchBox.value.trim();
+      document.getElementById('prospectBeds').value=bedsFilter.value;
+      const maxPence=Number(rentFilter.value||0);
+      document.getElementById('prospectMaxRent').value=
+        Number.isFinite(maxPence)&&maxPence>0?String(maxPence/100):'';
+    }
+    empty.addEventListener('click',event=>{
+      if(event.target.closest('#registerRequirements'))registerSearchRequirements();
+    });
     prospectKind.addEventListener('change',()=>selectJourney(prospectKind.value));
     selectJourney(prospectKind.value);
     async function formSend(form,url,payload,resultId,buttonId,successMessage){
@@ -336,6 +363,32 @@
     if(['prospective_tenant','tenant','landlord','trades'].includes(requestedNewsletter)){
       document.getElementById('newsletterAudience').value=requestedNewsletter;
     }
+    async function loadPublicSiteInfo(){
+      try{
+        const response=await fetch('/api/public-site',{cache:'no-store'});
+        if(!response.ok) return;
+        const data=await response.json();
+        function populate(id,value,link){
+          if(typeof value!=='string'||!value.trim())return;
+          const holder=document.getElementById(id);
+          holder.textContent='';
+          if(link){
+            const a=document.createElement('a');
+            a.href=link;
+            a.textContent=value;
+            holder.appendChild(a);
+          }else holder.textContent=value;
+        }
+        populate('siteEmail',data.contact_email,data.contact_email?'mailto:'+data.contact_email:null);
+        populate('sitePhone',data.contact_phone,data.contact_phone?'tel:'+data.contact_phone.replace(/[^+0-9]/g,''):null);
+        if(Array.isArray(data.areas_served)&&data.areas_served.length)
+          populate('siteAreas',data.areas_served.join(', '));
+        if(data.privacy_url&&
+          (data.privacy_url.startsWith('https://')||data.privacy_url.startsWith('/privacy')))
+          populate('sitePrivacy','Read our privacy notice',data.privacy_url);
+      }catch(error){/* Fallbacks remain clearly unpublished. */}
+    }
+    loadPublicSiteInfo();
     const newsletterForm=document.getElementById('newsletterForm');
     newsletterForm.addEventListener('submit',async event=>{
       event.preventDefault();
