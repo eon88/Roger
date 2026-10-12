@@ -36,7 +36,7 @@
   <div class="site-shell">
     <header class="topbar">
       <div class="site-width topbar-inner">
-        <a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a>
+        <a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span><span data-agency-name>roger</span><span class="brand-sub" data-agency-subtitle>LETTINGS</span></span></a>
         <nav class="nav" id="siteNav" aria-label="Main navigation">
           <a href="#homes">Properties to rent</a><a href="#services">For landlords</a><a href="#work-with-us">Work with us</a><a href="#contact">Start here</a>
         </nav>
@@ -189,7 +189,7 @@
 
     <footer class="footer">
       <div class="site-width">
-        <div class="footer-inner"><div><a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a><p>Homes to rent and rental property services, brought together in one place.</p></div>
+        <div class="footer-inner"><div><a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span><span data-agency-name>roger</span><span class="brand-sub" data-agency-subtitle>LETTINGS</span></span></a><p>Homes to rent and rental property services, brought together in one place.</p></div>
         <nav class="footer-links" aria-label="Footer navigation"><a href="#homes">Properties</a><a href="#services">Landlords</a><a href="#newsletter">Newsletter</a><a href="/for-agents">For letting agents</a><a href="#contact">Start here</a><a href="/signin">Portal sign in</a></nav></div>
         <div class="footer-site-info" aria-label="Agency information">
           <div><strong>Contact</strong><span id="siteEmail">Contact email to be confirmed</span><span id="sitePhone">Telephone to be confirmed</span></div>
@@ -223,6 +223,22 @@
 
   <button class="tt-top" aria-label="Back to top" title="Back to top">↑</button>
   <script>
+    // Individual agencies have their own public brand and data installation.
+    // Only textContent is used, never innerHTML, for untrusted display names.
+    async function applyAgencyBrand(){
+      try{
+        const response=await fetch('/api/agency-info',{cache:'no-store'});
+        if(!response.ok)return;
+        const data=await response.json();
+        if(!data.saas||typeof data.name!=='string'||!data.name.trim())return;
+        document.querySelectorAll('[data-agency-name]').forEach(el=>el.textContent=data.name);
+        document.querySelectorAll('[data-agency-subtitle]').forEach(el=>el.textContent='POWERED BY ROGER');
+        document.querySelectorAll('a.brand').forEach(el=>el.setAttribute('aria-label',data.name+' home'));
+        document.title=data.name+' | Homes to Rent and Property Management';
+      }catch(error){/* Safe branded default when offline. */}
+    }
+    applyAgencyBrand();
+
     const state={properties:[],selected:null};
     const cards=document.getElementById('cards');
     const empty=document.getElementById('empty');
