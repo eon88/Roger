@@ -4202,7 +4202,7 @@ class H(SimpleHTTPRequestHandler):
                 or role not in party.get("roles", [])
                 or party.get("account_id") or not email
                 or email != str(party.get("email") or "").strip().lower()
-                or not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email)
+                or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
                 or len(email) > 254):
             return self._json({"error": "select an unlinked active Party, its verified email and a valid property"}, 409)
         if role in ("tenant", "landlord") and not self.has_party_link(prop, role, {pid}):
