@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign in | Stage</title>
+<title>Roger | Sign in</title>
 <link rel="stylesheet" href="/dash.css">
 </head>
 <body>
 <div class="shell" style="max-width:460px;padding-top:8vh">
   <header class="header" style="border:none;margin-bottom:8px">
-    <div class="brand"><h1>Stage portal</h1><span class="who">private — accounts are issued by the agency</span></div>
+    <div class="brand"><h1 id="agencyLoginTitle">Roger portal</h1><span class="who">private — accounts are issued by the agency</span></div>
     <nav class="tabs"><a href="/">Lettings site</a></nav>
   </header>
   <main class="card">
@@ -21,6 +21,18 @@
   </main>
 </div>
 <script>
+(async()=>{
+  try{
+    const response=await fetch('/api/agency-info',{cache:'no-store'});
+    if(!response.ok)return;
+    const info=await response.json();
+    if(info.saas&&typeof info.name==='string'&&info.name.trim()){
+      document.getElementById('agencyLoginTitle').textContent=info.name+' portal';
+      document.title='Sign in | '+info.name;
+    }
+  }catch(error){/* Keep safe default. */}
+})();
+
 const LANDING = {agent:"/agent", dev:"/agent", tenant:"/tenant", landlord:"/landlord", trades:"/trades"};
 async function login(){
   const b=document.getElementById('go'); b.disabled=true; b.textContent='Checking…';

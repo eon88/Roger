@@ -1,0 +1,106 @@
+name: Roger SaaS isolated agency pilot
+
+on:
+  pull_request:
+    paths:
+      - "ops/saas/**"
+      - "tests/test_saas_provision.py"
+      - "tests/saas_two_agency_integration.py"
+      - "stage-clone/docker-entrypoint.sh"
+      - "stage-clone/serve.py"
+      - "Dockerfile"
+      - "migrations/**"
+      - ".github/workflows/saas-two-agency-pilot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-agencies:
+    name: Two independent agency stacks (synthetic data)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests for safe provisioning
+        run: python3 -m unittest discover -s tests -p 'test_saas_provision.py' -v
+
+      - name: Build app test revision
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          short="${GITHUB_SHA:0:12}"
+          docker build -t "roger-saas:$short" .
+          echo "ROGER_TEST_IMAGE=roger-saas:$short" >> "$GITHUB_ENV"
+
+      - name: Generate two fresh private stacks and start them
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          root="$RUNNER_TEMP/roger-saas-acceptance"
+          install -d -m 700 "$root"
+          echo "ROGER_SAAS_TEST_ROOT=$root" >> "$GITHUB_ENV"
+          python3 ops/saas/provision_agency.py \
+            --slug oaklettings --name "Oak Lettings" \
+            --admin-email oak@example.test --port 29101 \
+            --base-domain agents.example.com --image "$ROGER_TEST_IMAGE" \
+            --output "$root/oaklettings"
+          python3 ops/saas/provision_agency.py \
+            --slug birchlettings --name "Birch Lettings" \
+            --admin-email birch@example.test --port 29102 \
+            --base-domain agents.example.com --image "$ROGER_TEST_IMAGE" \
+            --output "$root/birchlettings"
+          docker compose -f "$root/oaklettings/compose.yaml" --env-file "$root/oaklettings/.env" \
+            up -d --wait --wait-timeout 180
+          docker compose -f "$root/birchlettings/compose.yaml" --env-file "$root/birchlettings/.env" \
+            up -d --wait --wait-timeout 180
+
+      - name: Prove no cross-agency data or sessions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tests/saas_two_agency_integration.py \
+            "$ROGER_SAAS_TEST_ROOT/oaklettings" "$ROGER_SAAS_TEST_ROOT/birchlettings"
+
+      - name: Refuse app pointed at wrong agency
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          root="$ROGER_SAAS_TEST_ROOT/oaklettings"
+          if docker compose -f "$root/compose.yaml" --env-file "$root/.env" \
+                run --rm --no-deps -e ROGER_AGENCY_ID=wrong-agency app; then
+            echo "::error::Wrong-agency stack unexpectedly started!"
+            exit 1
+          fi
+          echo "PASS: wrong-agency app startup was refused."
+
+      - name: Diagnose isolated startup failure (no passwords)
+        if: failure()
+        shell: bash
+        run: |
+          for agency in oaklettings birchlettings; do
+            echo "=== $agency containers ==="
+            docker ps -a --filter "name=roger-$agency-" \
+              --format '{{.Names}} {{.Status}}'
+            echo "=== $agency app startup (only last 60 lines) ==="
+            docker logs "roger-$agency-app-1" --tail 60 2>&1 || true
+            echo "=== $agency database startup (only last 30 lines) ==="
+            docker logs "roger-$agency-postgres-1" --tail 30 2>&1 || true
+          done
+
+      - name: Stop and remove only isolated CI containers and volumes
+        if: always()
+        shell: bash
+        run: |
+          root="$RUNNER_TEMP/roger-saas-acceptance"
+          for agency in oaklettings birchlettings; do
+            if [[ -f "$root/$agency/compose.yaml" ]]; then
+              docker compose -f "$root/$agency/compose.yaml" --env-file "$root/$agency/.env" \
+                down -v --remove-orphans || true
+            fi
+          done
+          if [[ -d "$root" ]]; then rm -rf -- "$root"; fi

@@ -119,6 +119,39 @@ class AgencyBoundaryError(RuntimeError):
     """A shared single-agency snapshot contains unknown/mixed agency records."""
 
 
+# These sensitive record sets must never contain records from other agencies.
+# SaaS stacks use a dedicated database and this second, logical boundary.
+AGENCY_RECORD_COLLECTIONS = (
+    "parties", "properties", "tenancies", "cases", "jobs",
+    "documents", "registrations", "approvals", "appointments",
+    "management_agreements", "rent_ledger_entries", "landlord_statements",
+    "notifications", "tasks", "compliance_records", "property_submissions",
+    "invitations", "audit_log", "newsletter_subscriptions",
+)
+
+
+def bind_new_agency_records(stage):
+    """Stamp records created inside this agency's already-isolated database.
+
+    The HTTP handler never accepts client-chosen agency ownership. Loading an
+    existing mixed snapshot fails before any record is modified; an explicit
+    wrong agency_id is rejected rather than reassigned.
+    """
+    if os.environ.get("ROGER_SAAS_MODE") != "1":
+        return
+    agency_id = os.environ.get("ROGER_AGENCY_ID")
+    if not agency_id or stage.get("agency_id") != agency_id:
+        raise AgencyBoundaryError("agency ID missing or incorrect during write")
+    for collection in AGENCY_RECORD_COLLECTIONS:
+        for record in stage.get(collection, []):
+            if not isinstance(record, dict):
+                raise AgencyBoundaryError("malformed agency record in " + collection)
+            present = record.get("agency_id")
+            if present is not None and present != agency_id:
+                raise AgencyBoundaryError("foreign agency record in " + collection)
+            record["agency_id"] = agency_id
+
+
 def require_single_agency(stage):
     """Fail CLOSED rather than ever serve a mixed-agency snapshot.
 
@@ -134,11 +167,7 @@ def require_single_agency(stage):
         raise AgencyBoundaryError("configured agency and stored snapshot disagree")
     if root is not None and (not isinstance(root, str) or not root.strip()):
         raise AgencyBoundaryError("invalid single-agency marker")
-    collections = ("parties", "properties", "tenancies", "cases", "jobs",
-                   "documents", "registrations", "approvals", "appointments",
-                   "management_agreements", "rent_ledger_entries",
-                   "landlord_statements", "notifications", "tasks",
-                   "compliance_records", "property_submissions")
+    collections = AGENCY_RECORD_COLLECTIONS
     for name in collections:
         entries = stage.get(name, [])
         if not isinstance(entries, list):
@@ -210,8 +239,10 @@ def save_users(data):
     atomic_json_write(USERS_FILE, data)
 
 def save_stage(data):
-    # Never persist a newly contaminated/mixed agency snapshot, even through
-    # an offline script or direct test fixture bypassing the HTTP handlers.
+    # An isolated SaaS instance knows its agency from its trusted environment;
+    # safely tag only newly created records, never accept a foreign tag.
+    bind_new_agency_records(data)
+    # Never persist a contaminated/mixed agency snapshot.
     require_single_agency(data)
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") != "postgres":
         atomic_json_write(STAGE_FILE, data)
@@ -257,7 +288,7 @@ class H(SimpleHTTPRequestHandler):
 
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/signin", "/for-agents", "/register/landlord", "/register/trades",
-              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
+              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami", "/api/agency-info"}
     PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo"}
 
     def parse_cookies(self):
@@ -415,6 +446,11 @@ class H(SimpleHTTPRequestHandler):
         if ("%" in path or "\\" in path or "//" in path
                 or any(x in (".", "..") for x in path.split("/"))):
             return self.send_error(404)
+        if path == "/api/agency-info":
+            saas_mode = os.environ.get("ROGER_SAAS_MODE") == "1"
+            name = os.environ.get("ROGER_AGENCY_NAME", "").strip() if saas_mode else "Roger Lettings"
+            return self._json({"name": name[:100] or "Roger Lettings",
+                               "saas": saas_mode, "powered_by": "Roger"})
         if path == "/login":
             return self.serve_file("login.html")
         if path == "/logout":
