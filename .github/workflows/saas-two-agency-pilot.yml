@@ -74,11 +74,9 @@ jobs:
           set -Eeuo pipefail
           root="$ROGER_SAAS_TEST_ROOT/oaklettings"
           docker compose -f "$root/compose.yaml" --env-file "$root/.env" exec -T app sh -eu -c '
-            install -d -m 700 /data/recovery-ci-only
-            python /app/agency_recovery.py --agency oaklettings --output /data/recovery-ci-only/one-time.txt
-            test "$(stat -c %a /data/recovery-ci-only/one-time.txt)" = 600
-            rm -f /data/recovery-ci-only/one-time.txt
-            rmdir /data/recovery-ci-only
+            python /app/agency_recovery.py --agency oaklettings --output /run/roger-recovery/one-time.txt
+            test "$(stat -c %a /run/roger-recovery/one-time.txt)" = 600
+            rm -f /run/roger-recovery/one-time.txt
           '
 
       - name: Refuse app pointed at wrong agency
