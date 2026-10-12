@@ -113,17 +113,44 @@ folder and **without touching live Roger**:
 
     docker compose -f /srv/roger-agencies/oaklettings/compose.yaml \
       --env-file /srv/roger-agencies/oaklettings/.env \
-      exec -T app mkdir -m 700 /data/private-recovery
-    docker compose -f /srv/roger-agencies/oaklettings/compose.yaml \
-      --env-file /srv/roger-agencies/oaklettings/.env \
       exec -T app python /app/agency_recovery.py \
-        --agency oaklettings --output /data/private-recovery/admin-once.txt
+        --agency oaklettings --output /run/roger-recovery/admin-once.txt
 
 This is a sensitive manual operator procedure, not a public password-reset
 endpoint or an automated email workflow. The operator must securely retrieve
 the file, hand the temporary password to the verified owner, remove the file
 and record the support action. No paid customer should depend on this without
 a reviewed support and identity-check policy.
+
+## Security review follow-up: invitation onboarding
+
+The previous invitation URL pointed to a missing page. In the revised SaaS
+pilot, the agent must first create and verify a Party and its relationship to
+an existing agency property. The Party must have the appropriate role,
+matching verified email, and no existing account. Tradespeople also need an
+approved registration and documented credential check.
+
+Only then may an authorised agent issue a seven-day invitation with
+`POST /api/invitation` using `property_id`, `party_id`, `role`, and
+`email`. Roger returns a URL of the form `/invite#token=...`, where the
+token is carried in the browser fragment and only a hash is stored in the
+database. The invitee creates a unique account with a strong password via
+the restricted landing page. User and Party changes and token consumption
+are saved in one PostgreSQL transaction. No property rights are granted by
+the invitation itself: existing Party-to-property relationships determine
+the account's permitted records.
+
+Invitation delivery is manual. The agent must independently verify the
+recipient and transfer the bearer link securely; there is NO outbound invite
+email or independent email confirmation yet. Do not describe this as a
+fully automated sign-up or account-verification service.
+
+The recovery output directory is a separate Docker tmpfs mount at
+`/run/roger-recovery` (RAM-backed, not a persistent data volume). The operator
+must securely retrieve and immediately remove the one-time handoff file. The
+manual recovery process must not be exposed through HTTP. Backups must never
+include recovery secrets; host and database restore capability still needs
+its own staging verification.
 
 ## What is still required before paid launch
 
