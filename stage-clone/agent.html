@@ -833,8 +833,31 @@ function renderProspects(){
  const landlords=(stage.registrations||[]).filter(r=>r.role==='landlord');
  const trades=(stage.registrations||[]).filter(r=>r.role==='trades');
  document.getElementById('view-prospects').innerHTML='<div class="move">acquisition pipelines</div><p class="fineprint">Record progress as people move from first contact toward a tenancy, management agreement or approved trade. Registration approval remains a separate decision.</p>'+
- renderProspectGroup('tenant','Tenant prospects',tenants)+renderProspectGroup('landlord','Landlord prospects',landlords)+renderProspectGroup('trades','Trades applicants',trades);
+ renderProspectGroup('tenant','Tenant prospects',tenants)+renderProspectGroup('landlord','Landlord prospects',landlords)+renderProspectGroup('trades','Trades applicants',trades)+
+  renderNewsletterProspects();
 }
+function renderNewsletterProspects(){
+  const subs=stage.newsletter_subscriptions||[];
+  const names={prospective_tenant:'Renter Update',tenant:'Tenant Update',
+    landlord:'Landlord Brief',trades:'Contractor Bulletin'};
+  return '<section><h2>Newsletter interests <span class="badge">'+subs.length+'</span></h2>'+
+    '<p class="fineprint">Separate marketing consent is recorded. Every signup is PENDING EMAIL CONFIRMATION; Roger is not yet sending newsletters. Never export pending entries as confirmed subscriptions.</p>'+
+    '<div class="grid2">'+(subs.length?subs.slice().reverse().map(n=>'<div class="card">'+
+      '<div class="cardtop"><h3>'+esc(n.name||'Subscriber')+'</h3><span class="badge">'+esc(n.status||'pending_confirmation').replace(/_/g,' ')+'</span></div>'+
+      '<div class="meta">'+esc(n.email)+' · '+esc(names[n.audience]||n.audience)+' · '+when(n.consented_at||n.created_at)+'</div>'+
+      (n.status==='unsubscribed'?'<p class="fineprint">Marketing suppressed.</p>':
+       '<div class="actions"><button class="btn danger" data-id="'+esc(n.id)+'" onclick="unsubscribeNewsletter(this)">Unsubscribe / suppress</button></div>')+
+      '</div>').join(''):'<div class="empty">No newsletter interest requests yet.</div>')+'</div></section>';
+}
+async function unsubscribeNewsletter(btn){
+  const answer=prompt('Why are you suppressing this newsletter address? (for your own records)') ;
+  if(answer===null)return;
+  await busy(btn,async()=>{try{
+    await post('/api/newsletter-action',{action:'unsubscribe',id:btn.dataset.id});
+    toast('Marketing address suppressed.');load();
+  }catch(e){}});
+}
+
 async function saveProspectStage(btn){
  const select=btn.closest('.card')?.querySelector('select');if(!select)return;
  await busy(btn,async()=>{try{await post('/api/prospect-action',{kind:btn.dataset.kind,id:btn.dataset.id,stage:select.value});toast('Prospect stage updated and recorded in the audit history.');load();}catch(e){}});
