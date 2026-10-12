@@ -98,6 +98,33 @@ This does not yet offer self-service password recovery, invitations, MFA or
 email-based provisioning. Losing the admin password requires a carefully
 controlled operator recovery procedure, not ad hoc database modification.
 
+## Operator-assisted administrator recovery (development only)
+
+Only after the agency owner has been independently verified, a trusted Roger
+operator with privileged access to THAT agency app container may generate one
+new temporary password. The process verifies the selected agency against the
+database, rotates the administrator's scrypt secret, revokes all existing admin
+sessions and requires first-login rotation again. Passwords are **never printed
+to the Docker or CI logs** and are written only to a new 0600 file within an
+existing operator-owned 0700 directory. Do not keep that file after handoff.
+
+Illustration from the agency's own secure host, with a known agency project
+folder and **without touching live Roger**:
+
+    docker compose -f /srv/roger-agencies/oaklettings/compose.yaml \
+      --env-file /srv/roger-agencies/oaklettings/.env \
+      exec -T app mkdir -m 700 /data/private-recovery
+    docker compose -f /srv/roger-agencies/oaklettings/compose.yaml \
+      --env-file /srv/roger-agencies/oaklettings/.env \
+      exec -T app python /app/agency_recovery.py \
+        --agency oaklettings --output /data/private-recovery/admin-once.txt
+
+This is a sensitive manual operator procedure, not a public password-reset
+endpoint or an automated email workflow. The operator must securely retrieve
+the file, hand the temporary password to the verified owner, remove the file
+and record the support action. No paid customer should depend on this without
+a reviewed support and identity-check policy.
+
 ## What is still required before paid launch
 
 - Secure invitation, forced first-login password rotation, password recovery,

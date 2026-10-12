@@ -8,6 +8,8 @@ on:
       - "tests/saas_two_agency_integration.py"
       - "stage-clone/docker-entrypoint.sh"
       - "stage-clone/serve.py"
+      - "stage-clone/agency_recovery.py"
+      - "tests/test_saas_password_recovery.py"
       - "Dockerfile"
       - "migrations/**"
       - ".github/workflows/saas-two-agency-pilot.yml"
@@ -65,6 +67,19 @@ jobs:
           set -Eeuo pipefail
           python3 tests/saas_two_agency_integration.py \
             "$ROGER_SAAS_TEST_ROOT/oaklettings" "$ROGER_SAAS_TEST_ROOT/birchlettings"
+
+      - name: Rehearse agency-bound operator password recovery (synthetic only)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          root="$ROGER_SAAS_TEST_ROOT/oaklettings"
+          docker compose -f "$root/compose.yaml" --env-file "$root/.env" exec -T app sh -eu -c '
+            install -d -m 700 /data/recovery-ci-only
+            python /app/agency_recovery.py --agency oaklettings --output /data/recovery-ci-only/one-time.txt
+            test "$(stat -c %a /data/recovery-ci-only/one-time.txt)" = 600
+            rm -f /data/recovery-ci-only/one-time.txt
+            rmdir /data/recovery-ci-only
+          '
 
       - name: Refuse app pointed at wrong agency
         shell: bash
