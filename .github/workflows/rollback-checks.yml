@@ -24,4 +24,48 @@ jobs:
           set -euo pipefail
           bash -n ops/deploy-roger-mvp.sh
           bash -n ops/rollback-roger-mvp.sh
-          echo "PASS: both production scripts parse correctly."
+          bash -n ops/rebuild-roger-rollback-image.sh
+          echo "PASS: all three production scripts parse correctly."
+
+  recovery-smoke:
+    name: Isolated Docker image recovery (no VPS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build an isolated fake Roger and reconstruct the previous image
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fixture="$RUNNER_TEMP/roger-recovery-fixture"
+          mkdir -p "$fixture/stage-clone"
+          printf '%s\n' 'print("Synthetic app for isolated rollback CI.")' > "$fixture/stage-clone/serve.py"
+          printf '%s\n' 'print("synthetic")' > "$fixture/stage-clone/make_users.py"
+          printf '%s\n' '<h1>Test only</h1>' > "$fixture/stage-clone/index.html"
+          printf '%s\n' '<h1>Sign in</h1>' > "$fixture/stage-clone/login.html"
+          printf '%s\n' '<h1>Agent</h1>' > "$fixture/stage-clone/agent.html"
+          printf '%s\n' '{"agency_id":null,"properties":[]}' > "$fixture/stage-clone/stage.json"
+          cat > "$fixture/stage-clone/docker-entrypoint.sh" <<'SH'
+          #!/bin/sh
+          exec sleep 120
+          SH
+          cat > "$fixture/Dockerfile" <<'DOCKER'
+          FROM python:3.12-slim
+          WORKDIR /app
+          COPY stage-clone/ /app/
+          RUN cp /app/stage.json /app/stage.seed.json && chmod +x /app/docker-entrypoint.sh && python -m pip install --no-cache-dir "psycopg[binary]>=3.2,<4"
+          ENV DATA_DIR=/data
+          VOLUME ["/data"]
+          ENTRYPOINT ["/app/docker-entrypoint.sh"]
+          DOCKER
+          docker build -t roger-recovery-fixture "$fixture"
+          docker run -d --name roger -e ROGER_STORAGE_BACKEND=postgres roger-recovery-fixture
+          trap 'docker rm -f roger >/dev/null 2>&1 || true' EXIT
+          test "$(docker inspect roger --format '{{.State.Running}}')" = true
+          source_dir="/root/roger-backups/gha-deploy-20261012T070000Z-aaaaaaaaaaaa/previous-app"
+          sudo bash ops/rebuild-roger-rollback-image.sh \
+            roger-rollback:aaaaaaaaaaaa "$fixture/Dockerfile" "$source_dir"
+          docker image inspect roger-rollback:aaaaaaaaaaaa >/dev/null
+          docker run --rm --entrypoint python roger-rollback:aaaaaaaaaaaa \
+            -c 'import psycopg; print("PASS previous source rebuilt into runnable rollback image")'
+          echo "PASS isolated previous-image recovery; no production deployment."
