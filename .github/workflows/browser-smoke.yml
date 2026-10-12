@@ -120,7 +120,7 @@ jobs:
                 {timeout: 12000}
               );
               assert.equal(await publicPage.locator('#cards article').count(), 0);
-              assert.match(await publicPage.locator('#empty').innerText(), /no homes advertised right now/i);
+              assert.match(await publicPage.locator('#empty').innerText(), /no homes advertised at present/i);
               console.log('PASS public homepage: zero fake listings and honest empty state');
               await publicContext.close();
 
