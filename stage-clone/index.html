@@ -332,6 +332,10 @@
       },'prospectResult','prospectSubmit',
       "Thank you — your enquiry has been recorded. Our team will review the next step.");
     });
+    const requestedNewsletter=new URLSearchParams(window.location.search).get('newsletter');
+    if(['prospective_tenant','tenant','landlord','trades'].includes(requestedNewsletter)){
+      document.getElementById('newsletterAudience').value=requestedNewsletter;
+    }
     const newsletterForm=document.getElementById('newsletterForm');
     newsletterForm.addEventListener('submit',async event=>{
       event.preventDefault();
