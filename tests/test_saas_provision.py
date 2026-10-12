@@ -41,6 +41,7 @@ class AgencyProvisionTests(unittest.TestCase):
             self.assertIn("internal: true", compose)
             self.assertNotIn("5432:5432", compose)
             self.assertIn("agency_files:/data", compose)
+            self.assertIn("/run/roger-recovery:mode=0700,size=1048576", compose)
             self.assertNotIn("roster", compose)
             self.assertNotIn("roger_data:/data", compose)
             self.assertEqual(root.stat().st_mode & 0o077, 0)
