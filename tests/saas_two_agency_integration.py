@@ -58,6 +58,11 @@ def agency_client(root):
     status, stage, _ = request(base, "/api/stage", cookie=cookie)
     assert status == 200 and stage.get("agency_id") == m["agency_id"], (status, stage)
     assert not stage["properties"] and not stage["cases"] and not stage["registrations"]
+    code, info, _ = request(base, "/api/agency-info")
+    assert code == 200 and info.get("name") == json.loads(
+        (root / "agency.json").read_text()
+    )["name"], (code, info)
+    assert info.get("saas") is True
     return m, base, cookie
 
 
