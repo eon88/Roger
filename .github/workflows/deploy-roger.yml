@@ -2,6 +2,15 @@ name: Deploy Roger (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      release_branch:
+        description: "Which tested Roger version should be deployed to the LIVE site?"
+        required: true
+        type: choice
+        default: feature/roger-fast-mvp-20261011
+        options:
+          - feature/roger-fast-mvp-20261011
+          - feature/roger-public-lettings-redesign-20261012
 
 permissions:
   contents: read
@@ -24,10 +33,24 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Checkout Roger MVP source branch
+      - name: Validate chosen release branch
+        shell: bash
+        env:
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_BRANCH" in
+            feature/roger-fast-mvp-20261011|feature/roger-public-lettings-redesign-20261012)
+              echo "Selected reviewed application branch: $RELEASE_BRANCH" ;;
+            *)
+              echo "::error::This application branch is not approved for manual deployment."
+              exit 1 ;;
+          esac
+
+      - name: Checkout selected Roger application source
         uses: actions/checkout@v4
         with:
-          ref: feature/roger-fast-mvp-20261011
+          ref: ${{ inputs.release_branch }}
           path: application
           persist-credentials: false
 
@@ -132,6 +155,7 @@ jobs:
         if: success()
         run: |
           echo "### Roger deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Selected release branch: \`${{ inputs.release_branch }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "Source commit: \`${{ steps.archive.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "Website: https://agency.lifecompass.shop" >> "$GITHUB_STEP_SUMMARY"
           echo "Database and files were backed up on the VPS before switching the app." >> "$GITHUB_STEP_SUMMARY"
