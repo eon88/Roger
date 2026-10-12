@@ -125,6 +125,12 @@ async function run(){
     assert.match(await page.locator('#exampleCards').innerText(),/FICTIONAL EXAMPLE/);
     console.log('PASS six visibly fictional sample listings, separate from real property API');
 
+    await page.locator('#exampleCards .example-search-link').first().click();
+    assert.equal(await page.locator('#prospectKind').inputValue(),'tenant');
+    assert.equal(await page.locator('#prospectArea').inputValue(),'Leeds');
+    assert.equal(await page.locator('#prospectBeds').inputValue(),'2');
+    console.log('PASS fictional home guides an honest requirement enquiry, never a booking');
+
     // One guided enquiry form creates three distinct backend lead types.
     await page.locator('#prospectName').fill('Pilot Home Hunter');
     await page.locator('#prospectEmail').fill('renter@example.test');
