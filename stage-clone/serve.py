@@ -287,9 +287,9 @@ class H(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=ROOT, **kw)
 
     # ---------- auth plumbing ----------
-    PUBLIC_GET = {"/", "/login", "/signin", "/for-agents", "/register/landlord", "/register/trades",
+    PUBLIC_GET = {"/", "/login", "/signin", "/invite", "/for-agents", "/register/landlord", "/register/trades",
               "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami", "/api/agency-info"}
-    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo"}
+    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo", "/api/invite/validate", "/api/invite/accept"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -509,6 +509,8 @@ class H(SimpleHTTPRequestHandler):
                                "saas": saas_mode, "powered_by": "Roger"})
         if path == "/login":
             return self.serve_file("login.html")
+        if path == "/invite":
+            return self.serve_file("invite.html")
         if path == "/change-password":
             if not self.require():
                 return
@@ -983,6 +985,8 @@ class H(SimpleHTTPRequestHandler):
             self.user = u
         limits = {
             "/login": 8 * 1024,
+            "/api/invite/validate": 4 * 1024,
+            "/api/invite/accept": 8 * 1024,
             "/api/change-password": 8 * 1024,
             "/api/document": 8 * 1024 * 1024,
             "/api/tenant/issue": 32 * 1024 * 1024,
@@ -1052,6 +1056,8 @@ class H(SimpleHTTPRequestHandler):
             "/api/prospect-intake": self.handle_prospect_intake,
             "/api/newsletter": self.handle_newsletter_signup,
             "/api/agent-demo": self.handle_agent_demo,
+            "/api/invite/validate": self.handle_invite_validation,
+            "/api/invite/accept": self.handle_invite_acceptance,
             "/api/newsletter-action": self.handle_newsletter_action,
             "/api/appointment": self.handle_appointment,
             "/api/appointment-action": self.handle_appointment_action,
@@ -4133,82 +4139,184 @@ class H(SimpleHTTPRequestHandler):
         self._json({"success": True})
 
 
-    # ---------- invitations ----------
+    # ---------- agency-bound invitation onboarding ----------
+    @staticmethod
+    def invitation_lookup(stage, token):
+        if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{30,128}", token):
+            return None
+        token_digest = hashlib.sha256(token.encode()).hexdigest()
+        for invitation in stage.get("invitations", []):
+            stored = invitation.get("token_hash")
+            if isinstance(stored, str) and hmac.compare_digest(stored, token_digest):
+                return invitation
+            # Recognise legacy tokens only for their explicit revocation path.
+        return None
+
+    @staticmethod
+    def invitation_active(inv):
+        if not inv or inv.get("status") != "pending":
+            return False
+        try:
+            expiry = datetime.fromisoformat(str(inv["expires_at"]).replace("Z", "+00:00"))
+            return expiry.tzinfo is not None and expiry > datetime.now(timezone.utc)
+        except (ValueError, TypeError, KeyError):
+            return False
+
+    def invitation_party(self, stage, inv):
+        role = inv.get("role")
+        party = next((p for p in stage.get("parties", [])
+                      if p.get("id") == inv.get("party_id")
+                      and p.get("status") == "active"
+                      and role in p.get("roles", [])
+                      and not p.get("account_id")), None)
+        prop = self.find_prop(stage, inv.get("property_id"))
+        if not party or not prop or not inv.get("email") or (
+                party.get("email", "").strip().casefold() != inv["email"].casefold()):
+            return None
+        if role in ("tenant", "landlord") and not self.has_party_link(prop, role, {party["id"]}):
+            return None
+        if role == "trades":
+            if not any(reg.get("party_id") == party["id"]
+                       and reg.get("role") == "trades"
+                       and reg.get("status") == "approved"
+                       and reg.get("credentials_checked_at")
+                       for reg in stage.get("registrations", [])):
+                return None
+        return party
+
     def handle_invitation(self, data):
-        """Agent issues a secure token a prospect/tenant uses to join the portal.
-        Roles: agent only."""
+        """Agent invites an existing, checked and unlinked Party. No public auto-approval."""
+        if os.environ.get("ROGER_SAAS_MODE") != "1":
+            return self._json({"error": "invitation onboarding is available only for isolated agency pilots"}, 409)
         stage = load_stage()
-        prop = self.find_prop(stage, data.get("property_id"))
-        if not prop:
-            return self._json({"error": "property not found"}, 404)
-        role = str(data.get("role", "tenant"))[:20]
+        role = data.get("role")
         if role not in ("tenant", "landlord", "trades"):
             return self._json({"error": "role must be tenant|landlord|trades"}, 400)
-        token = secrets.token_urlsafe(24)
-        expires = datetime.now(timezone.utc) + timedelta(days=7)
-        inv = {
-            "token": token,
-            "property_id": prop["id"],
-            "role": role,
-            "email": str(data.get("email", ""))[:254],
-            "name": str(data.get("name", ""))[:100],
-            "status": "pending",
-            "created_by": (self.user or {}).get("display_name", "Agent"),
-            "created_at": now(),
-            "expires_at": expires.isoformat().replace("+00:00", "Z"),
-            "used_at": None,
-            "revoked_at": None,
-        }
+        pid = data.get("party_id")
+        prop = self.find_prop(stage, data.get("property_id"))
+        party = next((p for p in stage.get("parties", []) if p.get("id") == pid), None)
+        email = str(data.get("email", "")).strip().lower()
+        if (not party or not prop or party.get("status") != "active"
+                or role not in party.get("roles", [])
+                or party.get("account_id") or not email
+                or email != str(party.get("email") or "").strip().lower()
+                or not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email)
+                or len(email) > 254):
+            return self._json({"error": "select an unlinked active Party, its verified email and a valid property"}, 409)
+        if role in ("tenant", "landlord") and not self.has_party_link(prop, role, {pid}):
+            return self._json({"error": "the Party must already be linked to that property"}, 409)
+        if role == "trades" and not any(r.get("party_id") == pid and r.get("role") == "trades"
+                and r.get("status") == "approved" and r.get("credentials_checked_at")
+                for r in stage.get("registrations", [])):
+            return self._json({"error": "tradesperson must be verified and approved first"}, 409)
+        if any(i.get("party_id") == pid and i.get("status") == "pending"
+               and self.invitation_active(i) for i in stage.get("invitations", [])):
+            return self._json({"error": "revoke the existing pending invitation first"}, 409)
+        token = secrets.token_urlsafe(32)
+        expiry = datetime.now(timezone.utc) + timedelta(days=7)
+        inv = {"token_hash": hashlib.sha256(token.encode()).hexdigest(),
+               "property_id": prop["id"], "party_id": pid, "role": role,
+               "email": email, "status": "pending",
+               "created_by": (self.user or {}).get("username", "agent"),
+               "created_at": now(), "expires_at": expiry.isoformat(),
+               "used_at": None, "revoked_at": None}
         stage.setdefault("invitations", []).append(inv)
-        self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
-                           "action": "invitation_created", "target": token[:8],
-                           "note": f"{role} for {prop['id']}"})
+        self.audit(stage, {"actor": inv["created_by"], "action": "invitation_created",
+                           "target": pid, "note": role + " for " + str(prop["id"])})
         save_stage(stage)
-        return self._json({"success": True, "token": token,
-                           "invite_url": f"/invite?token={token}",
-                           "expires_at": inv["expires_at"]})
+        return self._json({"success": True,
+                           "invite_url": "/invite#token=" + token,
+                           "expires_at": inv["expires_at"],
+                           "delivery": "manual-only; verify recipient before sharing"})
 
     def handle_invitation_action(self, data):
-        """use (mark accepted after account creation) or revoke. Roles: agent only."""
+        """Agents can revoke invitations; only redemption can mark one used."""
         stage = load_stage()
-        token = str(data.get("token", ""))[:64]
-        inv = next((i for i in stage.get("invitations", []) if i["token"] == token), None)
+        inv = self.invitation_lookup(stage, data.get("token"))
         if not inv:
             return self._json({"error": "invitation not found"}, 404)
-        action = data.get("action")
-        if action == "use":
-            if inv["status"] != "pending":
-                return self._json({"error": f"invitation already {inv['status']}"}, 409)
-            inv["status"] = "used"
-            inv["used_at"] = now()
-            self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
-                               "action": "invitation_used", "target": token[:8]})
-        elif action == "revoke":
-            inv["status"] = "revoked"
-            inv["revoked_at"] = now()
-            self.audit(stage, {"actor": (self.user or {}).get("display_name", "?"),
-                               "action": "invitation_revoked", "target": token[:8]})
-        else:
-            return self._json({"error": "action must be use|revoke"}, 400)
+        if data.get("action") != "revoke":
+            return self._json({"error": "only revoke is supported here; invitees redeem through /invite"}, 400)
+        if inv.get("status") != "pending":
+            return self._json({"error": "invitation already closed"}, 409)
+        inv["status"] = "revoked"
+        inv["revoked_at"] = now()
+        self.audit(stage, {"actor": (self.user or {}).get("username", "agent"),
+                           "action": "invitation_revoked", "target": str(inv.get("party_id"))})
         save_stage(stage)
-        return self._json({"success": True, "status": inv["status"]})
+        return self._json({"success": True, "status": "revoked"})
 
     def validate_invitation_token(self, token):
-        """Public check used by the invitee's browser before account creation.
-        No session required — the invitee may not have an account yet."""
+        if os.environ.get("ROGER_SAAS_MODE") != "1":
+            return {"valid": False}
         stage = load_stage()
-        inv = next((i for i in stage.get("invitations", []) if i["token"] == token), None)
-        if not inv:
-            return {"valid": False, "reason": "not_found"}
-        if inv["status"] != "pending":
-            return {"valid": False, "reason": f"already_{inv['status']}"}
-        exp = inv.get("expires_at")
-        if exp and datetime.fromisoformat(exp.replace("Z", "+00:00").replace("+00:00+00:00", "+00:00")) < datetime.now(timezone.utc):
-            return {"valid": False, "reason": "expired"}
-        prop = self.find_prop(stage, inv["property_id"]) or {}
-        return {"valid": True, "token": token, "property_id": inv["property_id"],
-                "property_title": prop.get("title"), "role": inv["role"],
-                "email": inv.get("email", ""), "name": inv.get("name", "")}
+        inv = self.invitation_lookup(stage, token)
+        if not self.invitation_active(inv) or not self.invitation_party(stage, inv):
+            return {"valid": False}
+        return {"valid": True, "role": inv["role"],
+                "agency": os.environ.get("ROGER_AGENCY_NAME", "Roger Agency")[:100]}
+
+    def handle_invite_validation(self, data):
+        result = self.validate_invitation_token(data.get("token"))
+        return self._json(result)
+
+    @staticmethod
+    def persist_invite_registration(users, stage):
+        """Two snapshots in ONE PostgreSQL transaction: no half-created accounts."""
+        if os.environ.get("ROGER_SAAS_MODE") != "1" or os.environ.get("ROGER_STORAGE_BACKEND") != "postgres":
+            raise RuntimeError("invite redemption requires an isolated PostgreSQL agency")
+        bind_new_agency_records(stage)
+        require_single_agency(stage)
+        with postgres_connection() as conn:
+            conn.execute(
+                "UPDATE roger_users_snapshot SET payload=%s::jsonb, imported_at=now() WHERE singleton_id=1",
+                (json.dumps(users),))
+            conn.execute(
+                "UPDATE roger_stage_snapshot SET payload=%s::jsonb, imported_at=now() WHERE singleton_id=1",
+                (json.dumps(stage),))
+
+    def handle_invite_acceptance(self, data):
+        if os.environ.get("ROGER_SAAS_MODE") != "1":
+            return self._json({"error": "registration not available on this site"}, 409)
+        stage = load_stage()
+        inv = self.invitation_lookup(stage, data.get("token"))
+        party = self.invitation_party(stage, inv) if self.invitation_active(inv) else None
+        if not party:
+            return self._json({"error": "invitation is invalid, expired or revoked"}, 400)
+        username = data.get("username")
+        password = data.get("password")
+        if (not isinstance(username, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_.-]{4,39}", username)
+                or username in {"admin", "agency-admin", "dev", "root", "agent"}):
+            return self._json({"error": "choose a username of 5-40 lowercase letters, numbers, dots, dashes or underscores"}, 400)
+        if (not isinstance(password, str) or not 14 <= len(password) <= 128
+                or len(password.encode("utf-8")) > 512
+                or password.strip() != password
+                or username in password.casefold()):
+            return self._json({"error": "choose a unique password of 14-128 characters"}, 400)
+        users = load_users()
+        if any(u.get("username", "").casefold() == username.casefold()
+               or u.get("email", "").casefold() == inv["email"].casefold()
+               for u in users.get("users", [])):
+            return self._json({"error": "an account with this username or email already exists; contact the agency"}, 409)
+        account_id = "account-" + secrets.token_hex(16)
+        salt = secrets.token_hex(16)
+        users.setdefault("users", []).append({
+            "username": username, "role": inv["role"],
+            "display_name": party.get("display_name", "Portal user")[:160],
+            "email": inv["email"], "account_id": account_id,
+            "salt": salt, "hash": hashlib.scrypt(password.encode(),
+            salt=bytes.fromhex(salt), n=2**14, r=8, p=1).hex()
+        })
+        party["account_id"] = account_id
+        party["account_linked_at"] = now()
+        inv["status"] = "used"
+        inv["used_at"] = now()
+        inv.pop("token", None)
+        self.audit(stage, {"actor": username, "action": "invitation_redeemed",
+                           "target": party["id"], "note": inv["role"]})
+        self.persist_invite_registration(users, stage)
+        return self._json({"success": True, "login": "/login"})
 
     # ---------- documents ----------
     def get_document(self, doc_id):
@@ -5209,6 +5317,11 @@ class H(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if name == "invite.html":
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
 
