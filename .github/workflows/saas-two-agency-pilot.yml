@@ -78,6 +78,20 @@ jobs:
           fi
           echo "PASS: wrong-agency app startup was refused."
 
+      - name: Diagnose isolated startup failure (no passwords)
+        if: failure()
+        shell: bash
+        run: |
+          for agency in oaklettings birchlettings; do
+            echo "=== $agency containers ==="
+            docker ps -a --filter "name=roger-$agency-" \
+              --format '{{.Names}} {{.Status}}'
+            echo "=== $agency app startup (only last 60 lines) ==="
+            docker logs "roger-$agency-app-1" --tail 60 2>&1 || true
+            echo "=== $agency database startup (only last 30 lines) ==="
+            docker logs "roger-$agency-postgres-1" --tail 30 2>&1 || true
+          done
+
       - name: Stop and remove only isolated CI containers and volumes
         if: always()
         shell: bash
