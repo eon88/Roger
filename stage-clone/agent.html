@@ -850,8 +850,7 @@ function renderNewsletterProspects(){
       '</div>').join(''):'<div class="empty">No newsletter interest requests yet.</div>')+'</div></section>';
 }
 async function unsubscribeNewsletter(btn){
-  const answer=prompt('Why are you suppressing this newsletter address? (for your own records)') ;
-  if(answer===null)return;
+  if(!confirm('Suppress marketing to this address for this newsletter?'))return;
   await busy(btn,async()=>{try{
     await post('/api/newsletter-action',{action:'unsubscribe',id:btn.dataset.id});
     toast('Marketing address suppressed.');load();
