@@ -3,87 +3,136 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Roger | Homes to Rent</title>
-  <meta name="description" content="Browse homes to rent, request a viewing, apply for a property, register as a landlord, or join Roger's trades network." />
+  <title>Roger Lettings | Homes to Rent & Property Management</title>
+  <meta name="description" content="Explore homes to rent with Roger Lettings. Search by area, rent and bedrooms, enquire about a property, book a viewing or ask about landlord management services." />
+  <meta name="theme-color" content="#173d37" />
   <link rel="shortcut icon" href="/favicon.svg" />
   <link rel="icon" href="/favicon.svg" />
   <style>
-    :root{color-scheme:light;--ink:#14211c;--muted:#5f6f68;--line:#d9e2de;--soft:#f3f7f5;--panel:#fff;--green:#14503a;--green-2:#1f6b4e;--amber:#f5b941;--shadow:0 14px 40px rgba(20,33,28,.10)}
-    *{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fbfdfc;color:var(--ink);line-height:1.5}a{color:inherit}.site-shell{min-height:100vh}.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px clamp(18px,4vw,44px);background:rgba(255,255,255,.94);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:10px;font-weight:850;font-size:22px;text-decoration:none}.brand-mark{width:34px;height:34px;border-radius:10px;background:var(--green);color:#fff;display:grid;place-items:center;font-size:18px}.nav{display:flex;align-items:center;gap:18px;color:var(--muted);font-weight:700;font-size:14px}.nav a{text-decoration:none}.signin{border:1px solid var(--line);border-radius:999px;padding:9px 14px;background:#fff;color:var(--green);font-weight:800;text-decoration:none}.hero{padding:56px clamp(18px,4vw,44px) 24px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:34px;align-items:center}.hero h1{font-size:clamp(42px,7vw,78px);line-height:.95;margin:10px 0 18px;letter-spacing:0}.eyebrow{text-transform:uppercase;letter-spacing:.14em;color:var(--green);font-weight:900;font-size:12px;margin:0}.hero-copy{font-size:19px;color:var(--muted);max-width:720px}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}.button{appearance:none;border:0;border-radius:999px;padding:12px 18px;font-weight:850;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}.button.primary{background:var(--green);color:#fff}.button.secondary{background:#fff;color:var(--green);border:1px solid var(--line)}.hero-panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:22px}.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}.stat{background:var(--soft);border-radius:8px;padding:14px}.stat strong{display:block;font-size:24px}.section{padding:28px clamp(18px,4vw,44px)}.section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:16px}.section-head h2{font-size:32px;line-height:1.05;margin:0}.count-pill{background:var(--soft);color:var(--green);border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:850}.filters{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;margin-bottom:18px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:12px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.input,.select,.textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:11px 12px;font:inherit}.textarea{min-height:94px;resize:vertical}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.card{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 6px 24px rgba(20,33,28,.07)}.photo{height:190px;background:linear-gradient(135deg,#dce8e3,#f8faf8);position:relative}.photo img{width:100%;height:100%;object-fit:cover;display:block}.photo .badge{position:absolute;left:12px;top:12px;background:#fff;border-radius:999px;padding:7px 10px;font-weight:900;color:var(--green);box-shadow:0 6px 16px rgba(20,33,28,.14)}.card-body{padding:16px}.card h3{margin:0 0 5px;font-size:20px}.muted{color:var(--muted)}.price{font-size:22px;font-weight:900;margin:12px 0}.meta{display:flex;gap:8px;flex-wrap:wrap}.meta span{background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:6px 9px;font-size:13px;font-weight:800}.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.funnels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.funnel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:22px;box-shadow:0 6px 24px rgba(20,33,28,.07)}.funnel h3{font-size:26px;margin:6px 0 10px}.checklist{display:grid;gap:8px;margin:16px 0;padding:0;list-style:none}.checklist li{display:flex;gap:8px;align-items:flex-start}.checklist li:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--amber);margin-top:8px;flex:0 0 auto}.mini-form{display:grid;gap:10px;margin-top:16px}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.result{font-weight:800;color:var(--green);min-height:24px}.empty{border:1px dashed var(--line);border-radius:8px;background:var(--soft);padding:24px;text-align:center;color:var(--muted)}.modal{position:fixed;inset:0;background:rgba(9,18,14,.56);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}.modal.open{display:flex}.dialog{background:#fff;border-radius:8px;max-width:860px;width:min(860px,100%);max-height:92vh;overflow:auto;box-shadow:0 24px 80px rgba(0,0,0,.28)}.dialog-grid{display:grid;grid-template-columns:.9fr 1.1fr}.dialog-photo{min-height:420px;background:#e8efeb}.dialog-photo img{width:100%;height:100%;object-fit:cover}.dialog-body{padding:24px}.close{float:right;border:1px solid var(--line);background:#fff;border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:22px;line-height:1}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-weight:850;cursor:pointer}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}.form-panel{display:none}.form-panel.active{display:grid;gap:10px}.footer{padding:30px clamp(18px,4vw,44px);border-top:1px solid var(--line);display:flex;justify-content:space-between;color:var(--muted)}.tt-top{position:fixed;right:18px;bottom:18px;z-index:40;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--green);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(33,29,24,.15);opacity:0;transform:translateY(8px);transition:opacity .16s ease-out,transform .16s ease-out;pointer-events:none}.tt-top.visible{opacity:1;transform:none;pointer-events:auto}.hidden{display:none!important}@media(max-width:900px){.hero,.dialog-grid,.funnels{grid-template-columns:1fr}.cards{grid-template-columns:1fr 1fr}.filters{grid-template-columns:1fr 1fr}.hero{padding-top:34px}.dialog-photo{min-height:260px}}@media(max-width:620px){.nav{display:none}.cards,.filters,.two{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}.footer{flex-direction:column;gap:8px}.hero h1{font-size:42px}}
+    :root{color-scheme:light;--ink:#20352f;--muted:#657570;--forest:#173d37;--forest2:#255549;--cream:#f8f7f3;--linen:#eeefe8;--line:#e1e7e0;--gold:#d6b783;--white:#fff;--shadow:0 14px 42px rgba(28,54,45,.075)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:96px}body{margin:0;font-family:Inter,"Segoe UI",Arial,sans-serif;background:var(--cream);color:var(--ink);line-height:1.56}a{color:inherit}button,input,select,textarea{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #a3ae63;outline-offset:2px}.site-shell{min-height:100vh;overflow:hidden}.site-width{width:min(1190px,calc(100% - 48px));margin-inline:auto}
+    .topbar{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;box-shadow:0 2px 16px rgba(20,45,37,.035)}.topbar-inner{height:82px;display:flex;align-items:center;gap:34px}.brand{display:inline-flex;gap:10px;align-items:center;text-decoration:none;white-space:nowrap;color:var(--forest);font-weight:850;letter-spacing:-.06em;font-size:27px}.brand-mark{height:39px;width:39px;display:grid;place-items:center;color:var(--white);background:var(--forest);border-radius:11px;font-family:Georgia,serif;font-size:28px;font-weight:500;letter-spacing:0}.brand-sub{font-weight:650;color:var(--muted);font-size:10px;letter-spacing:.24em;text-transform:uppercase;display:block;margin-top:-6px}.nav{margin-left:auto;display:flex;align-items:center;gap:31px}.nav a{text-decoration:none;font-size:13px;font-weight:700;transition:color .2s}.nav a:hover{color:#4b7b62}.signin{border:1px solid #cedbd2;background:white;border-radius:8px;padding:10px 16px;text-decoration:none;color:var(--forest);font-weight:750;font-size:13px;white-space:nowrap}.signin:hover{background:#f5f9f6}.menu-toggle{display:none;border:1px solid var(--line);border-radius:9px;background:#fff;width:42px;height:42px;font-size:24px;color:var(--forest)}
+    .hero{background:var(--forest);position:relative;isolation:isolate;color:#fff;min-height:470px;display:flex;align-items:center;padding:65px 0 88px;overflow:hidden}.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(12,45,37,.96) 3%,rgba(15,51,41,.88) 47%,rgba(15,51,41,.20) 100%),url('/sample-home.jpg') center 52%/cover;z-index:-1}.hero::after{content:"";position:absolute;left:-14%;bottom:-260px;width:600px;height:410px;background:radial-gradient(ellipse,rgba(214,183,131,.16),transparent 70%);z-index:-1}.eyebrow{color:#50715d;letter-spacing:.15em;text-transform:uppercase;font-size:11px;font-weight:850;margin:0}.hero .eyebrow{color:#e1ca9f}.hero h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(48px,6.2vw,82px);line-height:1.07;letter-spacing:-.06em;font-weight:400;margin:17px 0 19px;max-width:720px}.hero h1 em{font-weight:400;font-style:italic;color:#e8d2ac}.hero-copy{font-size:17px;line-height:1.65;color:#e5ebe6;max-width:530px;margin:0}.hero-caption{font-size:11px;color:#c6d7cc;position:absolute;bottom:20px;right:max(24px,calc((100% - 1190px)/2));text-align:right}.hero-actions{margin-top:28px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}.hero-link{font-size:13px;font-weight:750;color:#fff;text-underline-offset:5px}.button{appearance:none;display:inline-flex;justify-content:center;align-items:center;gap:8px;border:1px solid transparent;border-radius:8px;padding:12px 19px;text-decoration:none;font-size:13px;font-weight:790;transition:background .15s,transform .15s}.button:hover{transform:translateY(-1px)}.button.primary{color:#fff;background:var(--forest)}.button.primary:hover{background:var(--forest2)}.hero .button.primary{color:var(--forest);background:#f1ede0}.button.secondary{background:#fff;border-color:#dce4dc;color:var(--forest)}.button.secondary:hover{background:#f3f7f3}.button.wide{width:100%}.button.small{padding:10px 14px}
+    .search-wrap{position:relative;z-index:2;margin-top:-54px}.search-panel{background:#fff;border:1px solid var(--line);border-radius:13px;padding:22px 24px 26px;box-shadow:0 24px 60px rgba(20,45,37,.16)}.search-panel-top{display:flex;gap:14px;align-items:center;justify-content:space-between;margin-bottom:16px}.search-panel-top strong{font-family:Georgia,serif;font-size:23px;letter-spacing:-.03em;font-weight:500}.search-panel-top span{font-size:12px;color:var(--muted)}.filters{display:grid;grid-template-columns:minmax(210px,2fr) minmax(118px,1fr) minmax(145px,1fr) auto;gap:11px;align-items:end}.field{display:flex;flex-direction:column;gap:7px}.field label{font-weight:800;color:#51665c;font-size:11px;letter-spacing:.035em}.input,.select,.textarea{width:100%;background:#fff;border:1px solid #dce4dd;border-radius:7px;min-height:46px;padding:10px 13px;color:var(--ink)}.textarea{resize:vertical;min-height:100px}.field .input::placeholder{color:#89958e}.search-button{min-height:46px}.filters .button{min-height:46px}.filters-footer{margin-top:13px;display:flex;justify-content:space-between;gap:12px;align-items:center}.filters-footer small{color:var(--muted);font-size:12px}.text-button{border:0;background:transparent;color:var(--forest);font-weight:750;text-decoration:underline;text-underline-offset:3px;font-size:12px;padding:4px}
+    .section{padding:82px 0}.section-title{font-family:Georgia,serif;letter-spacing:-.045em;line-height:1.15;font-size:clamp(31px,3.3vw,47px);font-weight:400;margin:9px 0 8px}.section-description{color:var(--muted);max-width:550px;margin:0}.section-head{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:29px}.count-pill{border:1px solid #d9e4da;padding:8px 13px;border-radius:7px;font-size:12px;font-weight:750;color:var(--forest);background:#fff;white-space:nowrap}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}.card{min-width:0;background:#fff;border:1px solid #e5eae4;border-radius:10px;overflow:hidden;box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s}.card:hover{transform:translateY(-3px);box-shadow:0 20px 55px rgba(26,51,41,.12)}.photo{height:222px;position:relative;overflow:hidden;background:linear-gradient(135deg,#e7ebe5,#dbe4de);display:flex;align-items:center;justify-content:center}.photo img{width:100%;height:100%;object-fit:cover}.photo-empty{font-family:Georgia,serif;font-style:italic;font-size:17px;color:#657a70}.photo .badge{position:absolute;left:16px;top:16px;background:#fff;color:#2b5946;font-weight:850;font-size:11px;padding:7px 11px;border-radius:5px;box-shadow:0 4px 15px #1d342221}.card-body{padding:21px}.card h3{font-size:19px;line-height:1.28;letter-spacing:-.025em;margin:0 0 6px;font-weight:740}.muted{color:var(--muted)}.card-area{font-size:13px;color:var(--muted);margin:0 0 8px}.price{color:var(--forest);font-size:23px;letter-spacing:-.04em;font-weight:850;margin:12px 0}.price small{letter-spacing:0;font-size:12px;color:var(--muted);font-weight:600}.meta{display:flex;gap:13px;flex-wrap:wrap;font-size:12px;color:#5b6c61}.meta span{display:inline-flex;align-items:center;gap:5px}.card-intro{font-size:13px;color:#64736a;line-height:1.65;margin:16px 0 0;min-height:42px}.card-actions{display:flex;gap:8px;margin-top:19px}.card-actions .button{flex:1}.empty{border:1px solid #d7e1d8;background:#fff;border-radius:12px;padding:45px;text-align:center}.empty h3{font-family:Georgia,serif;font-size:25px;font-weight:400;margin:0 0 9px}.empty p{font-size:14px;color:var(--muted);margin:0 auto 16px;max-width:480px}.hidden{display:none!important}
+    .promise{background:#edf1eb;border-block:1px solid #e1e7de}.promise-inner{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;padding-block:31px}.promise-item{display:flex;gap:13px;align-items:flex-start}.promise-icon{flex-shrink:0;width:36px;height:36px;border:1px solid #bdd0c0;border-radius:10px;display:grid;place-items:center;color:var(--forest);font-size:17px}.promise-item b{display:block;font-size:13px;margin:0 0 3px}.promise-item p{font-size:12px;color:var(--muted);margin:0}
+    .services-section{padding:84px 0 90px}.service-head{margin-bottom:27px}.services-grid{display:grid;grid-template-columns:1.14fr .86fr;gap:22px}.service-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}.service-card.landlords{background:var(--forest);color:#fff;border-color:var(--forest)}.service-content{padding:36px}.service-card .eyebrow{color:#b8d4c2}.service-card h3{font-family:Georgia,serif;font-size:32px;line-height:1.18;font-weight:400;letter-spacing:-.04em;margin:15px 0}.service-card p{font-size:14px;line-height:1.7;color:#d3e1d7}.service-card:not(.landlords) p{color:var(--muted)}.service-list{display:grid;gap:9px;margin:20px 0 23px;padding:0;list-style:none}.service-list li{font-size:13px}.service-list li:before{content:"✓";margin-right:11px;color:#e8d3a6}.service-card:not(.landlords) .service-list li:before{color:var(--forest)}.service-card .button{background:#f4efe2;color:var(--forest)}.service-card:not(.landlords) .button{background:var(--forest);color:#fff}
+    .enquiries{padding:0 0 84px}.enquiry-panels{display:grid;grid-template-columns:1fr 1fr;gap:22px}.enquiry-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:30px}.enquiry-panel h3{font-family:Georgia,serif;font-size:27px;font-weight:400;margin:4px 0 5px}.enquiry-panel p{font-size:13px;color:var(--muted);margin:0 0 18px}.mini-form{display:grid;gap:13px}.mini-form label{font-size:12px;font-weight:750;color:#59685e}.mini-form .button{width:100%}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.result{color:#236246;font-size:12px;font-weight:750;min-height:19px}.consent{display:flex;align-items:flex-start;gap:9px;font-size:12px!important;line-height:1.5}.consent input{margin-top:3px}.more-link{display:inline-block;font-size:12px;font-weight:750;margin-top:15px;text-underline-offset:4px}.footer{color:#b9cec0;background:#152f2a;padding:40px 0}.footer-inner{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:22px}.footer .brand{color:#fff}.footer .brand-mark{background:#fff;color:var(--forest)}.footer p{font-size:12px;max-width:290px;margin:11px 0 0}.footer-links{display:flex;gap:27px;flex-wrap:wrap}.footer-links a{font-size:12px;text-decoration:none}.footer-links a:hover{text-decoration:underline}.footer-legal{border-top:1px solid #3b5149;margin-top:30px;padding-top:15px;color:#9cb8a5;font-size:11px}
+    .modal{position:fixed;inset:0;background:rgba(15,32,28,.72);display:none;align-items:center;justify-content:center;padding:16px;z-index:60}.modal.open{display:flex}.dialog{background:#fff;width:min(850px,100%);max-height:92vh;overflow-y:auto;border-radius:12px;box-shadow:0 35px 100px rgba(0,0,0,.25)}.dialog-grid{display:grid;grid-template-columns:.83fr 1.17fr}.dialog-photo{background:#e7ece5;min-height:450px;display:flex;align-items:center;justify-content:center}.dialog-photo img{width:100%;height:100%;object-fit:cover}.dialog-body{padding:28px}.close{float:right;width:36px;height:36px;background:#fff;border:1px solid var(--line);border-radius:50%;font-size:24px;line-height:1}.dialog-body h2{font-family:Georgia,serif;font-size:31px;font-weight:400;margin:7px 0}.dialog-body .price{margin:14px 0}.tabs{display:flex;gap:6px;margin:18px 0}.tab{border:1px solid var(--line);background:white;border-radius:6px;padding:9px 12px;font-size:12px;font-weight:750}.tab.active{background:var(--forest);color:white}.form-panel{display:none}.form-panel.active{display:grid;gap:12px}.form-panel .button{justify-self:start}.tt-top{position:fixed;bottom:20px;right:20px;border:1px solid var(--line);border-radius:50%;width:42px;height:42px;opacity:0;pointer-events:none;transform:translateY(8px);transition:.2s;background:#fff;color:var(--forest);box-shadow:var(--shadow)}.tt-top.visible{opacity:1;pointer-events:auto;transform:none}
+    @media(max-width:980px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.services-grid{grid-template-columns:1fr 1fr}.hero::before{background:linear-gradient(90deg,rgba(12,45,37,.98) 0%,rgba(15,51,41,.74) 65%,rgba(15,51,41,.34)),url('/sample-home.jpg') center/cover}}
+    @media(max-width:740px){.site-width{width:min(100% - 32px,1190px)}.topbar-inner{height:70px;gap:12px}.nav{display:none;position:absolute;top:70px;left:0;right:0;background:#fff;border-bottom:1px solid var(--line);padding:14px 20px 20px;flex-direction:column;align-items:stretch;gap:0;box-shadow:var(--shadow)}.nav.open{display:flex}.nav a{padding:11px 8px}.menu-toggle{display:grid;place-items:center;margin-left:auto}.signin{padding:9px 12px}.hero{padding:50px 0 86px;min-height:420px}.hero::before{background:linear-gradient(90deg,rgba(12,45,37,.96),rgba(15,51,41,.7)),url('/sample-home.jpg') center/cover}.hero h1{font-size:clamp(44px,9vw,62px)}.hero-caption{font-size:10px;bottom:15px;right:16px}.search-wrap{margin-top:-43px}.search-panel{padding:20px}.search-panel-top{display:block}.search-panel-top span{display:block;margin-top:3px}.filters{grid-template-columns:1fr 1fr}.filters .field:first-child{grid-column:1/-1}.filters .search-button{grid-column:1/-1}.promise-inner{grid-template-columns:1fr;gap:17px;padding-block:25px}.section{padding:62px 0}.services-grid,.enquiry-panels{grid-template-columns:1fr}.dialog-grid{grid-template-columns:1fr}.dialog-photo{min-height:185px;max-height:230px}.dialog-body{padding:22px}.enquiries{padding-bottom:60px}}
+    @media(max-width:490px){.cards,.two{grid-template-columns:1fr}.section-head{display:block}.count-pill{display:inline-block;margin-top:15px}.hero h1{font-size:43px}.hero-copy{font-size:15px}.search-panel-top strong{font-size:21px}.filters{grid-template-columns:1fr}.filters .field:first-child,.filters .search-button{grid-column:auto}.filters-footer{align-items:start;flex-direction:column}.service-content{padding:26px}.enquiry-panel{padding:22px}.footer-inner{display:block}.footer-links{margin-top:24px}.hero-caption{max-width:185px}.card-actions{flex-wrap:wrap}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
   </style>
 </head>
 <body>
   <div class="site-shell">
     <header class="topbar">
-      <a class="brand" href="/"><span class="brand-mark">R</span>Roger</a>
-      <nav class="nav" aria-label="Public navigation"><a href="#homes">Homes</a><a href="#landlords">Landlords</a><a href="#trades">Trades</a></nav>
-      <a class="signin" href="/signin">Sign in</a>
+      <div class="site-width topbar-inner">
+        <a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a>
+        <nav class="nav" id="siteNav" aria-label="Main navigation">
+          <a href="#homes">Properties to rent</a><a href="#services">For landlords</a><a href="#work-with-us">Work with us</a><a href="#contact">Contact</a>
+        </nav>
+        <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">☰</button>
+        <a class="signin" href="/signin">Portal sign in <span aria-hidden="true">↗</span></a>
+      </div>
     </header>
 
-    <main>
-      <section class="hero">
-        <div>
-          <p class="eyebrow">Lettings and property management</p>
-          <h1>One agent. One operating desk.</h1>
-          <p class="hero-copy">Find homes to rent, request viewings, apply for a property, register a landlord instruction, or join the contractor network from one public front end.</p>
-          <div class="hero-actions"><a class="button primary" href="#homes">Browse homes</a><a class="button secondary" href="#landlords">Register a property</a><a class="button secondary" href="#trades">Join as trades</a></div>
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="site-width">
+          <p class="eyebrow">Roger · Lettings &amp; property management</p>
+          <h1 id="hero-title">A place to <em>call home.</em></h1>
+          <p class="hero-copy">Explore homes to rent and book your next viewing. Straightforward lettings, helpful communication, and a simpler way to find your next place.</p>
+          <div class="hero-actions"><a class="button primary" href="#homes">Explore available homes <span aria-hidden="true">→</span></a><a class="hero-link" href="#services">Own a rental property? Explore our services ↗</a></div>
         </div>
-        <aside class="hero-panel" aria-label="How Roger works">
-          <p class="eyebrow">Acquisition funnels</p>
-          <h2>Every public request becomes work for the Agent Desk.</h2>
-          <p class="muted">Tenant enquiries become cases. Viewing and application requests keep the property context. Landlord and contractor registrations feed their approval pipelines.</p>
-          <div class="stat-grid"><div class="stat"><strong id="statHomes">0</strong><span>available homes</span></div><div class="stat"><strong>3</strong><span>public funnels</span></div><div class="stat"><strong>1</strong><span>agent desk</span></div></div>
-        </aside>
+        <span class="hero-caption">Illustrative photography · not an advertised property</span>
       </section>
 
-      <section id="homes" class="section">
-        <div class="section-head"><div><p class="eyebrow">Tenant acquisition</p><h2>Properties to rent</h2></div><span class="count-pill" id="propertyCount">Loading homes</span></div>
-        <div class="filters" role="search">
-          <div class="field"><label for="searchBox">Search</label><input id="searchBox" class="input" type="search" placeholder="Area, property name, description" /></div>
-          <div class="field"><label for="bedsFilter">Bedrooms</label><select id="bedsFilter" class="select"><option value="">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></div>
-          <div class="field"><label for="rentFilter">Max rent</label><select id="rentFilter" class="select"><option value="">Any</option><option value="150000">Up to £1,500</option><option value="200000">Up to £2,000</option><option value="250000">Up to £2,500</option><option value="300000">Up to £3,000</option></select></div>
-          <button class="button secondary" id="clearFilters" type="button">Clear</button>
-        </div>
-        <div id="cards" class="cards"></div>
-        <div id="empty" class="empty hidden">No matching homes right now. Clear the filters or send a general enquiry.</div>
+      <div class="site-width search-wrap">
+        <section class="search-panel" aria-label="Search rental properties">
+          <div class="search-panel-top"><strong>Find your next home</strong><span>Search homes currently advertised through Roger</span></div>
+          <div class="filters" role="search">
+            <div class="field"><label for="searchBox">Where would you like to live?</label><input id="searchBox" class="input" type="search" placeholder="Town, area or property keyword" autocomplete="off" /></div>
+            <div class="field"><label for="bedsFilter">Bedrooms</label><select id="bedsFilter" class="select"><option value="">Any bedrooms</option><option value="1">1+ beds</option><option value="2">2+ beds</option><option value="3">3+ beds</option><option value="4">4+ beds</option></select></div>
+            <div class="field"><label for="rentFilter">Maximum monthly rent</label><select id="rentFilter" class="select"><option value="">Any price</option><option value="100000">£1,000 pcm</option><option value="150000">£1,500 pcm</option><option value="200000">£2,000 pcm</option><option value="250000">£2,500 pcm</option><option value="300000">£3,000 pcm</option><option value="400000">£4,000 pcm</option></select></div>
+            <button class="button primary search-button" id="searchAction" type="button">Search homes <span aria-hidden="true">→</span></button>
+          </div>
+          <div class="filters-footer"><small>Only approved, available listings appear here.</small><button class="text-button" id="clearFilters" type="button">Clear search and filters</button></div>
+        </section>
+      </div>
+
+      <section id="homes" class="section site-width" aria-labelledby="homes-title">
+        <div class="section-head"><div><p class="eyebrow">Homes to rent</p><h2 class="section-title" id="homes-title">Discover available properties</h2><p class="section-description">Browse rental homes and speak to the team about viewings, availability and applications.</p></div><span class="count-pill" id="propertyCount" aria-live="polite">Checking available homes…</span></div>
+        <div class="cards" id="cards" aria-live="polite"></div>
+        <div id="empty" class="empty hidden" role="status"><h3>No properties advertised right now</h3><p>New homes will appear here when they become available. You can still get in touch about your search.</p><a href="#contact" class="button secondary">Contact the lettings team</a></div>
       </section>
 
-      <section class="section funnels" aria-label="Landlord and trades acquisition">
-        <article id="landlords" class="funnel">
-          <p class="eyebrow">Landlord acquisition</p>
-          <h3>Let or manage your property with Roger.</h3>
-          <p class="muted">Use this to request a valuation, ask about let-only or full management, or start the registration process.</p>
-          <ul class="checklist"><li>Valuation and appraisal request</li><li>Let-only and full management terms</li><li>Progresses into the landlord CRM pipeline</li></ul>
-          <form class="mini-form" data-kind="Landlord enquiry">
-            <input class="hidden" name="website" autocomplete="off" tabindex="-1" />
-            <div class="two"><div class="field"><label>Name</label><input class="input" name="name" required /></div><div class="field"><label>Email</label><input class="input" name="email" type="email" required /></div></div>
-            <div class="field"><label>Property address or area</label><input class="input" name="property" placeholder="Example: Kingston, two-bed flat" /></div>
-            <div class="field"><label>What do you need?</label><textarea class="textarea" name="message" required placeholder="Valuation, full management, let-only, portfolio question..."></textarea></div>
-            <label><input type="checkbox" name="consent" required /> I agree Roger can contact me about this enquiry.</label>
-            <button class="button primary" type="submit">Send landlord enquiry</button><div class="result" aria-live="polite"></div>
-          </form>
-          <p><a href="/register/landlord">Open the full landlord registration form</a></p>
-        </article>
+      <div class="promise" aria-label="How Roger can help">
+        <div class="site-width promise-inner">
+          <div class="promise-item"><span class="promise-icon" aria-hidden="true">⌕</span><div><b>Find a home that fits</b><p>Search by location, bedrooms and monthly rent.</p></div></div>
+          <div class="promise-item"><span class="promise-icon" aria-hidden="true">⌂</span><div><b>Enquire with ease</b><p>Ask about a property or request a viewing directly.</p></div></div>
+          <div class="promise-item"><span class="promise-icon" aria-hidden="true">✓</span><div><b>Clear next steps</b><p>Your enquiry goes to the agency team for review.</p></div></div>
+        </div>
+      </div>
 
-        <article id="trades" class="funnel">
-          <p class="eyebrow">Trades acquisition</p>
-          <h3>Join the contractor network.</h3>
-          <p class="muted">Tell the agency what work you cover, where you work, and what credentials need checking.</p>
-          <ul class="checklist"><li>Trade categories and coverage area</li><li>Gas Safe, licence and insurance details</li><li>Progresses into the contractor approval pipeline</li></ul>
-          <form class="mini-form" data-kind="Trade application">
-            <input class="hidden" name="website" autocomplete="off" tabindex="-1" />
-            <div class="two"><div class="field"><label>Company or name</label><input class="input" name="name" required /></div><div class="field"><label>Email</label><input class="input" name="email" type="email" required /></div></div>
-            <div class="field"><label>Trade and coverage</label><input class="input" name="property" placeholder="Example: plumbing, heating, Richmond and Kingston" /></div>
-            <div class="field"><label>Credentials</label><textarea class="textarea" name="message" required placeholder="Insurance expiry, Gas Safe number, categories, availability..."></textarea></div>
-            <label><input type="checkbox" name="consent" required /> I agree Roger can contact me about this application.</label>
-            <button class="button primary" type="submit">Send trades application</button><div class="result" aria-live="polite"></div>
-          </form>
-          <p><a href="/register/trades">Open the full trades registration form</a></p>
-        </article>
+      <section id="services" class="services-section site-width" aria-labelledby="services-title">
+        <div class="service-head"><p class="eyebrow">More than finding a home</p><h2 class="section-title" id="services-title">Property services, handled thoughtfully.</h2><p class="section-description">A simple place for landlords, tenants and the people who look after properties.</p></div>
+        <div class="services-grid">
+          <article class="service-card landlords"><div class="service-content">
+            <p class="eyebrow">For landlords</p><h3>Let your property.<br />Without the guesswork.</h3>
+            <p>Whether you're looking to find a tenant or discuss ongoing management, tell us about your property and we'll take it from there.</p>
+            <ul class="service-list"><li>Tenant finding and viewings</li><li>Let-only and managed property enquiries</li><li>Repairs, communication and oversight</li></ul>
+            <a class="button" href="#contact-landlords">Talk to us about your property <span aria-hidden="true">→</span></a>
+          </div></article>
+          <article class="service-card" id="work-with-us"><div class="service-content">
+            <p class="eyebrow">For trusted contractors</p><h3>Good properties need<br />good people.</h3>
+            <p>We welcome enquiries from professional tradespeople interested in supporting managed rental homes.</p>
+            <ul class="service-list"><li>Tell us your specialities and coverage</li><li>Provide details for credential review</li><li>Hear from the agency when opportunities arise</li></ul>
+            <a class="button" href="#contact-trades">Apply to work with Roger <span aria-hidden="true">→</span></a>
+          </div></article>
+        </div>
+      </section>
+
+      <section id="contact" class="enquiries site-width" aria-labelledby="contact-title">
+        <p class="eyebrow">Let's talk</p><h2 class="section-title" id="contact-title">How can we help?</h2>
+        <p class="section-description" style="margin-bottom:28px">Send a message to the agency team. We'll review your enquiry and get back to you using the details you provide.</p>
+        <div class="enquiry-panels">
+          <article class="enquiry-panel" id="contact-landlords">
+            <h3>I'm a landlord</h3><p>Ask about valuations, letting and management services.</p>
+            <form class="mini-form" data-kind="Landlord enquiry">
+              <input type="text" class="hidden" name="website" autocomplete="off" tabindex="-1" aria-hidden="true" />
+              <div class="two"><div class="field"><label for="landlordName">Your name</label><input class="input" id="landlordName" name="name" autocomplete="name" required /></div><div class="field"><label for="landlordEmail">Email address</label><input class="input" id="landlordEmail" name="email" type="email" autocomplete="email" required /></div></div>
+              <div class="field"><label for="landlordArea">Property location (optional)</label><input class="input" id="landlordArea" name="property" placeholder="Town or postcode" /></div>
+              <div class="field"><label for="landlordMessage">What would you like help with?</label><textarea class="textarea" id="landlordMessage" name="message" required placeholder="Let-only, full management, valuation…"></textarea></div>
+              <label class="consent"><input name="consent" type="checkbox" required /> I agree that Roger can contact me about this enquiry.</label>
+              <button class="button primary" type="submit">Send landlord enquiry <span aria-hidden="true">→</span></button><span class="result" role="status" aria-live="polite"></span>
+            </form>
+            <a class="more-link" href="/register/landlord">Full landlord registration ↗</a>
+          </article>
+          <article class="enquiry-panel" id="contact-trades">
+            <h3>I'm a contractor</h3><p>Introduce your business and the areas you cover.</p>
+            <form class="mini-form" data-kind="Trade application">
+              <input type="text" class="hidden" name="website" autocomplete="off" tabindex="-1" aria-hidden="true" />
+              <div class="two"><div class="field"><label for="tradesName">Name or company</label><input class="input" id="tradesName" name="name" autocomplete="name" required /></div><div class="field"><label for="tradesEmail">Email address</label><input class="input" id="tradesEmail" name="email" type="email" autocomplete="email" required /></div></div>
+              <div class="field"><label for="tradesArea">Trade and coverage area</label><input class="input" id="tradesArea" name="property" placeholder="Plumbing · Leeds / LS1" /></div>
+              <div class="field"><label for="tradesMessage">Experience and credentials</label><textarea class="textarea" id="tradesMessage" name="message" required placeholder="Trade categories, insurance and professional registration details…"></textarea></div>
+              <label class="consent"><input name="consent" type="checkbox" required /> I agree that Roger can contact me about this application.</label>
+              <button class="button primary" type="submit">Send contractor enquiry <span aria-hidden="true">→</span></button><span class="result" role="status" aria-live="polite"></span>
+            </form>
+            <a class="more-link" href="/register/trades">Full contractor registration ↗</a>
+          </article>
+        </div>
       </section>
     </main>
 
-    <footer class="footer"><strong>Roger</strong><span>Lettings, connected.</span></footer>
+    <footer class="footer">
+      <div class="site-width">
+        <div class="footer-inner"><div><a class="brand" href="/" aria-label="Roger Lettings home"><span class="brand-mark" aria-hidden="true">R</span><span>roger<span class="brand-sub">LETTINGS</span></span></a><p>Homes to rent and rental property services, brought together in one place.</p></div>
+        <nav class="footer-links" aria-label="Footer navigation"><a href="#homes">Properties</a><a href="#services">Landlords</a><a href="#contact">Contact</a><a href="/signin">Portal sign in</a></nav></div>
+        <div class="footer-legal">© <span id="year"></span> Roger Lettings. Agency contact and regulatory details will be published only when verified.</div>
+      </div>
+    </footer>
   </div>
 
   <div class="modal" id="detailModal" aria-hidden="true">
