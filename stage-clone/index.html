@@ -267,6 +267,79 @@
     async function postJson(url,payload){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});let data={};try{data=await res.json();}catch(e){}if(!res.ok||data.error)throw new Error(data.error||'Request failed');return data;}
     document.querySelectorAll('.form-panel').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const action=form.dataset.action;const p=state.selected||{};let message=data.message||'';if(action==='viewing')message=`Viewing request for ${p.title}: preferred time ${data.time}. ${message}`;if(action==='application')message=`Application started for ${p.title}. ${message}`;const result=form.querySelector('.result');result.textContent='Sending...';try{const out=await postJson('/api/enquiry',{role:'renter',property_id:p.id,name:data.name,email:data.email,phone:data.phone||'',message});result.textContent=`Thank you. Your enquiry has reached our team (reference ${out.case_id}).`;form.reset();}catch(err){result.textContent=err.message;}}));
     document.querySelectorAll('form[data-kind]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());const result=form.querySelector('.result');result.textContent='Sending...';try{const details=[data.property,data.message].filter(Boolean).join('\n\n');const out=await postJson('/api/public',{kind:form.dataset.kind,name:data.name,email:data.email,message:details,consent:Boolean(data.consent),website:data.website||''});result.textContent=`Sent. Reference ${out.reference}.`;form.reset();}catch(err){result.textContent=err.message;}}));
+    // Six examples are advertising illustrations ONLY, and never enter /api/public.
+    const exampleProperties=[
+      {title:'Light-filled two-bed flat',area:'Leeds',type:'Apartment',rent:'£1,250',beds:'2 beds'},
+      {title:'City-centre studio',area:'Bristol',type:'Studio',rent:'£820',beds:'Studio'},
+      {title:'Three-bed family home',area:'Sheffield',type:'House',rent:'£1,450',beds:'3 beds'},
+      {title:'One-bed garden flat',area:'Nottingham',type:'Flat',rent:'£925',beds:'1 bed'},
+      {title:'Character terrace',area:'York',type:'House',rent:'£1,180',beds:'2 beds'},
+      {title:'Professional house share',area:'Manchester',type:'Room in shared house',rent:'£650',beds:'Room price'}
+    ];
+    document.getElementById('exampleCards').innerHTML=exampleProperties.map(p=>
+      '<article class="example-card"><div class="example-photo" aria-hidden="true"><span class="example-badge">FICTIONAL EXAMPLE</span></div>'+
+      '<div class="example-body"><h3>'+esc(p.title)+'</h3><p>⌖ '+esc(p.area)+' · '+esc(p.type)+' · '+esc(p.beds)+'</p>'+
+      '<strong>'+esc(p.rent)+' <small>example pcm</small></strong>'+
+      '<a class="button secondary small" href="#contact">Register similar requirements →</a></div></article>'
+    ).join('');
+    const prospectForm=document.getElementById('prospectForm');
+    const prospectKind=document.getElementById('prospectKind');
+    function selectJourney(kind){
+      if(!['tenant','landlord','trades'].includes(kind))kind='tenant';
+      prospectKind.value=kind;
+      for(const role of ['tenant','landlord','trades']){
+        const group=document.getElementById(role+'Fields');
+        const active=kind===role;
+        group.classList.toggle('hidden',!active);
+        group.querySelectorAll('input,select,textarea').forEach(el=>el.disabled=!active);
+      }
+      document.getElementById('prospectAreaLabel').textContent={
+        tenant:'Where would you like to live?',
+        landlord:'Where is your property located?',
+        trades:'Which area do you cover?'
+      }[kind];
+    }
+    prospectKind.addEventListener('change',()=>selectJourney(prospectKind.value));
+    selectJourney(prospectKind.value);
+    async function formSend(form,url,payload,resultId,buttonId,successMessage){
+      const result=document.getElementById(resultId);
+      const button=document.getElementById(buttonId);
+      button.disabled=true;
+      result.textContent='Sending your request…';
+      try{
+        await postJson(url,payload);
+        result.textContent=successMessage;
+        form.reset();
+        if(form===prospectForm)selectJourney('tenant');
+      }catch(error){result.textContent=error.message||'Unable to send your request. Please try again.';}
+      finally{button.disabled=false;}
+    }
+    prospectForm.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const data=Object.fromEntries(new FormData(prospectForm).entries());
+      await formSend(prospectForm,'/api/prospect-intake',{
+        kind:data.kind,name:data.name,email:data.email,phone:data.phone||'',area:data.area||'',
+        bedrooms:data.bedrooms||'',max_rent:data.max_rent||'',service:data.service||'',
+        trade:data.trade||'',message:data.message||'',
+        consent:Boolean(data.consent),website:data.website||''
+      },'prospectResult','prospectSubmit',
+      "Thank you — your enquiry has been recorded. Our team will review the next step.");
+    });
+    const newsletterForm=document.getElementById('newsletterForm');
+    newsletterForm.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const data=Object.fromEntries(new FormData(newsletterForm).entries());
+      await formSend(newsletterForm,'/api/newsletter',{
+        name:data.name,email:data.email,audience:data.audience,
+        marketing_consent:Boolean(data.marketing_consent),website:data.website||''
+      },'newsletterResult','newsletterSubmit',
+      "Interest recorded. You're not yet subscribed; we'll need to confirm your email before any newsletters are sent.");
+    });
+    document.querySelectorAll('#services a[href="#contact"]').forEach(link=>{
+      link.addEventListener('click',()=>{
+        selectJourney(link.closest('.landlords')?'landlord':'trades');
+      });
+    });
     const ttTop=document.querySelector('.tt-top');addEventListener('scroll',()=>ttTop.classList.toggle('visible',window.scrollY>240),{passive:true});ttTop.addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
     searchAction.addEventListener('click',()=>{renderHomes();document.getElementById('homes').scrollIntoView({behavior:'smooth'});});
     searchBox.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchAction.click();}});
