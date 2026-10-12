@@ -11,6 +11,7 @@ on:
         options:
           - feature/roger-fast-mvp-20261011
           - feature/roger-public-lettings-redesign-20261012
+          - feature/roger-homepage-fixes-20261012
 
 permissions:
   contents: read
@@ -40,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$RELEASE_BRANCH" in
-            feature/roger-fast-mvp-20261011|feature/roger-public-lettings-redesign-20261012)
+            feature/roger-fast-mvp-20261011|feature/roger-public-lettings-redesign-20261012|feature/roger-homepage-fixes-20261012)
               echo "Selected reviewed application branch: $RELEASE_BRANCH" ;;
             *)
               echo "::error::This application branch is not approved for manual deployment."
