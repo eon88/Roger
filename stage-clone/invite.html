@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Accept invitation | Roger</title>
+<link rel="stylesheet" href="/dash.css">
+</head>
+<body>
+<div class="shell" style="max-width:520px;padding-top:6vh">
+  <header class="header" style="border:none">
+    <div class="brand"><h1 id="brand">Join your agency portal</h1><span class="who">Invitation required</span></div>
+    <nav class="tabs"><a href="/">Agency website</a></nav>
+  </header>
+  <main class="card">
+    <div class="move">Private account setup</div>
+    <p class="fineprint" id="status" role="status">Checking invitation...</p>
+    <form id="registration" hidden>
+      <p class="fineprint" id="role"></p>
+      <div class="field"><label for="username">Choose a username</label>
+        <input id="username" required autocomplete="username" pattern="[a-z][a-z0-9_.-]{4,39}"
+               minlength="5" maxlength="40" title="5-40 lowercase letters, numbers, dots, dashes or underscores"></div>
+      <div class="field"><label for="password">Choose a password</label>
+        <input id="password" type="password" required autocomplete="new-password" minlength="14" maxlength="128"></div>
+      <div class="field"><label for="confirm">Repeat your password</label>
+        <input id="confirm" type="password" required autocomplete="new-password" minlength="14" maxlength="128"></div>
+      <p class="fineprint">Use a unique password of at least 14 characters. Your access is limited to records already linked to your verified agency identity.</p>
+      <p id="error" role="alert" style="color:var(--danger)"></p>
+      <div class="actions"><button id="accept" class="btn primary" type="submit">Create portal login</button></div>
+    </form>
+    <p class="fineprint">No invitation? Contact your letting agency. This page does not create public accounts.</p>
+  </main>
+</div>
+<script src="/invite.js" defer></script>
+</body>
+</html>
