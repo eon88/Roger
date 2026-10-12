@@ -116,7 +116,7 @@ jobs:
               const publicPage = await publicContext.newPage();
               await publicPage.goto(base + '/');
               await publicPage.waitForFunction(() =>
-                document.getElementById('propertyCount').textContent === '0 properties',
+                document.getElementById('propertyCount').textContent === '0 homes available',
                 {timeout: 12000}
               );
               assert.equal(await publicPage.locator('#cards article').count(), 0);
