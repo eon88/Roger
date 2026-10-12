@@ -288,7 +288,7 @@ class H(SimpleHTTPRequestHandler):
 
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/signin", "/for-agents", "/register/landlord", "/register/trades",
-              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
+              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami", "/api/agency-info"}
     PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo"}
 
     def parse_cookies(self):
@@ -446,6 +446,11 @@ class H(SimpleHTTPRequestHandler):
         if ("%" in path or "\\" in path or "//" in path
                 or any(x in (".", "..") for x in path.split("/"))):
             return self.send_error(404)
+        if path == "/api/agency-info":
+            saas_mode = os.environ.get("ROGER_SAAS_MODE") == "1"
+            name = os.environ.get("ROGER_AGENCY_NAME", "").strip() if saas_mode else "Roger Lettings"
+            return self._json({"name": name[:100] or "Roger Lettings",
+                               "saas": saas_mode, "powered_by": "Roger"})
         if path == "/login":
             return self.serve_file("login.html")
         if path == "/logout":
