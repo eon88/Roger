@@ -43,6 +43,33 @@ class AgencyIsolationTests(unittest.TestCase):
                 with self.assertRaises(psycopg.errors.InsufficientPrivilege):
                     with self.db.transaction():
                         cur.execute("INSERT INTO properties(agency_id,id,title) VALUES (%s,'stolen','B home')",(self.b,))
+    def test_other_agency_cannot_read_property(self):
+        with self.db.transaction():
+            with self.db.cursor() as cur:
+                cur.execute("SELECT set_config('roger.agency_id',%s,true)",(str(self.a),))
+                cur.execute("INSERT INTO properties(agency_id,id,title) VALUES (%s,'secret','Private A') ON CONFLICT DO NOTHING",(self.a,))
+                cur.execute("SELECT set_config('roger.agency_id',%s,true)",(str(self.b),))
+                cur.execute("SELECT count(*) FROM properties WHERE id='secret'")
+                self.assertEqual(cur.fetchone()[0],0)
+
+    def test_cross_agency_foreign_key_rejected(self):
+        with self.db.transaction():
+            with self.db.cursor() as cur:
+                cur.execute("SELECT set_config('roger.agency_id',%s,true)",(str(self.a),))
+                cur.execute("INSERT INTO properties(agency_id,id,title) VALUES (%s,'fk-home','A') ON CONFLICT DO NOTHING",(self.a,))
+                cur.execute("SELECT set_config('roger.agency_id',%s,true)",(str(self.b),))
+                with self.assertRaises(psycopg.errors.ForeignKeyViolation):
+                    with self.db.transaction():
+                        cur.execute("INSERT INTO cases(agency_id,id,property_id) VALUES (%s,'case-b','fk-home')",(self.b,))
+
+    def test_all_scoped_tables_have_rls(self):
+        names = ('properties','cases','jobs','approvals','appointments','documents','registrations','invitations')
+        with self.db.cursor() as cur:
+            cur.execute("SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class WHERE relname = ANY(%s)",(list(names),))
+            flags = {name:(enabled,forced) for name,enabled,forced in cur.fetchall()}
+            self.assertEqual(set(flags),set(names))
+            self.assertTrue(all(enabled and forced for enabled,forced in flags.values()))
+
     def test_no_agency_context_sees_nothing(self):
         with self.db.transaction():
             with self.db.cursor() as cur:
