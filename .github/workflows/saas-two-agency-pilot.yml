@@ -78,11 +78,11 @@ jobs:
           assert app["labels"]["traefik.enable"] == "false", "Traefik accidentally enabled"
           # Compose versions may return memory limits as e.g. "192m" or bytes.
           def mem_correct(value, mib):
-              return value == mib * 1024 * 1024 or str(value).lower() == str(mib) + "m"
+              return (str(value).isdigit() and int(value) == mib * 1024 * 1024) or str(value).lower() == str(mib) + "m"
           assert mem_correct(app["mem_limit"], 192), "Unexpected app cap: %r" % app["mem_limit"]
           assert mem_correct(pg["mem_limit"], 256), "Unexpected DB cap: %r" % pg["mem_limit"]
-          assert abs(app["cpus"] - 0.20) < .001
-          assert abs(pg["cpus"] - 0.12) < .001
+          assert abs(float(app["cpus"]) - 0.20) < .001
+          assert abs(float(pg["cpus"]) - 0.12) < .001
           assert app["restart"] == "no" and pg["restart"] == "no"
           assert len(app["ports"]) == 1 and app["ports"][0]["host_ip"] == "127.0.0.1"
           print("PASS: staging memory/CPU/Traefik/localhost isolation")
