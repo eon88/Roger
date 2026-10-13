@@ -57,6 +57,20 @@ class OakRestoreSafetyTests(unittest.TestCase):
                 mod.preflight()
             docker.assert_not_called()
 
+    def test_restore_diagnostic_excludes_sql_and_passwords(self):
+        from subprocess import CalledProcessError
+        stderr = (
+            b"pg_restore: error: could not execute query: ERROR: relation xyz exists\\n"
+            b"Command was: INSERT INTO users VALUES ('sensitive-token');\\n"
+            b"DETAIL: private@example.com\\n"
+        )
+        err = CalledProcessError(1, ["docker", "exec", "-e", "POSTGRES_PASSWORD=SECRET"], stderr=stderr)
+        diagnostic = mod.safe_restore_failure(err)
+        self.assertIn("pg_restore: error:", diagnostic)
+        self.assertNotIn("sensitive-token", diagnostic)
+        self.assertNotIn("private@example.com", diagnostic)
+        self.assertNotIn("SECRET", diagnostic)
+
     def test_existing_restore_container_blocks_start(self):
         with patch.object(mod, "read_available_memory", return_value=2 * mod.GIB), \
              patch.object(mod.os, "getloadavg", return_value=(0.02, 0.02, 0.02)), \
