@@ -38,4 +38,4 @@ jobs:
       - name: Run PostgreSQL isolation tests
         env:
           TEST_DATABASE_URL: postgresql://roger_test:test_only_password@localhost:5432/roger_hq_test
-        run: python -m unittest discover -v -s tests -p 'test_agency_isolation.py'
+        run: python -m unittest discover -v -s tests -p 'test_*.py'
