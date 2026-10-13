@@ -63,7 +63,7 @@ class AgencyIsolationTests(unittest.TestCase):
                         cur.execute("INSERT INTO cases(agency_id,id,property_id) VALUES (%s,'case-b','fk-home')",(self.b,))
 
     def test_all_scoped_tables_have_rls(self):
-        names = ('properties','cases','jobs','approvals','appointments','documents','registrations','invitations')
+        names = ('properties','cases','jobs','approvals','appointments','documents','registrations','invitations','agency_memberships','subscriptions')
         with self.db.cursor() as cur:
             cur.execute("SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class WHERE relname = ANY(%s)",(list(names),))
             flags = {name:(enabled,forced) for name,enabled,forced in cur.fetchall()}
