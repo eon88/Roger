@@ -19,11 +19,12 @@ def _uuid(value):
 
 @contextmanager
 def agency_transaction(database_url, agency_id):
+    validated_agency = _uuid(agency_id)
     import psycopg
     with psycopg.connect(database_url) as conn:
         with conn.transaction():
             with conn.cursor() as cur:
-                cur.execute("SELECT set_config('roger.agency_id', %s, true)", (_uuid(agency_id),))
+                cur.execute("SELECT set_config('roger.agency_id', %s, true)", (validated_agency,))
                 yield cur
 
 def assert_membership(cur, user_id, agency_id, allowed_roles=None):
