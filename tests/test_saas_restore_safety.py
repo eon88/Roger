@@ -74,7 +74,7 @@ class OakRestoreSafetyTests(unittest.TestCase):
     def test_database_readiness_checks_the_actual_roger_database(self):
         from subprocess import CompletedProcess
         not_ready = CompletedProcess(args=[], returncode=2, stdout="")
-        ready = CompletedProcess(args=[], returncode=0, stdout="1\\n")
+        ready = CompletedProcess(args=[], returncode=0, stdout="1\n")
         with patch.object(mod.subprocess, "run", side_effect=[not_ready, ready]) as run:
             self.assertFalse(mod.restored_database_ready())
             self.assertTrue(mod.restored_database_ready())
