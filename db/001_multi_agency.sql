@@ -138,4 +138,14 @@ ALTER TABLE invitations FORCE ROW LEVEL SECURITY;
 CREATE POLICY invitations_agency_isolation ON invitations
  USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
  WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
+ALTER TABLE agency_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agency_memberships FORCE ROW LEVEL SECURITY;
+CREATE POLICY agency_memberships_agency_isolation ON agency_memberships
+ USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
+ WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions FORCE ROW LEVEL SECURITY;
+CREATE POLICY subscriptions_agency_isolation ON subscriptions
+ USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
+ WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
 COMMIT;
