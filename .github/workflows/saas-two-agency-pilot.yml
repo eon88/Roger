@@ -76,8 +76,11 @@ jobs:
           d = json.load(sys.stdin)
           app, pg = d["services"]["app"], d["services"]["postgres"]
           assert app["labels"]["traefik.enable"] == "false", "Traefik accidentally enabled"
-          assert app["mem_limit"] == 192 * 1024 * 1024
-          assert pg["mem_limit"] == 256 * 1024 * 1024
+          # Compose versions may return memory limits as e.g. "192m" or bytes.
+          def mem_correct(value, mib):
+              return value == mib * 1024 * 1024 or str(value).lower() == str(mib) + "m"
+          assert mem_correct(app["mem_limit"], 192), "Unexpected app cap: %r" % app["mem_limit"]
+          assert mem_correct(pg["mem_limit"], 256), "Unexpected DB cap: %r" % pg["mem_limit"]
           assert abs(app["cpus"] - 0.20) < .001
           assert abs(pg["cpus"] - 0.12) < .001
           assert app["restart"] == "no" and pg["restart"] == "no"
