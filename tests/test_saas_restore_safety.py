@@ -71,6 +71,26 @@ class OakRestoreSafetyTests(unittest.TestCase):
         self.assertNotIn("private@example.com", diagnostic)
         self.assertNotIn("SECRET", diagnostic)
 
+    def test_database_readiness_checks_the_actual_roger_database(self):
+        from subprocess import CompletedProcess
+        not_ready = CompletedProcess(args=[], returncode=2, stdout="")
+        ready = CompletedProcess(args=[], returncode=0, stdout="1\\n")
+        with patch.object(mod.subprocess, "run", side_effect=[not_ready, ready]) as run:
+            self.assertFalse(mod.restored_database_ready())
+            self.assertTrue(mod.restored_database_ready())
+        self.assertEqual(run.call_count, 2)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[:4], ["docker", "exec", mod.RESTORE, "psql"])
+        self.assertIn("roger", argv)
+        self.assertEqual(argv[-2:], ["-c", "SELECT 1"])
+        self.assertNotIn("pg_isready", argv)
+
+    def test_pg_isready_alone_is_never_treated_as_database_ready(self):
+        from subprocess import CompletedProcess
+        result = CompletedProcess(args=[], returncode=0, stdout="")
+        with patch.object(mod.subprocess, "run", return_value=result):
+            self.assertFalse(mod.restored_database_ready())
+
     def test_existing_restore_container_blocks_start(self):
         with patch.object(mod, "read_available_memory", return_value=2 * mod.GIB), \
              patch.object(mod.os, "getloadavg", return_value=(0.02, 0.02, 0.02)), \
