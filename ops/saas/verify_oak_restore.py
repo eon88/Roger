@@ -40,6 +40,20 @@ def call(*argv, timeout=20, stdin=None):
                           timeout=timeout, check=True).stdout
 
 
+def safe_restore_failure(exc):
+    """Show only PostgreSQL's error headline, not SQL statements or secrets."""
+    err = exc.stderr or b""
+    if isinstance(err, bytes):
+        err = err.decode("utf-8", errors="replace")
+    headlines = []
+    for line in err.splitlines():
+        line = line.strip()
+        if line.startswith("pg_restore: error:"):
+            # Hide subsequent command/SQL/detail lines, which may include data.
+            headlines.append(line.split("Command was:", 1)[0][:250])
+    return " | ".join(headlines[:2]) or "pg_restore exited unsuccessfully (stderr hidden)"
+
+
 def read_available_memory():
     for line in Path("/proc/meminfo").read_text().splitlines():
         if line.startswith("MemAvailable:"):
@@ -125,11 +139,17 @@ def restore(dump, original):
         else:
             raise RuntimeError("temporary database did not become ready")
         with dump.open("rb") as stream:
-            call("docker", "exec", "-i", RESTORE, "pg_restore",
-                 "-U", "roger", "-d", "roger",
-                 "--no-owner", "--no-acl", "--exit-on-error",
-                 stdin=stream, timeout=120)
-        recovered = rows(RESTORE)
+            try:
+                call("docker", "exec", "-i", RESTORE, "pg_restore",
+                     "-U", "roger", "-d", "roger",
+                     "--no-owner", "--no-acl", "--exit-on-error",
+                     stdin=stream, timeout=120)
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError("Database import step: " + safe_restore_failure(exc)) from None
+        try:
+            recovered = rows(RESTORE)
+        except subprocess.CalledProcessError:
+            raise RuntimeError("Restored database verification query failed") from None
         if recovered != original:
             raise ValueError("restored database does not match original")
         print("PASS: restored Oak database matches source records and users")
