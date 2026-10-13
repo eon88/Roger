@@ -48,6 +48,48 @@ CREATE TABLE jobs (
  FOREIGN KEY (agency_id,case_id) REFERENCES cases(agency_id,id),
  FOREIGN KEY (agency_id,property_id) REFERENCES properties(agency_id,id)
 );
+CREATE TABLE approvals (
+ agency_id uuid NOT NULL,
+ id text NOT NULL,
+ job_id text NOT NULL,
+ payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+ PRIMARY KEY (agency_id,id),
+ FOREIGN KEY (agency_id,job_id) REFERENCES jobs(agency_id,id)
+);
+CREATE TABLE appointments (
+ agency_id uuid NOT NULL REFERENCES agencies(id),
+ id text NOT NULL,
+ property_id text,
+ payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+ PRIMARY KEY (agency_id,id),
+ FOREIGN KEY (agency_id,property_id) REFERENCES properties(agency_id,id)
+);
+CREATE TABLE documents (
+ agency_id uuid NOT NULL REFERENCES agencies(id),
+ id text NOT NULL,
+ property_id text,
+ payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+ PRIMARY KEY (agency_id,id),
+ FOREIGN KEY (agency_id,property_id) REFERENCES properties(agency_id,id)
+);
+CREATE TABLE registrations (
+ agency_id uuid NOT NULL REFERENCES agencies(id),
+ id text NOT NULL,
+ payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+ PRIMARY KEY (agency_id,id)
+);
+CREATE TABLE invitations (
+ agency_id uuid NOT NULL REFERENCES agencies(id),
+ id text NOT NULL,
+ payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+ PRIMARY KEY (agency_id,id)
+);
+CREATE TABLE subscriptions (
+ agency_id uuid PRIMARY KEY REFERENCES agencies(id),
+ status text NOT NULL CHECK (status IN ('trial','active','past_due','cancelled')),
+ plan text NOT NULL,
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE audit_logs (
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  agency_id uuid REFERENCES agencies(id),
@@ -69,6 +111,31 @@ CREATE POLICY cases_agency_isolation ON cases
 ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE jobs FORCE ROW LEVEL SECURITY;
 CREATE POLICY jobs_agency_isolation ON jobs
+ USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
+ WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
+ALTER TABLE approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approvals FORCE ROW LEVEL SECURITY;
+CREATE POLICY approvals_agency_isolation ON approvals
+ USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
+ WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE appointments FORCE ROW LEVEL SECURITY;
+CREATE POLICY appointments_agency_isolation ON appointments
+ USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
+ WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents FORCE ROW LEVEL SECURITY;
+CREATE POLICY documents_agency_isolation ON documents
+ USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
+ WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
+ALTER TABLE registrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registrations FORCE ROW LEVEL SECURITY;
+CREATE POLICY registrations_agency_isolation ON registrations
+ USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
+ WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
+ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invitations FORCE ROW LEVEL SECURITY;
+CREATE POLICY invitations_agency_isolation ON invitations
  USING (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid)
  WITH CHECK (agency_id = nullif(current_setting('roger.agency_id',true),'')::uuid);
 COMMIT;
