@@ -1,0 +1,20 @@
+# Disposable staging ONLY: always use as the SECOND Compose file after one
+# generated /srv/roger-staging/<agency>/compose.yaml. Never apply to live Roger.
+#
+# Two agencies combined: at most 896 MiB of container RAM across four services.
+# These caps protect the 4 GiB single-CPU Hostinger VPS but do not eliminate
+# memory pressure from other services or host caches.
+services:
+  app:
+    restart: "no"
+    mem_limit: 192m
+    cpus: "0.20"
+    pids_limit: 64
+    labels:
+      # Do not let the existing live Traefik discover an unpublished demo.
+      traefik.enable: "false"
+  postgres:
+    restart: "no"
+    mem_limit: 256m
+    cpus: "0.12"
+    pids_limit: 64
