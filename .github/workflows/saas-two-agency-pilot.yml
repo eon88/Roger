@@ -57,10 +57,34 @@ jobs:
             --admin-email birch@example.test --port 29102 \
             --base-domain agents.example.com --image "$ROGER_TEST_IMAGE" \
             --output "$root/birchlettings"
-          docker compose -f "$root/oaklettings/compose.yaml" --env-file "$root/oaklettings/.env" \
+          docker compose -f "$root/oaklettings/compose.yaml" -f "$GITHUB_WORKSPACE/ops/saas/staging-limits.yaml" --env-file "$root/oaklettings/.env" \
             up -d --wait --wait-timeout 180
-          docker compose -f "$root/birchlettings/compose.yaml" --env-file "$root/birchlettings/.env" \
+          docker compose -f "$root/birchlettings/compose.yaml" -f "$GITHUB_WORKSPACE/ops/saas/staging-limits.yaml" --env-file "$root/birchlettings/.env" \
             up -d --wait --wait-timeout 180
+
+      - name: Verify Hostinger staging Compose limits and unpublished ports
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for agency in oaklettings birchlettings; do
+            root="$ROGER_SAAS_TEST_ROOT/$agency"
+            docker compose -f "$root/compose.yaml" \
+              -f "$GITHUB_WORKSPACE/ops/saas/staging-limits.yaml" \
+              --env-file "$root/.env" config --format json |
+              python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          app, pg = d["services"]["app"], d["services"]["postgres"]
+          assert app["labels"]["traefik.enable"] == "false", "Traefik accidentally enabled"
+          assert app["mem_limit"] == 192 * 1024 * 1024
+          assert pg["mem_limit"] == 256 * 1024 * 1024
+          assert abs(app["cpus"] - 0.20) < .001
+          assert abs(pg["cpus"] - 0.12) < .001
+          assert app["restart"] == "no" and pg["restart"] == "no"
+          assert len(app["ports"]) == 1 and app["ports"][0]["host_ip"] == "127.0.0.1"
+          print("PASS: staging memory/CPU/Traefik/localhost isolation")
+          '
+          done
 
       - name: Prove no cross-agency data or sessions
         shell: bash
@@ -74,7 +98,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           root="$ROGER_SAAS_TEST_ROOT/oaklettings"
-          docker compose -f "$root/compose.yaml" --env-file "$root/.env" exec -T app python - <<'PY'
+          docker compose -f "$root/compose.yaml" -f "$GITHUB_WORKSPACE/ops/saas/staging-limits.yaml" --env-file "$root/.env" exec -T app python - <<'PY'
           import serve
           with serve.storage_write_lock():
               stage = serve.load_stage()
@@ -107,7 +131,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           root="$ROGER_SAAS_TEST_ROOT/oaklettings"
-          docker compose -f "$root/compose.yaml" --env-file "$root/.env" exec -T app sh -eu -c '
+          docker compose -f "$root/compose.yaml" -f "$GITHUB_WORKSPACE/ops/saas/staging-limits.yaml" --env-file "$root/.env" exec -T app sh -eu -c '
             python /app/agency_recovery.py --agency oaklettings --output /run/roger-recovery/one-time.txt
             test "$(stat -c %a /run/roger-recovery/one-time.txt)" = 600
             rm -f /run/roger-recovery/one-time.txt
@@ -118,7 +142,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           root="$ROGER_SAAS_TEST_ROOT/oaklettings"
-          if docker compose -f "$root/compose.yaml" --env-file "$root/.env" \
+          if docker compose -f "$root/compose.yaml" -f "$GITHUB_WORKSPACE/ops/saas/staging-limits.yaml" --env-file "$root/.env" \
                 run --rm --no-deps -e ROGER_AGENCY_ID=wrong-agency app; then
             echo "::error::Wrong-agency stack unexpectedly started!"
             exit 1
