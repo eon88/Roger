@@ -157,10 +157,14 @@ def main():
                 raise ValueError("live " + name + " became unhealthy after restore")
         print("RESTORE TEST PASSED — live Roger unaffected")
         return 0
-    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError,
-            subprocess.TimeoutExpired) as exc:
-        print("STOP: restore test not passed:", type(exc).__name__, str(exc)[:180],
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        # Never print Docker argv: the disposable container creation argv
+        # contains its randomly generated PostgreSQL password.
+        print("STOP: restore subprocess failed:", type(exc).__name__,
               file=sys.stderr)
+        return 1
+    except (OSError, ValueError, RuntimeError) as exc:
+        print("STOP: restore test not passed:", str(exc)[:180], file=sys.stderr)
         return 1
 
 
