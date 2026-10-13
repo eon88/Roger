@@ -115,6 +115,21 @@ def preflight():
     return original
 
 
+def restored_database_ready():
+    """Check the actual target database can run SQL, not just pg_isready.
+
+    During PostgreSQL first boot, pg_isready can return success while initdb
+    is still creating the requested database. Restoring at that point fails
+    with "database roger does not exist".
+    """
+    probe = subprocess.run(
+        ["docker", "exec", RESTORE, "psql", "-X", "-U", "roger",
+         "-d", "roger", "-At", "-c", "SELECT 1"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        text=True, timeout=5, check=False)
+    return probe.returncode == 0 and probe.stdout.strip() == "1"
+
+
 def restore(dump, original):
     created = False
     try:
@@ -129,15 +144,15 @@ def restore(dump, original):
         created = True
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            response = subprocess.run(
-                ["docker", "exec", RESTORE, "pg_isready", "-q",
-                 "-U", "roger", "-d", "roger"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if response.returncode == 0:
-                break
+            try:
+                if restored_database_ready():
+                    break
+            except subprocess.TimeoutExpired:
+                pass
             time.sleep(1)
         else:
-            raise RuntimeError("temporary database did not become ready")
+            raise RuntimeError("temporary roger database did not accept SQL in time")
+        print("PASS: temporary roger database accepts SQL queries")
         with dump.open("rb") as stream:
             try:
                 call("docker", "exec", "-i", RESTORE, "pg_restore",
