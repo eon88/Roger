@@ -3,11 +3,13 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "ops" / "saas" / "backup_and_restore_oak_files.py"
+sys.path.insert(0, str(SOURCE.parent))
 spec = importlib.util.spec_from_file_location("backup_and_restore_oak_files", SOURCE)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
