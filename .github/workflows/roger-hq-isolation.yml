@@ -1,0 +1,41 @@
+name: Roger HQ agency isolation tests
+on:
+  push:
+    branches: [feature/roger-hq-multi-agency]
+  workflow_dispatch:
+jobs:
+  postgres-isolation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: roger_hq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d roger_hq_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test driver
+        run: python -m pip install "psycopg[binary]>=3.2,<4"
+      - name: Create unprivileged test role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d roger_hq_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE roger_test LOGIN PASSWORD 'test_only_password';
+          GRANT CONNECT ON DATABASE roger_hq_test TO roger_test;
+          GRANT USAGE, CREATE ON SCHEMA public TO roger_test;
+          SQL
+      - name: Run PostgreSQL isolation tests
+        env:
+          TEST_DATABASE_URL: postgresql://roger_test:test_only_password@localhost:5432/roger_hq_test
+        run: python -m unittest discover -v -s tests -p 'test_agency_isolation.py'
