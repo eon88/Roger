@@ -35,6 +35,11 @@ jobs:
           GRANT CONNECT ON DATABASE roger_hq_test TO roger_test;
           GRANT USAGE, CREATE ON SCHEMA public TO roger_test;
           SQL
+      - name: Apply database migrations
+        env:
+          TEST_DATABASE_URL: postgresql://roger_test:test_only_password@localhost:5432/roger_hq_test
+        run: |
+          python -c 'import os,pathlib,psycopg; db=psycopg.connect(os.environ["TEST_DATABASE_URL"]); [(db.execute(p.read_text()),print("Applied",p.name)) for p in sorted(pathlib.Path("db").glob("[0-9][0-9][0-9]_*.sql"))]; db.commit(); db.close()'
       - name: Run PostgreSQL isolation tests
         env:
           TEST_DATABASE_URL: postgresql://roger_test:test_only_password@localhost:5432/roger_hq_test
