@@ -45,3 +45,11 @@ This branch is a first **schema prototype**, not a production migration.
 - `GET /api/agency/properties` uses explicit property assignments for non-agent roles.
 - All endpoints are read-only. No approval, job assignment, repair creation, messages, uploads, portal UI wiring or production data migration has been completed.
 - CI results remain unverified: available connector workflow-run lookup only searches pull-request-triggered runs; this workflow triggers on branch pushes. No green status is asserted.
+
+## Step 6 continuation: assignment and repair creation pilot
+
+- Migration `004_workflow_assignments.sql` adds RLS-protected `job_assignments` and `approval_recipients` tables.
+- Trades can read assigned jobs; landlords can read assigned approvals. Unassigned records are hidden.
+- `POST /api/agency/cases` creates an open case only for a tenant with an explicit property grant, using an agency PostgreSQL session. It requires a same-origin `Origin` header and a JSON body with `property_id` and `description`.
+- Job creation/assignment, approval decisions, appointment updates, messaging, document grants, and portal UI wiring are still outstanding. Existing JSON portal workflows are unchanged.
+- The GitHub connector still does not verify branch-push Actions run outcomes. Commits and test additions do not prove tests passed.
