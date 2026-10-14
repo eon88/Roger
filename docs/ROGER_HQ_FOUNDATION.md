@@ -27,3 +27,12 @@ This branch is a first **schema prototype**, not a production migration.
 - PostgreSQL authentication is **not yet wired to HTTP login/session handling**. The existing JSON login and four portals continue unchanged.
 - The read-only HTTP pilot requires a trusted authenticated session with user UUID and agency UUID. Do not populate those fields from unverified request headers or browser-supplied JSON.
 - Tests have been committed but the latest GitHub Actions run has not been independently verified; GitHub commit combined-status endpoint returned no statuses, which is not evidence of success or failure.
+
+## Step 5: opt-in agency HTTP login and sessions
+
+- Apply `db/002_agency_sessions.sql` after schema 001 in a disposable PostgreSQL database.
+- Set `ROGER_STORAGE_BACKEND=postgres` and `ROGER_DATABASE_URL` only in a non-production test environment.
+- `POST /api/agency/login` accepts username/password/agency slug and sets a secure, HttpOnly, SameSite=Strict session cookie scoped to `/api/agency/`. Local plain-HTTP tests require `ROGER_COOKIE_SECURE=0` (never production).
+- `GET /api/agency/whoami` and `GET /api/agency/properties` use PostgreSQL sessions. Property listings are currently agent-only; other roles fail closed until row-level ownership filters exist.
+- This is an isolated pilot, not a production-ready replacement: no UI wiring, session revocation/logout endpoint, CSRF strategy for future state-changing endpoints, or complete role-specific portal API yet. Legacy JSON authentication and all legacy workflows remain unchanged.
+- CI workflow runs are not verified as successful. The GitHub commit-status endpoint returned an empty status list, and direct workflow-page retrieval was unavailable. Review Actions logs before treating the changes as passing.
