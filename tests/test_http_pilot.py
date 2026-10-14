@@ -116,3 +116,29 @@ class AgencyPreviewSmokeTests(unittest.TestCase):
         h.serve_file = lambda filename: h.responses.append((200, filename))
         h.do_GET()
         self.assertEqual(h.responses, [(200, "hq-agency.html")])
+
+class AgencyPostGateTests(unittest.TestCase):
+    def test_message_post_requires_session(self):
+        import io
+        h = FakeHandler(None)
+        h.do_POST = lambda: server.H.do_POST(h)
+        h.path = "/api/agency/messages"
+        h.PUBLIC_POST = server.H.PUBLIC_POST
+        h.is_public = lambda path: False
+        h.headers = {"Content-Length":"2","Origin":"https://localhost","Host":"localhost"}
+        h.rfile = io.BytesIO(b"{}")
+        h.agency_session_user = lambda: None
+        h.do_POST()
+        self.assertEqual(h.responses[0][0],401)
+
+    def test_cross_origin_agency_post_rejected(self):
+        import io
+        h = FakeHandler(None)
+        h.do_POST = lambda: server.H.do_POST(h)
+        h.path = "/api/agency/messages"
+        h.PUBLIC_POST = server.H.PUBLIC_POST
+        h.is_public = lambda path: False
+        h.headers = {"Content-Length":"2","Origin":"https://other.invalid","Host":"localhost"}
+        h.rfile = io.BytesIO(b"{}")
+        h.do_POST()
+        self.assertEqual(h.responses[0][0],403)
