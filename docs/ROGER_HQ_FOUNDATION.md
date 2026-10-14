@@ -61,3 +61,17 @@ This branch is a first **schema prototype**, not a production migration.
 - The preview does not modify the existing `/agent`, `/tenant`, `/landlord`, or `/trades` pages. Document listing shows metadata, not file contents; secure upload/download remains outstanding.
 - A smoke test checks the new route, but GitHub Actions execution and PostgreSQL integration tests have **not** been independently verified green.
 - Important: the development preview requires seeded agency accounts, memberships, property grants and relevant workflow records. It is not ready for production rollout.
+
+## Release gate: verification required
+
+CI is configured to run Python unit tests against disposable PostgreSQL 16 on each development-branch push. The GitHub connector in this environment cannot retrieve push-triggered workflow run outcomes, and this environment has no PostgreSQL test driver/server; **no passing CI result has been observed**.
+
+Before enabling the preview for real users:
+1. Confirm the GitHub Actions job `Roger HQ agency isolation tests / postgres-isolation` is green for the latest development commit. If it fails, inspect job logs and repair the failing migration/test.
+2. On a disposable development server, apply migrations 001-006 in order, configure `ROGER_STORAGE_BACKEND=postgres` and `ROGER_DATABASE_URL`, and seed separate agency memberships for agent, tenant, landlord and trades.
+3. Open `/hq-agency`; verify tenant repair submission, agent job assignment, trades assigned-job visibility, landlord approval, appointment responses and two-way messaging.
+4. Attempt cross-agency login, unassigned-property access, unassigned-job access, ungranted-document access and message sending to a non-member. All must fail or return no records.
+5. Verify the existing `/agent`, `/tenant`, `/landlord` and `/trades` pages are unchanged and still functional.
+6. Do not migrate production data or merge to `main` until all gates are documented as passed.
+
+Document access currently controls metadata visibility, not secure file download/upload. The preview remains development-only.
