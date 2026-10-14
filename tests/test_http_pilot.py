@@ -87,3 +87,24 @@ class AgencyRoleGateTests(unittest.TestCase):
                 h.do_GET()
                 scoped.assert_called_once()
             self.assertEqual(h.responses,[(200,{"properties":[{"id":"allowed"}]})])
+
+class WorkflowReadGateTests(unittest.TestCase):
+    def test_workflow_requires_agency_session(self):
+        h=FakeHandler(None)
+        h.path="/api/agency/workflows/cases"
+        h.agency_session_user=lambda: None
+        h.do_GET()
+        self.assertEqual(h.responses[0][0],401)
+
+    def test_workflow_denied_by_repository(self):
+        @contextmanager
+        def transaction(url, agency):
+            yield object()
+        h=FakeHandler(None)
+        h.path="/api/agency/workflows/documents"
+        h.agency_session_user=lambda: {"id":str(uuid.uuid4()),"agency_id":str(uuid.uuid4()),"role":"tenant"}
+        with (patch.dict(server.os.environ,{"ROGER_DATABASE_URL":"postgresql://test-only"}),
+              patch.object(server.roger_pg,"agency_transaction",side_effect=transaction),
+              patch.object(server.roger_pg,"portal_workflow_records",side_effect=PermissionError)):
+            h.do_GET()
+        self.assertEqual(h.responses[0][0],403)
