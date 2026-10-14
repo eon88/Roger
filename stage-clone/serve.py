@@ -234,6 +234,8 @@ class H(SimpleHTTPRequestHandler):
                 with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
                     properties = roger_pg.portal_properties(cur,identity)
                 return self._json({"properties":properties})
+            except PermissionError:
+                return self._json({"error":"agency access denied"},403)
             except Exception:
                 return self._json({"error":"database unavailable"},503)
         if path.startswith("/api/agency/workflows/"):
