@@ -75,6 +75,27 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_tenant_can_only_report_assigned_property(self):
+        tenant=uuid.uuid4()
+        with psycopg.connect(self.url) as conn:
+            conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                         (tenant,"report-"+tenant.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,'tenant')",
+                        (self.a,tenant))
+            pg.put_record(cur,"properties",self.a,{"id":"report-home","title":"Home"})
+            pg.put_record(cur,"properties",self.a,{"id":"not-report-home","title":"Other"})
+            cur.execute("""INSERT INTO property_access(agency_id,property_id,user_id,access_role)
+                VALUES (%s,'report-home',%s,'tenant')""",(self.a,tenant))
+            identity={"id":str(tenant),"agency_id":str(self.a),"role":"tenant"}
+            record=pg.create_maintenance_case(cur,identity,"report-home","Leaking tap")
+            self.assertEqual(record["status"],"open")
+            self.assertEqual(record["property_id"],"report-home")
+            with self.assertRaises(PermissionError):
+                pg.create_maintenance_case(cur,identity,"not-report-home","No access")
+            with self.assertRaises(ValueError):
+                pg.create_maintenance_case(cur,identity,"report-home","")
+
     def test_trades_jobs_and_landlord_approvals_are_assigned(self):
         users={}
         with psycopg.connect(self.url) as conn:
