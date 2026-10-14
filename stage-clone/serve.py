@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import jev_client
 import roger_pg
+import hq_owner
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -73,7 +74,7 @@ class H(SimpleHTTPRequestHandler):
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/logout", "/signin", "/register/landlord", "/register/trades",
               "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
-    PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/agency/login"}
+    PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/agency/login", "/api/hq-owner/login"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -214,6 +215,12 @@ class H(SimpleHTTPRequestHandler):
     # ---------- routes ----------
     def do_GET(self):
         path = self.path.split("?")[0]
+        if path == "/hq":
+            return self.serve_file("hq.html")
+        if path == "/api/hq-owner/whoami":
+            if not hq_owner.valid_token(self.parse_cookies().get(hq_owner.COOKIE)):
+                return self._json({"error": "owner login required"}, 401)
+            return self._json({"username": os.environ["ROGER_HQ_OWNER_USERNAME"], "role": "platform_owner"})
         if path == "/hq-agency":
             return self.serve_file("hq-agency.html")
         if path == "/login":
@@ -415,6 +422,28 @@ class H(SimpleHTTPRequestHandler):
             data = json.loads(body)
         except Exception:
             data = dict(urllib.parse.parse_qsl(body))
+        if path == "/api/hq-owner/login":
+            ip = self.client_address[0]
+            if not hq_owner.configured():
+                return self._json({"error": "owner account not configured"}, 503)
+            if login_throttled(ip):
+                return self._json({"error": "too many attempts"}, 429)
+            if not isinstance(data, dict) or not hq_owner.password_matches(data.get("username"), data.get("password")):
+                login_note(ip, False)
+                return self._json({"error": "invalid owner credentials"}, 401)
+            login_note(ip, True)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            ck = http.cookies.SimpleCookie()
+            ck[hq_owner.COOKIE] = hq_owner.issue_token()
+            ck[hq_owner.COOKIE]["httponly"] = True
+            ck[hq_owner.COOKIE]["samesite"] = "Strict"
+            ck[hq_owner.COOKIE]["path"] = "/api/hq-owner/"
+            if os.environ.get("ROGER_COOKIE_SECURE", "1") != "0":
+                ck[hq_owner.COOKIE]["secure"] = True
+            self.send_header("Set-Cookie", ck.output(header="").strip())
+            self.end_headers()
+            return self.wfile.write(b'{"ok":true}')
         if path == "/api/agency/login":
             return self.agency_login(data)
         if path.startswith("/api/agency/") and path != "/api/agency/login":
