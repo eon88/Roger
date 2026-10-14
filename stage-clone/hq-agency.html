@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roger HQ · Agency Portal (Development)</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#172b3a;background:#f4f7fa}*{box-sizing:border-box}
+body{margin:0}header{background:#113b52;color:white;padding:18px 5vw;display:flex;justify-content:space-between;align-items:center}
+main{max-width:1150px;margin:24px auto;padding:0 18px}.panel{background:white;border:1px solid #dce4e9;border-radius:12px;padding:20px;margin:16px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+input,textarea,select,button{font:inherit;padding:10px;border:1px solid #aebdc8;border-radius:7px;max-width:100%}
+input,textarea,select{width:100%;margin:6px 0 12px}button{background:#125c79;color:white;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}.muted{color:#526879}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+h1{font-size:22px;margin:0}h2{font-size:18px}h3{font-size:15px}article{border-top:1px solid #e3e9ed;padding:9px 0}
+.hidden{display:none}#notice{min-height:24px}label{font-weight:600}
+</style></head><body>
+<header><h1>Roger HQ · Agency Portal</h1><small>Development preview · PostgreSQL</small></header>
+<main>
+<p id="notice" role="status" aria-live="polite"></p>
+<section id="loginPanel" class="panel"><h2>Agency sign in</h2>
+<form id="loginForm"><label>Agency slug<input name="agency" required autocomplete="organization"></label>
+<label>Username<input name="username" required autocomplete="username"></label>
+<label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+<button>Sign in</button></form></section>
+<section id="dashboard" class="hidden">
+<div class="panel"><h2 id="welcome"></h2><p class="muted">Only data permitted for your agency and role is shown.</p><button id="refresh">Refresh</button></div>
+<div class="grid">
+<section class="panel"><h2>Properties</h2><div id="properties"></div></section>
+<section class="panel"><h2>Maintenance cases</h2><div id="cases"></div></section>
+<section class="panel"><h2>Jobs</h2><div id="jobs"></div></section>
+<section class="panel"><h2>Approvals</h2><div id="approvals"></div></section>
+<section class="panel"><h2>Appointments</h2><div id="appointments"></div></section>
+<section class="panel"><h2>Documents (records only)</h2><div id="documents"></div></section>
+<section class="panel"><h2>Messages</h2><div id="messages"></div></section>
+</div>
+<section class="panel hidden" id="tenantAction"><h2>Report a repair</h2>
+<form id="caseForm"><label>Property<select name="property_id" id="caseProperty" required></select></label>
+<label>Problem<textarea name="description" maxlength="2000" required></textarea></label><button>Send report</button></form></section>
+<section class="panel hidden" id="agentAction"><h2>Assign a repair job</h2>
+<form id="jobForm"><label>Case ID<input name="case_id" required></label>
+<label>Tradesperson user ID<input name="trades_user_id" required></label>
+<label>Work required<textarea name="description" maxlength="2000" required></textarea></label><button>Assign job</button></form></section>
+<section class="panel hidden" id="landlordAction"><h2>Decide an approval</h2>
+<form id="approvalForm"><label>Approval ID<input name="approval_id" required></label>
+<label>Decision<select name="decision"><option value="approved">Approve</option><option value="rejected">Reject</option></select></label><button>Submit decision</button></form></section>
+<section class="panel hidden" id="appointmentAction"><h2>Respond to appointment</h2>
+<form id="appointmentForm"><label>Appointment ID<input name="appointment_id" required></label>
+<label>Response<select name="decision"><option value="confirmed">Confirm</option><option value="declined">Decline</option></select></label><button>Send response</button></form></section>
+<section class="panel"><h2>Send a message</h2><form id="messageForm">
+<label>Recipient user ID<input name="recipient_id" required></label>
+<label>Message<textarea name="body" maxlength="4000" required></textarea></label><button>Send message</button></form></section>
+</section></main>
+<script>
+const $=id=>document.getElementById(id);
+const show=(id,yes)=>$(id).classList.toggle('hidden',!yes);
+function notice(message){$('notice').textContent=message;}
+async function api(path,method='GET',data){
+ const options={method,credentials:'same-origin',headers:{}};
+ if(data){options.headers['Content-Type']='application/json';options.body=JSON.stringify(data);}
+ const response=await fetch(path,options);
+ let result;try{result=await response.json();}catch{throw Error('Invalid server response');}
+ if(!response.ok)throw Error(result.error||('HTTP '+response.status));
+ return result;
+}
+function draw(id,records){
+ const root=$(id);root.replaceChildren();
+ if(!records.length){const p=document.createElement('p');p.className='muted';p.textContent='No records available';root.append(p);return;}
+ for(const item of records){
+  const article=document.createElement('article');
+  const heading=document.createElement('strong');heading.textContent=item.title||item.description||item.body||item.id||'Record';
+  const pre=document.createElement('pre');pre.textContent=JSON.stringify(item,null,2);
+  article.append(heading,pre);root.append(article);
+ }
+}
+let currentRole='';
+async function refresh(){
+ const identity=await api('/api/agency/whoami');currentRole=identity.role;
+ show('loginPanel',false);show('dashboard',true);
+ $('welcome').textContent=identity.username+' · '+identity.role;
+ for(const [id,role] of [['tenantAction','tenant'],['agentAction','agent'],['landlordAction','landlord']])show(id,currentRole===role);
+ show('appointmentAction',['tenant','landlord'].includes(currentRole));
+ const collections=['properties','cases','jobs','approvals','appointments','documents','messages'];
+ for(const name of collections){
+  const path=name==='properties'?'/api/agency/properties':name==='messages'?'/api/agency/messages':'/api/agency/workflows/'+name;
+  try{const result=await api(path);draw(name,result[name]||[]);
+    if(name==='properties'){
+      const select=$('caseProperty');select.replaceChildren();
+      for(const p of result.properties||[]){const o=document.createElement('option');o.value=p.id;o.textContent=p.title||p.id;select.append(o);}
+    }
+  }catch(e){$(name).textContent=e.message==='workflow access denied'?'Not available for this role':e.message;}
+ }
+}
+$('loginForm').addEventListener('submit',async e=>{
+ e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
+ try{await api('/api/agency/login','POST',Object.fromEntries(new FormData(e.target)));await refresh();notice('Signed in');}
+ catch(err){notice(err.message);}finally{button.disabled=false;}
+});
+$('refresh').onclick=()=>refresh().catch(e=>notice(e.message));
+for(const [form,path] of [['caseForm','cases'],['jobForm','jobs'],['approvalForm','approval-decision'],['appointmentForm','appointment-response'],['messageForm','messages']]){
+ $(form).addEventListener('submit',async e=>{
+  e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
+  try{await api('/api/agency/'+path,'POST',Object.fromEntries(new FormData(e.target)));notice('Saved');e.target.reset();await refresh();}
+  catch(err){notice(err.message);}finally{button.disabled=false;}
+ });
+}
+refresh().catch(()=>{show('loginPanel',true);show('dashboard',false);});
+</script></body></html>
