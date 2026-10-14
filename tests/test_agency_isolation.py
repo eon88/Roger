@@ -20,7 +20,6 @@ class AgencyIsolationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.db = psycopg.connect(os.environ["TEST_DATABASE_URL"], autocommit=True)
         with cls.db.cursor() as cur:
-            cur.execute(SCHEMA.read_text())
             cur.execute("INSERT INTO agencies(name,slug) VALUES ('Agency A','agency-a'),('Agency B','agency-b')")
             cur.execute("SELECT id,slug FROM agencies ORDER BY slug")
             cls.a, cls.b = [r[0] for r in cur.fetchall()]
