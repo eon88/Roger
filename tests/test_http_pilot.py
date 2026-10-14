@@ -71,13 +71,19 @@ class AuthenticatedPilotTests(unittest.TestCase):
         self.assertEqual(h.responses[0][0],403)
 
 class AgencyRoleGateTests(unittest.TestCase):
-    def test_non_agent_never_queries_property_list(self):
-        for role in ("tenant","landlord","trades"):
-            h = FakeHandler(None)
-            h.path = "/api/agency/properties"
-            h.agency_session_user = lambda role=role: {"role":role,"id":str(uuid.uuid4()),
-                "agency_id":str(uuid.uuid4()),"username":"tester"}
-            with patch.object(server.roger_pg,"agency_transaction") as tx:
+    def test_each_portal_uses_scoped_property_repository(self):
+        @contextmanager
+        def transaction(url, agency):
+            yield object()
+        for role in ("agent","tenant","landlord","trades"):
+            identity={"role":role,"id":str(uuid.uuid4()),
+                      "agency_id":str(uuid.uuid4()),"username":"tester"}
+            h=FakeHandler(None)
+            h.path="/api/agency/properties"
+            h.agency_session_user=lambda identity=identity: identity
+            with (patch.dict(server.os.environ, {"ROGER_DATABASE_URL":"postgresql://test-only"}),
+                  patch.object(server.roger_pg,"agency_transaction",side_effect=transaction),
+                  patch.object(server.roger_pg,"portal_properties",return_value=[{"id":"allowed"}]) as scoped):
                 h.do_GET()
-                tx.assert_not_called()
-            self.assertEqual(h.responses[0][0],403)
+                scoped.assert_called_once()
+            self.assertEqual(h.responses,[(200,{"properties":[{"id":"allowed"}]})])
