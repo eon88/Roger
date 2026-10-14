@@ -228,16 +228,12 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error":"agency authentication required"},401)
             if path == "/api/agency/whoami":
                 return self._json({"username":identity["username"],"role":identity["role"]})
-            if identity["role"] not in ("agent","landlord","tenant","trades"):
-                return self._json({"error":"not your portal"},403)
+            if identity["role"] != "agent":
+                return self._json({"error":"role-specific property access not implemented"},403)
             try:
                 with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
                     roger_pg.assert_membership(cur,identity["id"],identity["agency_id"])
                     properties = roger_pg.list_records(cur,"properties")
-                # Non-agent roles require separate per-property authorisation;
-                # do not expose the agency-wide list to them.
-                if identity["role"] != "agent":
-                    return self._json({"error":"role-specific property access not implemented"},403)
                 return self._json({"properties":properties})
             except Exception:
                 return self._json({"error":"database unavailable"},503)
