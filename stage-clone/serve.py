@@ -249,6 +249,18 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error":"workflow access denied"},403)
             except Exception:
                 return self._json({"error":"database unavailable"},503)
+        if path == "/api/agency/messages":
+            identity = self.agency_session_user()
+            if not identity:
+                return self._json({"error":"agency authentication required"},401)
+            try:
+                with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
+                    messages = roger_pg.agency_inbox(cur,identity)
+                return self._json({"messages":messages})
+            except PermissionError:
+                return self._json({"error":"message access denied"},403)
+            except Exception:
+                return self._json({"error":"database unavailable"},503)
         if path == "/api/hq/properties":
             # Read-only pilot: legacy users lack agency UUIDs, so fail closed.
             # No client-supplied tenant identifier is accepted.
