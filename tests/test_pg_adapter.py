@@ -75,6 +75,22 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_session_is_scoped_and_expires(self):
+        from datetime import datetime, timedelta, timezone
+        with psycopg.connect(self.url) as conn:
+            with conn.cursor() as cur:
+                cur.execute((ROOT / "db" / "002_agency_sessions.sql").read_text())
+        identity = {"id":str(self.user),"agency_id":str(self.a)}
+        token = "integration-test-session-" + uuid.uuid4().hex
+        pg.create_session(self.url, identity, token, datetime.now(timezone.utc)+timedelta(minutes=5))
+        found = pg.session_identity(self.url,self.a,token)
+        self.assertEqual(found["agency_id"],str(self.a))
+        self.assertIsNone(pg.session_identity(self.url,self.b,token))
+        self.assertIsNone(pg.session_identity(self.url,self.a,token+"wrong"))
+        expired = "expired-" + uuid.uuid4().hex
+        pg.create_session(self.url,identity,expired,datetime.now(timezone.utc)-timedelta(seconds=1))
+        self.assertIsNone(pg.session_identity(self.url,self.a,expired))
+
     def test_agency_login_verifies_password_and_membership(self):
         salt = bytes.fromhex("1234567890abcdef1234567890abcdef")
         digest = hashlib.scrypt(b"correct-password", salt=salt, n=2**14, r=8, p=1).hex()
