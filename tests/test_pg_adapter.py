@@ -75,6 +75,36 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_agent_assigns_job_and_landlord_decides_once(self):
+        trades, landlord = uuid.uuid4(), uuid.uuid4()
+        with psycopg.connect(self.url) as conn:
+            for uid in (trades,landlord):
+                conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                             (uid,"actions-"+uid.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            for uid,role in ((trades,"trades"),(landlord,"landlord")):
+                cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,%s)",
+                            (self.a,uid,role))
+            pg.put_record(cur,"properties",self.a,{"id":"actions-home","title":"Home"})
+            pg.put_record(cur,"cases",self.a,{"id":"actions-case","property_id":"actions-home"})
+            agent={"id":str(self.user),"agency_id":str(self.a),"role":"agent"}
+            job=pg.create_repair_job(cur,agent,"actions-case",trades,"Fix the leak")
+            self.assertEqual(job["status"],"assigned")
+            assigned={"id":str(trades),"agency_id":str(self.a),"role":"trades"}
+            self.assertIn(job["id"],[r["id"] for r in pg.portal_workflow_records(cur,assigned,"jobs")])
+            with self.assertRaises(PermissionError):
+                pg.create_repair_job(cur,assigned,"actions-case",trades,"Not agent")
+            pg.put_record(cur,"approvals",self.a,{"id":"actions-approval","job_id":job["id"],"status":"pending"})
+            cur.execute("""INSERT INTO approval_recipients(agency_id,approval_id,user_id)
+                VALUES (%s,'actions-approval',%s)""",(self.a,landlord))
+            recipient={"id":str(landlord),"agency_id":str(self.a),"role":"landlord"}
+            result=pg.decide_repair_approval(cur,recipient,"actions-approval","approved")
+            self.assertEqual(result["status"],"approved")
+            with self.assertRaises(ValueError):
+                pg.decide_repair_approval(cur,recipient,"actions-approval","rejected")
+            with self.assertRaises(PermissionError):
+                pg.decide_repair_approval(cur,agent,"actions-approval","rejected")
+
     def test_tenant_can_only_report_assigned_property(self):
         tenant=uuid.uuid4()
         with psycopg.connect(self.url) as conn:
