@@ -73,7 +73,7 @@ class H(SimpleHTTPRequestHandler):
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/logout", "/signin", "/register/landlord", "/register/trades",
               "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
-    PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry"}
+    PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/agency/login"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -163,6 +163,54 @@ class H(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps({"ok": True, "role": u["role"]}).encode())
 
+    # ---------- isolated PostgreSQL pilot authentication ----------
+    def agency_session_user(self):
+        if not roger_pg.enabled() or not os.environ.get("ROGER_DATABASE_URL"):
+            return None
+        cookies = self.parse_cookies()
+        token, agency = cookies.get("roger_agency_session"), cookies.get("roger_agency")
+        if not token or not agency:
+            return None
+        try:
+            return roger_pg.session_identity(os.environ["ROGER_DATABASE_URL"], agency, token)
+        except (ValueError, Exception):
+            return None
+
+    def agency_login(self, data):
+        if not roger_pg.enabled() or not os.environ.get("ROGER_DATABASE_URL"):
+            return self._json({"error":"agency login unavailable"},503)
+        ip = self.client_address[0]
+        if login_throttled(ip):
+            return self._json({"error":"too many attempts"},429)
+        username = str(data.get("username",""))[:80]
+        password = str(data.get("password",""))[:200]
+        slug = str(data.get("agency",""))[:100]
+        try:
+            identity = roger_pg.authenticate_agency_user(
+                os.environ["ROGER_DATABASE_URL"], username, password, slug)
+            if not identity:
+                login_note(ip,False)
+                return self._json({"error":"invalid credentials or agency"},401)
+            token = secrets.token_urlsafe(32)
+            roger_pg.create_session(os.environ["ROGER_DATABASE_URL"], identity, token,
+                                    datetime.now(timezone.utc)+SESSION_TTL)
+        except Exception:
+            return self._json({"error":"agency login unavailable"},503)
+        login_note(ip,True)
+        self.send_response(200)
+        self.send_header("Content-Type","application/json")
+        for key,value in (("roger_agency_session",token),("roger_agency",identity["agency_id"])):
+            ck = http.cookies.SimpleCookie()
+            ck[key]=value
+            ck[key]["httponly"]=True
+            ck[key]["samesite"]="Strict"
+            ck[key]["path"]="/api/agency/"
+            if os.environ.get("ROGER_COOKIE_SECURE","1") != "0":
+                ck[key]["secure"]=True
+            self.send_header("Set-Cookie",ck.output(header="").strip())
+        self.end_headers()
+        self.wfile.write(json.dumps({"ok":True,"role":identity["role"]}).encode())
+
     # ---------- routes ----------
     def do_GET(self):
         path = self.path.split("?")[0]
@@ -174,6 +222,25 @@ class H(SimpleHTTPRequestHandler):
             self.send_header("Location", "/")
             self.end_headers()
             return
+        if path in ("/api/agency/whoami","/api/agency/properties"):
+            identity = self.agency_session_user()
+            if not identity:
+                return self._json({"error":"agency authentication required"},401)
+            if path == "/api/agency/whoami":
+                return self._json({"username":identity["username"],"role":identity["role"]})
+            if identity["role"] not in ("agent","landlord","tenant","trades"):
+                return self._json({"error":"not your portal"},403)
+            try:
+                with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
+                    roger_pg.assert_membership(cur,identity["id"],identity["agency_id"])
+                    properties = roger_pg.list_records(cur,"properties")
+                # Non-agent roles require separate per-property authorisation;
+                # do not expose the agency-wide list to them.
+                if identity["role"] != "agent":
+                    return self._json({"error":"role-specific property access not implemented"},403)
+                return self._json({"properties":properties})
+            except Exception:
+                return self._json({"error":"database unavailable"},503)
         if path == "/api/hq/properties":
             # Read-only pilot: legacy users lack agency UUIDs, so fail closed.
             # No client-supplied tenant identifier is accepted.
@@ -324,6 +391,8 @@ class H(SimpleHTTPRequestHandler):
             data = json.loads(body)
         except Exception:
             data = dict(urllib.parse.parse_qsl(body))
+        if path == "/api/agency/login":
+            return self.agency_login(data)
         handlers = {
             "/login": self.do_POST_login,
             "/api/public": self.handle_public_post,
