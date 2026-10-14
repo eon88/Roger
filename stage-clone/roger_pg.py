@@ -283,3 +283,22 @@ def decide_repair_approval(cur, identity, approval_id, decision):
     if not cur.fetchone():
         raise ValueError("approval already decided")
     return {"id":str(approval_id),"status":decision}
+
+def respond_to_appointment(cur, identity, appointment_id, decision):
+    role = assert_membership(cur, identity["id"], identity["agency_id"])
+    if role != identity["role"] or role not in ("tenant", "landlord"):
+        raise PermissionError("appointment response denied")
+    if decision not in ("confirmed", "declined"):
+        raise ValueError("invalid decision")
+    cur.execute("""UPDATE appointments ap
+      SET payload=jsonb_set(payload,'{status}',to_jsonb(%s::text))
+      WHERE ap.agency_id=%s AND ap.id=%s
+        AND COALESCE(ap.payload->>'status','pending')='pending'
+        AND EXISTS (SELECT 1 FROM property_access a
+          WHERE a.agency_id=ap.agency_id AND a.property_id=ap.property_id
+            AND a.user_id=%s AND a.access_role=%s)
+      RETURNING ap.id""",
+      (decision,_uuid(identity["agency_id"]),str(appointment_id),_uuid(identity["id"]),role))
+    if not cur.fetchone():
+        raise PermissionError("appointment not available")
+    return {"id":str(appointment_id),"status":decision}
