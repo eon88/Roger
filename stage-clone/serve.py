@@ -388,7 +388,7 @@ class H(SimpleHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
         self.user = None
-        if not self.is_public(path) and path not in self.PUBLIC_POST:
+        if not self.is_public(path) and path not in self.PUBLIC_POST and not path.startswith("/api/agency/"):
             u = self.require(self.ROLE_API.get(path))
             if not u:
                 return
@@ -401,6 +401,24 @@ class H(SimpleHTTPRequestHandler):
             data = dict(urllib.parse.parse_qsl(body))
         if path == "/api/agency/login":
             return self.agency_login(data)
+        if path == "/api/agency/cases":
+            identity = self.agency_session_user()
+            if not identity:
+                return self._json({"error":"agency authentication required"},401)
+            if not isinstance(data,dict):
+                return self._json({"error":"invalid request"},400)
+            try:
+                with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
+                    record = roger_pg.create_maintenance_case(
+                        cur,identity,data.get("property_id",""),data.get("description",""))
+                return self._json({"case":record},201)
+            except PermissionError:
+                return self._json({"error":"case creation denied"},403)
+            except ValueError:
+                return self._json({"error":"invalid maintenance request"},400)
+            except Exception:
+                return self._json({"error":"database unavailable"},503)
+
         handlers = {
             "/login": self.do_POST_login,
             "/api/public": self.handle_public_post,
