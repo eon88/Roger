@@ -234,6 +234,21 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"properties":properties})
             except Exception:
                 return self._json({"error":"database unavailable"},503)
+        if path.startswith("/api/agency/workflows/"):
+            collection = path.removeprefix("/api/agency/workflows/")
+            if collection not in ("cases","appointments","jobs","approvals","documents"):
+                return self._json({"error":"unknown workflow"},404)
+            identity = self.agency_session_user()
+            if not identity:
+                return self._json({"error":"agency authentication required"},401)
+            try:
+                with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
+                    records = roger_pg.portal_workflow_records(cur,identity,collection)
+                return self._json({collection:records})
+            except PermissionError:
+                return self._json({"error":"workflow access denied"},403)
+            except Exception:
+                return self._json({"error":"database unavailable"},503)
         if path == "/api/hq/properties":
             # Read-only pilot: legacy users lack agency UUIDs, so fail closed.
             # No client-supplied tenant identifier is accepted.
