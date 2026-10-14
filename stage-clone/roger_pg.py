@@ -335,3 +335,33 @@ def send_agency_message(cur, identity, recipient_id, body):
     cur.execute("INSERT INTO agency_messages(agency_id,sender_id,recipient_id,body) VALUES (%s,%s,%s,%s) RETURNING id",
                 (agency,_uuid(identity["id"]),recipient,body))
     return str(cur.fetchone()[0])
+
+def request_repair_approval(cur, identity, job_id, landlord_id, summary):
+    """Agent requests a repair decision from a landlord granted the job property."""
+    import secrets
+    if assert_membership(cur, identity["id"], identity["agency_id"], {"agent"}) != identity["role"]:
+        raise PermissionError("agent role required")
+    summary = str(summary).strip()
+    if not summary or len(summary) > 2000:
+        raise ValueError("invalid approval summary")
+    agency = _uuid(identity["agency_id"])
+    landlord = _uuid(landlord_id)
+    cur.execute("SELECT property_id FROM jobs WHERE agency_id=%s AND id=%s",
+                (agency,str(job_id)))
+    row = cur.fetchone()
+    if not row or not row[0]:
+        raise ValueError("job not found")
+    cur.execute("""SELECT 1 FROM agency_memberships m JOIN property_access p
+      ON p.agency_id=m.agency_id AND p.user_id=m.user_id
+      WHERE m.agency_id=%s AND m.user_id=%s AND m.role='landlord'
+        AND p.property_id=%s AND p.access_role='landlord'""",
+      (agency,landlord,row[0]))
+    if not cur.fetchone():
+        raise PermissionError("landlord not assigned to job property")
+    approval_id = "approval-" + secrets.token_hex(12)
+    cur.execute("""INSERT INTO approvals(agency_id,id,job_id,payload)
+      VALUES (%s,%s,%s,%s::jsonb)""",
+      (agency,approval_id,str(job_id),json.dumps({"status":"pending","summary":summary})))
+    cur.execute("""INSERT INTO approval_recipients(agency_id,approval_id,user_id)
+      VALUES (%s,%s,%s)""",(agency,approval_id,landlord))
+    return {"id":approval_id,"job_id":str(job_id),"status":"pending"}
