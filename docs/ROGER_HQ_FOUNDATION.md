@@ -10,3 +10,12 @@ This branch is a first **schema prototype**, not a production migration.
 - Production runtime DB user must not own tables or have BYPASSRLS.
 - Before real migration: cover approvals, documents, appointments, invitations, registrations, messages, subscription data; add indexes and migrations; test joins, updates, deletes, cross-agency references and role boundaries.
 - A dedicated migration strategy must preserve existing live JSON data and credentials, with backups and rollback.
+
+## Step 5 pilot (development branch)
+
+- `stage-clone/roger_pg.py` is an opt-in PostgreSQL repository adapter.
+- `GET /api/hq/properties` is the first read-only HTTP integration. The endpoint requires an authenticated `agent`, server-held `user.id` and `user.agency_id` UUIDs, and matching `agency_memberships` entry.
+- Enable only in a disposable development environment with `ROGER_STORAGE_BACKEND=postgres` and `ROGER_DATABASE_URL`. Without these, the legacy JSON backend remains active.
+- The existing JSON user records do not yet contain these UUIDs; the pilot intentionally returns 503 rather than guessing tenant identity.
+- This is **not** a complete switch to PostgreSQL. Legacy workflow writes, session storage, public forms, uploads, and other portal endpoints remain JSON-backed. Do not enable mixed backend mode in production.
+- All changes must be tested in GitHub Actions before considering a staged deployment. Verify the actual run, not merely the existence of workflow configuration.
