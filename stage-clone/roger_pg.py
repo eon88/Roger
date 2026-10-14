@@ -157,3 +157,19 @@ def session_identity(database_url, agency_id, token):
             return None
         return {"id":str(row[0]), "agency_id":str(row[1]),
                 "username":row[2], "role":row[3], "display_name":row[2]}
+
+def portal_properties(cur, identity):
+    """Property list with explicit per-user grants for non-agent roles."""
+    role = assert_membership(cur, identity["id"], identity["agency_id"])
+    if role != identity["role"]:
+        raise PermissionError("stale role")
+    if role == "agent":
+        return list_records(cur, "properties")
+    if role not in ("tenant", "landlord", "trades"):
+        raise PermissionError("unsupported role")
+    cur.execute("""SELECT p.id,p.payload,p.title
+        FROM properties p
+        JOIN property_access a ON a.agency_id=p.agency_id AND a.property_id=p.id
+        WHERE a.user_id=%s AND a.access_role=%s
+        ORDER BY p.id""", (_uuid(identity["id"]), role))
+    return [dict(row[1], id=row[0], title=row[2]) for row in cur.fetchall()]
