@@ -207,3 +207,25 @@ def portal_workflow_records(cur, identity, collection):
     else:
         raise PermissionError("workflow access not granted")
     return [dict(row[1], id=row[0]) for row in cur.fetchall()]
+
+def create_maintenance_case(cur, identity, property_id, description):
+    """Tenant creates a case for an explicitly assigned property."""
+    import secrets
+    role = assert_membership(cur, identity["id"], identity["agency_id"], {"tenant"})
+    if role != identity["role"]:
+        raise PermissionError("stale role")
+    description = str(description).strip()
+    if not description or len(description) > 2000:
+        raise ValueError("description must be 1-2000 characters")
+    property_id = str(property_id)
+    cur.execute("""SELECT 1 FROM property_access
+        WHERE agency_id=%s AND property_id=%s AND user_id=%s AND access_role='tenant'""",
+        (_uuid(identity["agency_id"]),property_id,_uuid(identity["id"])))
+    if not cur.fetchone():
+        raise PermissionError("property not assigned")
+    case_id = "case-" + secrets.token_hex(12)
+    payload = {"description":description,"status":"open","reported_by":_uuid(identity["id"])}
+    cur.execute("""INSERT INTO cases(agency_id,id,property_id,payload)
+        VALUES (%s,%s,%s,%s::jsonb)""",
+        (_uuid(identity["agency_id"]),case_id,property_id,json.dumps(payload)))
+    return {"id":case_id,"property_id":property_id,**payload}
