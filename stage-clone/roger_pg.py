@@ -126,3 +126,28 @@ def authenticate_agency_user(database_url, username, password, agency_slug):
             role = assert_membership(cur, user_id, agency_id)
             return {"id":str(user_id), "agency_id":str(agency_id),
                     "username":username, "role":role}
+
+def create_session(database_url, identity, token, expires_at):
+    import hashlib
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    with agency_transaction(database_url, identity["agency_id"]) as cur:
+        assert_membership(cur, identity["id"], identity["agency_id"])
+        cur.execute("""INSERT INTO agency_sessions(token_hash,user_id,agency_id,expires_at)
+            VALUES (%s,%s,%s,%s)""", (digest, identity["id"], identity["agency_id"], expires_at))
+
+def session_identity(database_url, agency_id, token):
+    """Resolve only a server-issued session within its agency RLS context."""
+    import hashlib
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    with agency_transaction(database_url, agency_id) as cur:
+        cur.execute("""SELECT s.user_id, s.agency_id, u.username, m.role
+            FROM agency_sessions s
+            JOIN app_users u ON u.id=s.user_id
+            JOIN agency_memberships m ON m.user_id=s.user_id AND m.agency_id=s.agency_id
+            JOIN agencies a ON a.id=s.agency_id
+            WHERE s.token_hash=%s AND s.expires_at>now() AND a.status='active'""", (digest,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {"id":str(row[0]), "agency_id":str(row[1]),
+                "username":row[2], "role":row[3], "display_name":row[2]}
