@@ -313,3 +313,20 @@ def agency_inbox(cur, identity):
       ORDER BY created_at DESC LIMIT 100""", (uid,uid))
     return [{"id":str(r[0]),"sender_id":str(r[1]),"recipient_id":str(r[2]),
              "body":r[3],"created_at":r[4].isoformat()} for r in cur.fetchall()]
+
+def send_agency_message(cur, identity, recipient_id, body):
+    role = assert_membership(cur, identity["id"], identity["agency_id"])
+    if role != identity["role"]:
+        raise PermissionError("stale role")
+    body = str(body).strip()
+    if not body or len(body) > 4000:
+        raise ValueError("invalid message length")
+    recipient = _uuid(recipient_id)
+    agency = _uuid(identity["agency_id"])
+    cur.execute("SELECT role FROM agency_memberships WHERE agency_id=%s AND user_id=%s",
+                (agency, recipient))
+    if not cur.fetchone():
+        raise PermissionError("recipient not a member")
+    cur.execute("INSERT INTO agency_messages(agency_id,sender_id,recipient_id,body) VALUES (%s,%s,%s,%s) RETURNING id",
+                (agency,_uuid(identity["id"]),recipient,body))
+    return str(cur.fetchone()[0])
