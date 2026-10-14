@@ -75,6 +75,28 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_maintenance_workflows_are_property_scoped(self):
+        user=uuid.uuid4()
+        with psycopg.connect(self.url) as conn:
+            conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                         (user,"maintenance-"+user.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,'tenant')",
+                        (self.a,user))
+            for pid in ("maintenance-allowed","maintenance-hidden"):
+                pg.put_record(cur,"properties",self.a,{"id":pid,"title":pid})
+                pg.put_record(cur,"cases",self.a,{"id":"case-"+pid,"property_id":pid})
+                pg.put_record(cur,"appointments",self.a,{"id":"appt-"+pid,"property_id":pid})
+            cur.execute("""INSERT INTO property_access(agency_id,property_id,user_id,access_role)
+                VALUES (%s,'maintenance-allowed',%s,'tenant')""",(self.a,user))
+            identity={"id":str(user),"agency_id":str(self.a),"role":"tenant"}
+            for kind,prefix in (("cases","case-"),("appointments","appt-")):
+                self.assertEqual([x["id"] for x in pg.portal_workflow_records(cur,identity,kind)],
+                                 [prefix+"maintenance-allowed"])
+            for kind in ("jobs","approvals","documents"):
+                with self.assertRaises(PermissionError):
+                    pg.portal_workflow_records(cur,identity,kind)
+
     def test_explicit_property_grants_filter_roles(self):
         people={}
         with psycopg.connect(self.url) as conn:
