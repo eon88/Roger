@@ -34,6 +34,8 @@ class PostgresAdapterTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.url = os.environ["TEST_DATABASE_URL"]
+        with psycopg.connect(cls.url) as conn:
+            conn.execute((ROOT / "db" / "002_agency_sessions.sql").read_text())
         cls.a, cls.b = uuid.uuid4(), uuid.uuid4()
         cls.user = uuid.uuid4()
         with psycopg.connect(cls.url) as conn:
