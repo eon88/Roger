@@ -91,3 +91,38 @@ def put_record(cur, table, agency_id, record):
             VALUES (%s,%s,%s::jsonb)
             ON CONFLICT (agency_id,id) DO UPDATE SET payload=EXCLUDED.payload""",
             (agency_id, rid, json.dumps(payload)))
+
+def authenticate_agency_user(database_url, username, password, agency_slug):
+    """Resolve tenant identity on the server from credentials and membership.
+
+    Password hashes use the same scrypt salt:hash encoding as legacy accounts.
+    No agency identifier from the client is trusted as a membership assertion.
+    """
+    import hashlib
+    import hmac
+    import psycopg
+    if not username or not password or not agency_slug:
+        return None
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT u.id, u.password_hash, a.id, a.status
+                FROM app_users u JOIN agency_memberships m ON m.user_id=u.id
+                JOIN agencies a ON a.id=m.agency_id
+                WHERE u.username=%s AND a.slug=%s""", (username, agency_slug))
+            row = cur.fetchone()
+            if not row or row[3] != "active":
+                return None
+            user_id, stored, agency_id, _ = row
+            try:
+                salt, digest = stored.split(":", 1)
+                candidate = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt),
+                    n=2**14, r=8, p=1).hex()
+                valid = hmac.compare_digest(candidate, digest)
+            except (ValueError, TypeError):
+                valid = False
+            if not valid:
+                return None
+            cur.execute("SELECT set_config('roger.agency_id',%s,true)", (str(agency_id),))
+            role = assert_membership(cur, user_id, agency_id)
+            return {"id":str(user_id), "agency_id":str(agency_id),
+                    "username":username, "role":role}
