@@ -19,3 +19,11 @@ This branch is a first **schema prototype**, not a production migration.
 - The existing JSON user records do not yet contain these UUIDs; the pilot intentionally returns 503 rather than guessing tenant identity.
 - This is **not** a complete switch to PostgreSQL. Legacy workflow writes, session storage, public forms, uploads, and other portal endpoints remain JSON-backed. Do not enable mixed backend mode in production.
 - All changes must be tested in GitHub Actions before considering a staged deployment. Verify the actual run, not merely the existence of workflow configuration.
+
+## Agency authentication work in progress
+
+- `authenticate_agency_user(database_url, username, password, agency_slug)` resolves membership server-side, verifies scrypt credentials and rejects inactive agencies.
+- Database accounts require `app_users.password_hash` in `salt_hex:digest_hex` format. Legacy JSON users have separate credentials; no migration has been performed.
+- PostgreSQL authentication is **not yet wired to HTTP login/session handling**. The existing JSON login and four portals continue unchanged.
+- The read-only HTTP pilot requires a trusted authenticated session with user UUID and agency UUID. Do not populate those fields from unverified request headers or browser-supplied JSON.
+- Tests have been committed but the latest GitHub Actions run has not been independently verified; GitHub commit combined-status endpoint returned no statuses, which is not evidence of success or failure.
