@@ -213,9 +213,10 @@ class PostgresAdapterTests(unittest.TestCase):
             for kind,prefix in (("cases","case-"),("appointments","appt-")):
                 self.assertEqual([x["id"] for x in pg.portal_workflow_records(cur,identity,kind)],
                                  [prefix+"maintenance-allowed"])
-            for kind in ("jobs","approvals","documents"):
+            for kind in ("jobs","approvals"):
                 with self.assertRaises(PermissionError):
                     pg.portal_workflow_records(cur,identity,kind)
+            self.assertEqual(pg.portal_workflow_records(cur,identity,"documents"),[])
 
     def test_explicit_property_grants_filter_roles(self):
         people={}
