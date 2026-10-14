@@ -408,6 +408,28 @@ class H(SimpleHTTPRequestHandler):
             scheme = "https" if os.environ.get("ROGER_COOKIE_SECURE","1") != "0" else "http"
             if not host or origin != scheme + "://" + host:
                 return self._json({"error":"origin verification required"},403)
+        if path in ("/api/agency/jobs","/api/agency/approval-decision"):
+            identity = self.agency_session_user()
+            if not identity:
+                return self._json({"error":"agency authentication required"},401)
+            if not isinstance(data,dict):
+                return self._json({"error":"invalid request"},400)
+            try:
+                with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
+                    if path == "/api/agency/jobs":
+                        record = roger_pg.create_repair_job(
+                            cur,identity,data.get("case_id",""),
+                            data.get("trades_user_id",""),data.get("description",""))
+                    else:
+                        record = roger_pg.decide_repair_approval(
+                            cur,identity,data.get("approval_id",""),data.get("decision",""))
+                return self._json({"result":record},201 if path.endswith("/jobs") else 200)
+            except PermissionError:
+                return self._json({"error":"workflow action denied"},403)
+            except ValueError:
+                return self._json({"error":"invalid workflow request"},400)
+            except Exception:
+                return self._json({"error":"database unavailable"},503)
         if path == "/api/agency/cases":
             identity = self.agency_session_user()
             if not identity:
