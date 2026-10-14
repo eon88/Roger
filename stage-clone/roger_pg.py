@@ -186,15 +186,24 @@ def portal_workflow_records(cur, identity, collection):
         raise PermissionError("stale role")
     if role == "agent":
         return list_records(cur, collection)
-    # Per-document grants, per-job assignments and approval-specific authorisation
-    # are not yet modelled; deny rather than exposing agency-wide information.
-    if collection not in ("cases", "appointments") or role not in ("tenant", "landlord"):
+    if collection in ("cases", "appointments") and role in ("tenant", "landlord"):
+        cur.execute("""SELECT w.id,w.payload
+            FROM """ + collection + """ w
+            WHERE EXISTS (
+              SELECT 1 FROM property_access a
+              WHERE a.agency_id=w.agency_id AND a.property_id=w.property_id
+                AND a.user_id=%s AND a.access_role=%s
+            ) ORDER BY w.id""", (_uuid(identity["id"]), role))
+    elif collection == "jobs" and role == "trades":
+        cur.execute("""SELECT w.id,w.payload FROM jobs w
+            WHERE EXISTS (SELECT 1 FROM job_assignments a
+              WHERE a.agency_id=w.agency_id AND a.job_id=w.id AND a.user_id=%s)
+            ORDER BY w.id""", (_uuid(identity["id"]),))
+    elif collection == "approvals" and role == "landlord":
+        cur.execute("""SELECT w.id,w.payload FROM approvals w
+            WHERE EXISTS (SELECT 1 FROM approval_recipients a
+              WHERE a.agency_id=w.agency_id AND a.approval_id=w.id AND a.user_id=%s)
+            ORDER BY w.id""", (_uuid(identity["id"]),))
+    else:
         raise PermissionError("workflow access not granted")
-    cur.execute("""SELECT w.id,w.payload
-        FROM """ + collection + """ w
-        WHERE EXISTS (
-          SELECT 1 FROM property_access a
-          WHERE a.agency_id=w.agency_id AND a.property_id=w.property_id
-            AND a.user_id=%s AND a.access_role=%s
-        ) ORDER BY w.id""", (_uuid(identity["id"]), role))
     return [dict(row[1], id=row[0]) for row in cur.fetchall()]
