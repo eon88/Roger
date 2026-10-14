@@ -36,3 +36,12 @@ This branch is a first **schema prototype**, not a production migration.
 - `GET /api/agency/whoami` and `GET /api/agency/properties` use PostgreSQL sessions. Property listings are currently agent-only; other roles fail closed until row-level ownership filters exist.
 - This is an isolated pilot, not a production-ready replacement: no UI wiring, session revocation/logout endpoint, CSRF strategy for future state-changing endpoints, or complete role-specific portal API yet. Legacy JSON authentication and all legacy workflows remain unchanged.
 - CI workflow runs are not verified as successful. The GitHub commit-status endpoint returned an empty status list, and direct workflow-page retrieval was unavailable. Review Actions logs before treating the changes as passing.
+
+## Step 6: read-only maintenance workflow pilot
+
+- CI now applies migrations 001, 002 and 003 before running test discovery. Integration tests no longer reapply those migrations.
+- `GET /api/agency/workflows/{cases,appointments,jobs,approvals,documents}` requires a valid PostgreSQL agency session.
+- Agents can read these collections within their own agency; tenant/landlord reads of cases and appointments are limited to explicitly granted property assignments. Trades and all non-agent job, approval and document reads fail closed pending record-specific grants.
+- `GET /api/agency/properties` uses explicit property assignments for non-agent roles.
+- All endpoints are read-only. No approval, job assignment, repair creation, messages, uploads, portal UI wiring or production data migration has been completed.
+- CI results remain unverified: available connector workflow-run lookup only searches pull-request-triggered runs; this workflow triggers on branch pushes. No green status is asserted.
