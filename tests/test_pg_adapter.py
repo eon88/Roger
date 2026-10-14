@@ -75,6 +75,22 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_document_grants_hide_unassigned_records(self):
+        user=uuid.uuid4()
+        with psycopg.connect(self.url) as conn:
+            conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                         (user,"doc-"+user.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,'landlord')",
+                        (self.a,user))
+            pg.put_record(cur,"documents",self.a,{"id":"granted-doc"})
+            pg.put_record(cur,"documents",self.a,{"id":"ungranted-doc"})
+            cur.execute("INSERT INTO document_grants(agency_id,document_id,user_id) VALUES (%s,%s,%s)",
+                        (self.a,"granted-doc",user))
+            identity={"id":str(user),"agency_id":str(self.a),"role":"landlord"}
+            self.assertEqual([r["id"] for r in pg.portal_workflow_records(cur,identity,"documents")],
+                             ["granted-doc"])
+
     def test_messages_are_private_to_sender_and_recipient(self):
         users=[uuid.uuid4() for _ in range(3)]
         with psycopg.connect(self.url) as conn:
