@@ -1,0 +1,89 @@
+name: Deploy Roger HQ test (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: roger-hq-test-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy-hq:
+    if: github.ref == 'refs/heads/feature/roger-hq-multi-agency'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout HQ branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate HQ source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile stage-clone/serve.py stage-clone/roger_pg.py
+          test -f db/001_multi_agency.sql
+          test -f .github/workflows/roger-hq-isolation.yml
+
+      - name: Deploy only the existing isolated HQ test app
+        env:
+          ROGER_HOST: ${{ secrets.ROGER_SSH_HOST }}
+          ROGER_KEY: ${{ secrets.ROGER_SSH_PRIVATE_KEY }}
+          ROGER_KNOWN_HOSTS: ${{ secrets.ROGER_SSH_KNOWN_HOSTS }}
+          TARGET_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ROGER_HOST" && test -n "$ROGER_KEY" && test -n "$ROGER_KNOWN_HOSTS"
+          [[ "$ROGER_HOST" =~ ^[a-zA-Z0-9._-]+$ ]]
+          key_file="$RUNNER_TEMP/hq_key"
+          known_hosts="$RUNNER_TEMP/hq_hosts"
+          if [[ "$ROGER_KEY" == *"BEGIN OPENSSH PRIVATE KEY"* ]]; then
+            printf '%s\n' "$ROGER_KEY" | tr -d '\r' > "$key_file"
+          else
+            printf '%s' "$ROGER_KEY" | tr -d '[:space:]' | base64 --decode > "$key_file"
+          fi
+          chmod 600 "$key_file"
+          ssh-keygen -y -P '' -f "$key_file" >/dev/null
+          host_key="$(printf '%s\n' "$ROGER_KNOWN_HOSTS" | tr -d '\r' | awk '$2=="ssh-ed25519"{print $2" "$3;exit} $1=="ssh-ed25519"{print $1" "$2;exit}')"
+          [[ "$host_key" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]]
+          printf '%s %s\n' "$ROGER_HOST" "$host_key" > "$known_hosts"
+          opts=(-i "$key_file" -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes)
+          ssh "${opts[@]}" "root@$ROGER_HOST" 'bash -s' -- "$TARGET_SHA" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /root/roger-hq-staging-source
+          exec 9>/var/lock/roger-hq-test-deploy.lock
+          flock -n 9
+          test -f compose.hq-test.yml
+          test -f Dockerfile.hq-test
+          test -f .env.hq-app
+          docker inspect roger-hq-test-app-1 >/dev/null
+          docker inspect roger-hq-test-db-1 >/dev/null
+          test "$(docker inspect roger-hq-test-db-1 --format '{{.State.Health.Status}}')" = healthy
+          # Only the isolated HQ compose project may be operated on.
+          previous="$(git rev-parse HEAD)"
+          target="$1"
+          rollback() {
+            echo "HQ deployment failed; restoring previous source $previous"
+            git checkout --detach "$previous"
+            docker compose --env-file .env.hq-app -f compose.hq-test.yml up -d --build --no-deps app
+          }
+          trap rollback ERR
+          git fetch --no-tags origin "$target"
+          git checkout --detach "$target"
+          docker compose --env-file .env.hq-app -f compose.hq-test.yml up -d --build --no-deps app
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:29103/hq-agency &&
+               curl --fail --silent --output /dev/null http://127.0.0.1:29103/api/public; then
+              echo "HQ healthy at $target"
+              trap - ERR
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "HQ health checks failed" >&2
+          false
+          REMOTE
