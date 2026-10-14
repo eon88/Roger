@@ -131,6 +131,28 @@ class PostgresAdapterTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 pg.respond_to_appointment(cur,identity,"appt-granted","declined")
 
+    def test_agent_approval_request_requires_landlord_property_grant(self):
+        landlord=uuid.uuid4()
+        with psycopg.connect(self.url) as conn:
+            conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                         (landlord,"approval-request-"+landlord.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,'landlord')",
+                        (self.a,landlord))
+            pg.put_record(cur,"properties",self.a,{"id":"request-home","title":"Home"})
+            pg.put_record(cur,"jobs",self.a,{"id":"request-job","property_id":"request-home"})
+            agent={"id":str(self.user),"agency_id":str(self.a),"role":"agent"}
+            with self.assertRaises(PermissionError):
+                pg.request_repair_approval(cur,agent,"request-job",landlord,"Replace boiler")
+            cur.execute("INSERT INTO property_access(agency_id,property_id,user_id,access_role) VALUES (%s,%s,%s,'landlord')",
+                        (self.a,"request-home",landlord))
+            result=pg.request_repair_approval(cur,agent,"request-job",landlord,"Replace boiler")
+            self.assertEqual(result["status"],"pending")
+            recipient={"id":str(landlord),"agency_id":str(self.a),"role":"landlord"}
+            self.assertIn(result["id"],[r["id"] for r in pg.portal_workflow_records(cur,recipient,"approvals")])
+            with self.assertRaises(PermissionError):
+                pg.request_repair_approval(cur,recipient,"request-job",landlord,"Not an agent")
+
     def test_agent_assigns_job_and_landlord_decides_once(self):
         trades, landlord = uuid.uuid4(), uuid.uuid4()
         with psycopg.connect(self.url) as conn:
