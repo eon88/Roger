@@ -7,3 +7,9 @@ __pycache__/
 .DS_Store
 # agentmail/browser caches
 *.tmp
+
+# HQ local credentials and test fixtures
+.env.hq-test
+.env.hq-app
+hq-test-secrets/
+test-hq-session.py
