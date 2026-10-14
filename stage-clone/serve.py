@@ -16,6 +16,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 import jev_client
+import roger_pg
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -173,6 +174,25 @@ class H(SimpleHTTPRequestHandler):
             self.send_header("Location", "/")
             self.end_headers()
             return
+        if path == "/api/hq/properties":
+            # Read-only pilot: legacy users lack agency UUIDs, so fail closed.
+            # No client-supplied tenant identifier is accepted.
+            u = self.require({"agent"})
+            if not u:
+                return
+            if not roger_pg.enabled():
+                return self._json({"error": "PostgreSQL pilot disabled"}, 404)
+            agency_id, user_id = u.get("agency_id"), u.get("id")
+            if not agency_id or not user_id or not os.environ.get("ROGER_DATABASE_URL"):
+                return self._json({"error": "agency identity or database not configured"}, 503)
+            try:
+                with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"], agency_id) as cur:
+                    roger_pg.assert_membership(cur, user_id, agency_id, {"agent"})
+                    return self._json({"properties": roger_pg.list_records(cur, "properties")})
+            except (ValueError, PermissionError):
+                return self._json({"error": "agency access denied"}, 403)
+            except Exception:
+                return self._json({"error": "database unavailable"}, 503)
         if path == "/api/trades-pool":
             u = self.require({"agent"})
             if not u:
