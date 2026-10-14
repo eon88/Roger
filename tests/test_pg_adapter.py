@@ -77,6 +77,36 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_explicit_property_grants_filter_roles(self):
+        with psycopg.connect(self.url) as conn:
+            conn.execute((ROOT / "db" / "003_property_access.sql").read_text())
+        people={}
+        with psycopg.connect(self.url) as conn:
+            with conn.cursor() as cur:
+                for role in ("landlord","tenant","trades"):
+                    uid=uuid.uuid4()
+                    people[role]=uid
+                    cur.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                                (uid,"role-"+uid.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            for role,uid in people.items():
+                cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,%s)",
+                            (self.a,uid,role))
+            pg.put_record(cur,"properties",self.a,{"id":"shared","title":"Visible"})
+            pg.put_record(cur,"properties",self.a,{"id":"private","title":"Hidden"})
+            for role,uid in people.items():
+                cur.execute("""INSERT INTO property_access(agency_id,property_id,user_id,access_role)
+                    VALUES (%s,'shared',%s,%s)""",(self.a,uid,role))
+            for role,uid in people.items():
+                identity={"id":str(uid),"agency_id":str(self.a),"role":role}
+                self.assertEqual([p["id"] for p in pg.portal_properties(cur,identity)],["shared"])
+            agent={"id":str(self.user),"agency_id":str(self.a),"role":"agent"}
+            self.assertIn("private",[p["id"] for p in pg.portal_properties(cur,agent)])
+        with pg.agency_transaction(self.url,self.b) as cur:
+            identity={"id":str(people["tenant"]),"agency_id":str(self.b),"role":"tenant"}
+            with self.assertRaises(PermissionError):
+                pg.portal_properties(cur,identity)
+
     def test_session_is_scoped_and_expires(self):
         from datetime import datetime, timedelta, timezone
         with psycopg.connect(self.url) as conn:
