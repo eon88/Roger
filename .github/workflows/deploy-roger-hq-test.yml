@@ -2,6 +2,12 @@ name: Deploy Roger HQ test (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      test_rollback:
+        description: 'Simulate failed HQ health check and verify rollback'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,6 +40,7 @@ jobs:
           ROGER_KEY: ${{ secrets.ROGER_SSH_PRIVATE_KEY }}
           ROGER_KNOWN_HOSTS: ${{ secrets.ROGER_SSH_KNOWN_HOSTS }}
           TARGET_SHA: ${{ github.sha }}
+          TEST_ROLLBACK: ${{ inputs.test_rollback }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +59,8 @@ jobs:
           [[ "$host_key" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]]
           printf '%s %s\n' "$ROGER_HOST" "$host_key" > "$known_hosts"
           opts=(-i "$key_file" -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes)
-          ssh "${opts[@]}" "root@$ROGER_HOST" 'bash -s' -- "$TARGET_SHA" <<'REMOTE'
+          [[ "$TEST_ROLLBACK" == "true" || "$TEST_ROLLBACK" == "false" ]]
+          ssh "${opts[@]}" "root@$ROGER_HOST" 'bash -s' -- "$TARGET_SHA" "$TEST_ROLLBACK" <<'REMOTE'
           set -Eeuo pipefail
           cd /root/roger-hq-staging-source
           exec 9>/var/lock/roger-hq-test-deploy.lock
@@ -66,15 +74,30 @@ jobs:
           # Only the isolated HQ compose project may be operated on.
           previous="$(git rev-parse HEAD)"
           target="$1"
+          test_rollback="$2"
           rollback() {
             echo "HQ deployment failed; restoring previous source $previous"
             git checkout --detach "$previous"
             docker compose --env-file .env.hq-app -f compose.hq-test.yml up -d --build --no-deps app
+            for attempt in $(seq 1 20); do
+              if curl --fail --silent --output /dev/null http://127.0.0.1:29103/hq-agency &&
+                 curl --fail --silent --output /dev/null http://127.0.0.1:29103/api/public; then
+                echo "ROLLBACK VERIFIED: previous HQ source restored and endpoints healthy"
+                return 0
+              fi
+              sleep 3
+            done
+            echo "ROLLBACK FAILED: HQ health checks did not recover" >&2
+            return 1
           }
           trap rollback ERR
           git fetch --no-tags origin "$target"
           git checkout --detach "$target"
           docker compose --env-file .env.hq-app -f compose.hq-test.yml up -d --build --no-deps app
+          if [[ "$test_rollback" == "true" ]]; then
+            echo "SIMULATED FAILURE: triggering rollback after HQ rebuild"
+            false
+          fi
           for attempt in $(seq 1 20); do
             if curl --fail --silent --output /dev/null http://127.0.0.1:29103/hq-agency &&
                curl --fail --silent --output /dev/null http://127.0.0.1:29103/api/public; then
