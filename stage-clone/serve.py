@@ -214,6 +214,8 @@ class H(SimpleHTTPRequestHandler):
     # ---------- routes ----------
     def do_GET(self):
         path = self.path.split("?")[0]
+        if path == "/hq-agency":
+            return self.serve_file("hq-agency.html")
         if path == "/login":
             return self.serve_file("login.html")
         if path == "/logout":
