@@ -445,6 +445,20 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error":"invalid workflow request"},400)
             except Exception:
                 return self._json({"error":"database unavailable"},503)
+        if path == "/api/agency/messages":
+            identity = self.agency_session_user()
+            if not identity:
+                return self._json({"error":"agency authentication required"},401)
+            try:
+                with roger_pg.agency_transaction(os.environ["ROGER_DATABASE_URL"],identity["agency_id"]) as cur:
+                    mid = roger_pg.send_agency_message(cur,identity,data["recipient_id"],data["body"])
+                return self._json({"id":mid},201)
+            except PermissionError:
+                return self._json({"error":"recipient access denied"},403)
+            except (ValueError,KeyError,TypeError):
+                return self._json({"error":"invalid message"},400)
+            except Exception:
+                return self._json({"error":"database unavailable"},503)
         if path == "/api/agency/cases":
             identity = self.agency_session_user()
             if not identity:
