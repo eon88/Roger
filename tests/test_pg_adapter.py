@@ -75,6 +75,26 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_messages_are_private_to_sender_and_recipient(self):
+        users=[uuid.uuid4() for _ in range(3)]
+        with psycopg.connect(self.url) as conn:
+            for uid in users:
+                conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                             (uid,"message-"+uid.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            for uid in users:
+                cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,'tenant')",
+                            (self.a,uid))
+            sender={"id":str(users[0]),"agency_id":str(self.a),"role":"tenant"}
+            recipient={"id":str(users[1]),"agency_id":str(self.a),"role":"tenant"}
+            outsider={"id":str(users[2]),"agency_id":str(self.a),"role":"tenant"}
+            mid=pg.send_agency_message(cur,sender,users[1],"A private message")
+            self.assertIn(mid,[m["id"] for m in pg.agency_inbox(cur,sender)])
+            self.assertIn(mid,[m["id"] for m in pg.agency_inbox(cur,recipient)])
+            self.assertNotIn(mid,[m["id"] for m in pg.agency_inbox(cur,outsider)])
+            with self.assertRaises(PermissionError):
+                pg.send_agency_message(cur,sender,uuid.uuid4(),"Other agency")
+
     def test_appointment_response_requires_property_grant(self):
         tenant=uuid.uuid4()
         with psycopg.connect(self.url) as conn:
