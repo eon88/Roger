@@ -38,6 +38,11 @@ h1{font-size:22px;margin:0}h2{font-size:18px}h3{font-size:15px}article{border-to
 <form id="jobForm"><label>Case ID<input name="case_id" required></label>
 <label>Tradesperson user ID<input name="trades_user_id" required></label>
 <label>Work required<textarea name="description" maxlength="2000" required></textarea></label><button>Assign job</button></form></section>
+<section class="panel hidden" id="agentApprovalAction"><h2>Request landlord approval</h2>
+<form id="approvalRequestForm"><label>Job ID<input name="job_id" required></label>
+<label>Landlord user ID<input name="landlord_id" required></label>
+<label>What needs approval<textarea name="summary" maxlength="2000" required></textarea></label>
+<button>Request approval</button></form></section>
 <section class="panel hidden" id="landlordAction"><h2>Decide an approval</h2>
 <form id="approvalForm"><label>Approval ID<input name="approval_id" required></label>
 <label>Decision<select name="decision"><option value="approved">Approve</option><option value="rejected">Reject</option></select></label><button>Submit decision</button></form></section>
@@ -76,7 +81,7 @@ async function refresh(){
  show('loginPanel',false);show('dashboard',true);
  $('welcome').textContent=identity.username+' · '+identity.role;
  for(const [id,role] of [['tenantAction','tenant'],['agentAction','agent'],['landlordAction','landlord']])show(id,currentRole===role);
- show('appointmentAction',['tenant','landlord'].includes(currentRole));
+ show('appointmentAction',['tenant','landlord'].includes(currentRole));show('agentApprovalAction',currentRole==='agent');
  const collections=['properties','cases','jobs','approvals','appointments','documents','messages'];
  for(const name of collections){
   const path=name==='properties'?'/api/agency/properties':name==='messages'?'/api/agency/messages':'/api/agency/workflows/'+name;
@@ -94,7 +99,7 @@ $('loginForm').addEventListener('submit',async e=>{
  catch(err){notice(err.message);}finally{button.disabled=false;}
 });
 $('refresh').onclick=()=>refresh().catch(e=>notice(e.message));
-for(const [form,path] of [['caseForm','cases'],['jobForm','jobs'],['approvalForm','approval-decision'],['appointmentForm','appointment-response'],['messageForm','messages']]){
+for(const [form,path] of [['caseForm','cases'],['jobForm','jobs'],['approvalRequestForm','approval-request'],['approvalForm','approval-decision'],['appointmentForm','appointment-response'],['messageForm','messages']]){
  $(form).addEventListener('submit',async e=>{
   e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
   try{await api('/api/agency/'+path,'POST',Object.fromEntries(new FormData(e.target)));notice('Saved');e.target.reset();await refresh();}
