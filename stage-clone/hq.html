@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roger HQ · Owner</title>
+<style>body{font-family:system-ui,sans-serif;background:#f5f7fb;color:#152238;margin:0}main{max-width:850px;margin:8vh auto;padding:24px}.panel{background:white;padding:32px;border-radius:18px;box-shadow:0 6px 28px #17233a12}h1{margin-top:0}input,button{font:inherit;padding:13px;border-radius:9px}input{display:block;border:1px solid #cad3df;margin:12px 0;width:min(350px,90%)}button{border:0;background:#154e73;color:white;cursor:pointer}.muted{color:#637084}.error{color:#a02330}a{color:#154e73}</style></head>
+<body><main><div class="panel"><h1>Roger HQ</h1><p class="muted">Platform owner · Master dashboard</p>
+<section id="login"><h2>Owner sign in</h2><form id="form"><input name="username" autocomplete="username" placeholder="Owner username" required><input name="password" type="password" autocomplete="current-password" placeholder="Password" required><button>Sign in</button></form><p class="error" id="error" role="alert"></p></section>
+<section id="dashboard" hidden><h2>Welcome, <span id="owner"></span></h2><p>Owner authentication is working. Agency directory and management controls are next.</p><p><a href="/hq-agency">Agency portal</a></p><button id="signout">Sign out</button></section></div></main>
+<script>
+async function check(){let r=await fetch('/api/hq-owner/whoami',{credentials:'same-origin'});if(r.ok){let d=await r.json();document.getElementById('owner').textContent=d.username;document.getElementById('login').hidden=true;document.getElementById('dashboard').hidden=false}else{document.getElementById('login').hidden=false;document.getElementById('dashboard').hidden=true}}
+document.getElementById('form').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/hq-owner/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.get('username'),password:f.get('password')})});if(r.ok){e.target.reset();await check()}else{let d=await r.json();document.getElementById('error').textContent=d.error||'Sign in failed'}});
+document.getElementById('signout').onclick=async()=>{await fetch('/api/hq-owner/logout');await check()};check();
+</script></body></html>
