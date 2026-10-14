@@ -41,6 +41,9 @@ def assert_membership(cur, user_id, agency_id, allowed_roles=None):
 def list_records(cur, table):
     if table not in TABLES:
         raise ValueError("unsupported collection")
+    if table == "properties":
+        cur.execute("SELECT id, payload, title FROM properties ORDER BY id")
+        return [dict(row[1], id=row[0], title=row[2]) for row in cur.fetchall()]
     cur.execute("SELECT id, payload FROM " + table + " ORDER BY id")
     return [dict(row[1], id=row[0]) for row in cur.fetchall()]
 
