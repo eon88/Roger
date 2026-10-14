@@ -302,3 +302,14 @@ def respond_to_appointment(cur, identity, appointment_id, decision):
     if not cur.fetchone():
         raise PermissionError("appointment not available")
     return {"id":str(appointment_id),"status":decision}
+
+def agency_inbox(cur, identity):
+    role = assert_membership(cur, identity["id"], identity["agency_id"])
+    if role != identity["role"]:
+        raise PermissionError("stale role")
+    uid = _uuid(identity["id"])
+    cur.execute("""SELECT id,sender_id,recipient_id,body,created_at
+      FROM agency_messages WHERE sender_id=%s OR recipient_id=%s
+      ORDER BY created_at DESC LIMIT 100""", (uid,uid))
+    return [{"id":str(r[0]),"sender_id":str(r[1]),"recipient_id":str(r[2]),
+             "body":r[3],"created_at":r[4].isoformat()} for r in cur.fetchall()]
