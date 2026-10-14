@@ -53,3 +53,11 @@ This branch is a first **schema prototype**, not a production migration.
 - `POST /api/agency/cases` creates an open case only for a tenant with an explicit property grant, using an agency PostgreSQL session. It requires a same-origin `Origin` header and a JSON body with `property_id` and `description`.
 - Job creation/assignment, approval decisions, appointment updates, messaging, document grants, and portal UI wiring are still outstanding. Existing JSON portal workflows are unchanged.
 - The GitHub connector still does not verify branch-push Actions run outcomes. Commits and test additions do not prove tests passed.
+
+## Step 6: isolated four-role browser preview
+
+- Visit `/hq-agency` on a **development server** with `ROGER_STORAGE_BACKEND=postgres`, `ROGER_DATABASE_URL`, and migrations 001-006 applied.
+- This page signs into `/api/agency/login` and loads role-scoped properties, cases, jobs, approvals, appointments, documents and inbox messages. It offers tenant case creation, agent job assignment, landlord approval decisions, tenant/landlord appointment responses and agency messaging.
+- The preview does not modify the existing `/agent`, `/tenant`, `/landlord`, or `/trades` pages. Document listing shows metadata, not file contents; secure upload/download remains outstanding.
+- A smoke test checks the new route, but GitHub Actions execution and PostgreSQL integration tests have **not** been independently verified green.
+- Important: the development preview requires seeded agency accounts, memberships, property grants and relevant workflow records. It is not ready for production rollout.
