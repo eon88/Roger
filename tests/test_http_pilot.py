@@ -69,3 +69,15 @@ class AuthenticatedPilotTests(unittest.TestCase):
               patch.object(server.roger_pg,"assert_membership",side_effect=PermissionError)):
             h.do_GET()
         self.assertEqual(h.responses[0][0],403)
+
+class AgencyRoleGateTests(unittest.TestCase):
+    def test_non_agent_never_queries_property_list(self):
+        for role in ("tenant","landlord","trades"):
+            h = FakeHandler(None)
+            h.path = "/api/agency/properties"
+            h.agency_session_user = lambda role=role: {"role":role,"id":str(uuid.uuid4()),
+                "agency_id":str(uuid.uuid4()),"username":"tester"}
+            with patch.object(server.roger_pg,"agency_transaction") as tx:
+                h.do_GET()
+                tx.assert_not_called()
+            self.assertEqual(h.responses[0][0],403)
