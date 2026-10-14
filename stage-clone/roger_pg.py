@@ -204,6 +204,11 @@ def portal_workflow_records(cur, identity, collection):
             WHERE EXISTS (SELECT 1 FROM approval_recipients a
               WHERE a.agency_id=w.agency_id AND a.approval_id=w.id AND a.user_id=%s)
             ORDER BY w.id""", (_uuid(identity["id"]),))
+    elif collection == "documents" and role in ("tenant","landlord","trades"):
+        cur.execute("""SELECT w.id,w.payload FROM documents w
+            WHERE EXISTS (SELECT 1 FROM document_grants a
+              WHERE a.agency_id=w.agency_id AND a.document_id=w.id AND a.user_id=%s)
+            ORDER BY w.id""", (_uuid(identity["id"]),))
     else:
         raise PermissionError("workflow access not granted")
     return [dict(row[1], id=row[0]) for row in cur.fetchall()]
