@@ -1,4 +1,5 @@
 """Integration checks for Roger's opt-in PostgreSQL adapter."""
+import hashlib
 import importlib.util
 import os
 import pathlib
@@ -73,3 +74,22 @@ class PostgresAdapterTests(unittest.TestCase):
             pg.put_record(cur,"invitations",self.a,{"id":"i1","status":"sent"})
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
+
+    def test_agency_login_verifies_password_and_membership(self):
+        salt = bytes.fromhex("1234567890abcdef1234567890abcdef")
+        digest = hashlib.scrypt(b"correct-password", salt=salt, n=2**14, r=8, p=1).hex()
+        with psycopg.connect(self.url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE app_users SET password_hash=%s WHERE id=%s",
+                            (salt.hex()+":"+digest,self.user))
+                cur.execute("SELECT username FROM app_users WHERE id=%s",(self.user,))
+                username = cur.fetchone()[0]
+                cur.execute("SELECT slug FROM agencies WHERE id=%s",(self.a,))
+                slug = cur.fetchone()[0]
+                cur.execute("SELECT slug FROM agencies WHERE id=%s",(self.b,))
+                other_slug = cur.fetchone()[0]
+        authenticated = pg.authenticate_agency_user(self.url,username,"correct-password",slug)
+        self.assertEqual(authenticated["agency_id"],str(self.a))
+        self.assertEqual(authenticated["role"],"agent")
+        self.assertIsNone(pg.authenticate_agency_user(self.url,username,"wrong",slug))
+        self.assertIsNone(pg.authenticate_agency_user(self.url,username,"correct-password",other_slug))
