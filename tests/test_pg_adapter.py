@@ -75,6 +75,26 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_appointment_response_requires_property_grant(self):
+        tenant=uuid.uuid4()
+        with psycopg.connect(self.url) as conn:
+            conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                         (tenant,"appt-"+tenant.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,'tenant')",
+                        (self.a,tenant))
+            pg.put_record(cur,"properties",self.a,{"id":"appt-owned","title":"Owned"})
+            pg.put_record(cur,"appointments",self.a,{"id":"appt-granted","property_id":"appt-owned","status":"pending"})
+            identity={"id":str(tenant),"agency_id":str(self.a),"role":"tenant"}
+            with self.assertRaises(PermissionError):
+                pg.respond_to_appointment(cur,identity,"appt-granted","confirmed")
+            cur.execute("""INSERT INTO property_access(agency_id,property_id,user_id,access_role)
+                VALUES (%s,'appt-owned',%s,'tenant')""",(self.a,tenant))
+            self.assertEqual(pg.respond_to_appointment(cur,identity,"appt-granted","confirmed")["status"],
+                             "confirmed")
+            with self.assertRaises(PermissionError):
+                pg.respond_to_appointment(cur,identity,"appt-granted","declined")
+
     def test_agent_assigns_job_and_landlord_decides_once(self):
         trades, landlord = uuid.uuid4(), uuid.uuid4()
         with psycopg.connect(self.url) as conn:
