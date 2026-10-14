@@ -75,6 +75,35 @@ class PostgresAdapterTests(unittest.TestCase):
             for table in pg.TABLES:
                 self.assertGreaterEqual(len(pg.list_records(cur,table)),1,table)
 
+    def test_trades_jobs_and_landlord_approvals_are_assigned(self):
+        users={}
+        with psycopg.connect(self.url) as conn:
+            for role in ("trades","landlord"):
+                uid=uuid.uuid4()
+                users[role]=uid
+                conn.execute("INSERT INTO app_users(id,username,password_hash) VALUES (%s,%s,'test')",
+                             (uid,"assigned-"+uid.hex))
+        with pg.agency_transaction(self.url,self.a) as cur:
+            for role,uid in users.items():
+                cur.execute("INSERT INTO agency_memberships(agency_id,user_id,role) VALUES (%s,%s,%s)",
+                            (self.a,uid,role))
+            pg.put_record(cur,"properties",self.a,{"id":"assignment-home","title":"Home"})
+            pg.put_record(cur,"jobs",self.a,{"id":"assigned-job","property_id":"assignment-home"})
+            pg.put_record(cur,"jobs",self.a,{"id":"other-job","property_id":"assignment-home"})
+            pg.put_record(cur,"approvals",self.a,{"id":"assigned-approval","job_id":"assigned-job"})
+            pg.put_record(cur,"approvals",self.a,{"id":"other-approval","job_id":"other-job"})
+            cur.execute("INSERT INTO job_assignments(agency_id,job_id,user_id) VALUES (%s,'assigned-job',%s)",
+                        (self.a,users["trades"]))
+            cur.execute("INSERT INTO approval_recipients(agency_id,approval_id,user_id) VALUES (%s,'assigned-approval',%s)",
+                        (self.a,users["landlord"]))
+            for role,kind,expected in (("trades","jobs","assigned-job"),
+                                       ("landlord","approvals","assigned-approval")):
+                identity={"id":str(users[role]),"agency_id":str(self.a),"role":role}
+                self.assertEqual([x["id"] for x in pg.portal_workflow_records(cur,identity,kind)],
+                                 [expected])
+            with self.assertRaises(PermissionError):
+                pg.portal_workflow_records(cur,{"id":str(users["trades"]),"agency_id":str(self.a),"role":"trades"},"approvals")
+
     def test_maintenance_workflows_are_property_scoped(self):
         user=uuid.uuid4()
         with psycopg.connect(self.url) as conn:
