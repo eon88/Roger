@@ -105,6 +105,12 @@ def authenticate_agency_user(database_url, username, password, agency_slug):
         return None
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cur:
+            # Resolve the agency first; memberships are RLS protected.
+            cur.execute("SELECT id, status FROM agencies WHERE slug=%s", (agency_slug,))
+            agency = cur.fetchone()
+            if not agency or agency[1] != "active":
+                return None
+            cur.execute("SELECT set_config('roger.agency_id',%s,true)", (str(agency[0]),))
             cur.execute("""SELECT u.id, u.password_hash, a.id, a.status
                 FROM app_users u JOIN agency_memberships m ON m.user_id=u.id
                 JOIN agencies a ON a.id=m.agency_id
