@@ -25,7 +25,7 @@ class AgencyPortalContractTests(unittest.TestCase):
     def test_all_role_forms_and_lists_exist(self):
         expected = {"loginForm","dashboard","properties","cases","jobs",
                     "approvals","appointments","documents","messages",
-                    "caseForm","jobForm","approvalForm","appointmentForm","messageForm"}
+                    "caseForm","jobForm","approvalRequestForm","approvalForm","appointmentForm","messageForm"}
         self.assertTrue(expected.issubset(self.ids), expected-self.ids)
 
     def test_browser_uses_agency_endpoints_only(self):
