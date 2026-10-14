@@ -108,3 +108,11 @@ class WorkflowReadGateTests(unittest.TestCase):
               patch.object(server.roger_pg,"portal_workflow_records",side_effect=PermissionError)):
             h.do_GET()
         self.assertEqual(h.responses[0][0],403)
+
+class AgencyPreviewSmokeTests(unittest.TestCase):
+    def test_preview_route(self):
+        h = FakeHandler(None)
+        h.path = "/hq-agency"
+        h.serve_file = lambda filename: h.responses.append((200, filename))
+        h.do_GET()
+        self.assertEqual(h.responses, [(200, "hq-agency.html")])
