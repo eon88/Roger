@@ -173,3 +173,25 @@ def portal_properties(cur, identity):
         WHERE a.user_id=%s AND a.access_role=%s
         ORDER BY p.id""", (_uuid(identity["id"]), role))
     return [dict(row[1], id=row[0], title=row[2]) for row in cur.fetchall()]
+
+def portal_workflow_records(cur, identity, collection):
+    """Read-only, agency-scoped workflows. No unassigned rows leak to other roles."""
+    if collection not in ("cases", "appointments", "jobs", "approvals", "documents"):
+        raise ValueError("unsupported workflow")
+    role = assert_membership(cur, identity["id"], identity["agency_id"])
+    if role != identity["role"]:
+        raise PermissionError("stale role")
+    if role == "agent":
+        return list_records(cur, collection)
+    # Per-document grants, per-job assignments and approval-specific authorisation
+    # are not yet modelled; deny rather than exposing agency-wide information.
+    if collection not in ("cases", "appointments") or role not in ("tenant", "landlord"):
+        raise PermissionError("workflow access not granted")
+    cur.execute("""SELECT w.id,w.payload
+        FROM """ + collection + """ w
+        WHERE EXISTS (
+          SELECT 1 FROM property_access a
+          WHERE a.agency_id=w.agency_id AND a.property_id=w.property_id
+            AND a.user_id=%s AND a.access_role=%s
+        ) ORDER BY w.id""", (_uuid(identity["id"]), role))
+    return [dict(row[1], id=row[0]) for row in cur.fetchall()]
