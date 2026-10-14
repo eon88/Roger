@@ -229,3 +229,57 @@ def create_maintenance_case(cur, identity, property_id, description):
         VALUES (%s,%s,%s,%s::jsonb)""",
         (_uuid(identity["agency_id"]),case_id,property_id,json.dumps(payload)))
     return {"id":case_id,"property_id":property_id,**payload}
+
+def create_repair_job(cur, identity, case_id, trades_user_id, description):
+    """Agent creates a job linked to a case and assigns an agency tradesperson."""
+    import secrets
+    role = assert_membership(cur, identity["id"], identity["agency_id"], {"agent"})
+    if role != identity["role"]:
+        raise PermissionError("agent required")
+    agency = _uuid(identity["agency_id"])
+    trades_user_id = _uuid(trades_user_id)
+    description = str(description).strip()
+    if not description or len(description) > 2000:
+        raise ValueError("description must be 1-2000 characters")
+    cur.execute("SELECT property_id FROM cases WHERE agency_id=%s AND id=%s",
+                (agency,str(case_id)))
+    row = cur.fetchone()
+    if not row or not row[0]:
+        raise ValueError("case not found or lacks property")
+    cur.execute("""SELECT 1 FROM agency_memberships
+        WHERE agency_id=%s AND user_id=%s AND role='trades'""",
+        (agency,trades_user_id))
+    if not cur.fetchone():
+        raise PermissionError("tradesperson not in agency")
+    job_id = "job-" + secrets.token_hex(12)
+    payload = {"description":description,"status":"assigned",
+               "assigned_by":_uuid(identity["id"])}
+    cur.execute("""INSERT INTO jobs(agency_id,id,case_id,property_id,payload)
+        VALUES (%s,%s,%s,%s,%s::jsonb)""",
+        (agency,job_id,str(case_id),row[0],json.dumps(payload)))
+    cur.execute("""INSERT INTO job_assignments(agency_id,job_id,user_id)
+        VALUES (%s,%s,%s)""",(agency,job_id,trades_user_id))
+    return {"id":job_id,"case_id":str(case_id),"property_id":row[0],**payload}
+
+
+def decide_repair_approval(cur, identity, approval_id, decision):
+    """Only a recipient landlord can decide a pending approval, once."""
+    role = assert_membership(cur, identity["id"], identity["agency_id"], {"landlord"})
+    if role != identity["role"]:
+        raise PermissionError("landlord required")
+    if decision not in ("approved","rejected"):
+        raise ValueError("invalid decision")
+    agency = _uuid(identity["agency_id"])
+    cur.execute("""SELECT 1 FROM approval_recipients
+        WHERE agency_id=%s AND approval_id=%s AND user_id=%s""",
+        (agency,str(approval_id),_uuid(identity["id"])))
+    if not cur.fetchone():
+        raise PermissionError("approval not assigned")
+    cur.execute("""UPDATE approvals SET payload=jsonb_set(
+        jsonb_set(payload,'{status}',to_jsonb(%s::text)),
+        '{decided_by}',to_jsonb(%s::text))
+        WHERE agency_id=%s AND id=%s AND COALESCE(payload->>'status','pending')='pending'
+        RETURNING id""",(decision,_uuid(identity["id"]),agency,str(approval_id)))
+    if not cur.fetchone():
+        raise ValueError("approval already decided")
+    return {"id":str(approval_id),"status":decision}
