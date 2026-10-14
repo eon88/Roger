@@ -401,6 +401,13 @@ class H(SimpleHTTPRequestHandler):
             data = dict(urllib.parse.parse_qsl(body))
         if path == "/api/agency/login":
             return self.agency_login(data)
+        if path.startswith("/api/agency/") and path != "/api/agency/login":
+            # Browser writes require same-origin Origin; fail closed for missing Origin.
+            origin = self.headers.get("Origin","")
+            host = self.headers.get("Host","")
+            scheme = "https" if os.environ.get("ROGER_COOKIE_SECURE","1") != "0" else "http"
+            if not host or origin != scheme + "://" + host:
+                return self._json({"error":"origin verification required"},403)
         if path == "/api/agency/cases":
             identity = self.agency_session_user()
             if not identity:
