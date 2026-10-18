@@ -423,6 +423,12 @@ class H(SimpleHTTPRequestHandler):
         except Exception:
             data = dict(urllib.parse.parse_qsl(body))
         if path == "/api/hq-owner/login":
+            # Owner credential submission must originate on this same host.
+            origin = self.headers.get("Origin", "")
+            host = self.headers.get("Host", "")
+            expected_scheme = "https" if os.environ.get("ROGER_COOKIE_SECURE", "1") != "0" else "http"
+            if not host or origin != expected_scheme + "://" + host:
+                return self._json({"error": "origin verification required"}, 403)
             ip = self.client_address[0]
             if not hq_owner.configured():
                 return self._json({"error": "owner account not configured"}, 503)
