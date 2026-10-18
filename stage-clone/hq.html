@@ -1,12 +1,133 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Roger HQ · Owner</title>
-<style>body{font-family:system-ui,sans-serif;background:#f5f7fb;color:#152238;margin:0}main{max-width:850px;margin:8vh auto;padding:24px}.panel{background:white;padding:32px;border-radius:18px;box-shadow:0 6px 28px #17233a12}h1{margin-top:0}input,button{font:inherit;padding:13px;border-radius:9px}input{display:block;border:1px solid #cad3df;margin:12px 0;width:min(350px,90%)}button{border:0;background:#154e73;color:white;cursor:pointer}.muted{color:#637084}.error{color:#a02330}a{color:#154e73}</style></head>
-<body><main><div class="panel"><h1>Roger HQ</h1><p class="muted">Platform owner · Master dashboard</p>
-<section id="login"><h2>Owner sign in</h2><form id="form"><input name="username" autocomplete="username" placeholder="Owner username" required><input name="password" type="password" autocomplete="current-password" placeholder="Password" required><button>Sign in</button></form><p class="error" id="error" role="alert"></p></section>
-<section id="dashboard" hidden><h2>Welcome, <span id="owner"></span></h2><p>Owner authentication is working. Agency directory and management controls are next.</p><p><a href="/hq-agency">Agency portal</a></p><button id="signout">Sign out</button></section></div></main>
-<script>
-async function check(){let r=await fetch('/api/hq-owner/whoami',{credentials:'same-origin'});if(r.ok){let d=await r.json();document.getElementById('owner').textContent=d.username;document.getElementById('login').hidden=true;document.getElementById('dashboard').hidden=false}else{document.getElementById('login').hidden=false;document.getElementById('dashboard').hidden=true}}
-document.getElementById('form').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/hq-owner/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.get('username'),password:f.get('password')})});if(r.ok){e.target.reset();await check()}else{let d=await r.json();document.getElementById('error').textContent=d.error||'Sign in failed'}});
-document.getElementById('signout').onclick=async()=>{await fetch('/api/hq-owner/logout');await check()};check();
-</script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Roger HQ · Owner</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:#f5f7fb;color:#152238;margin:0}
+    main{max-width:760px;margin:8vh auto;padding:20px}
+    .panel{background:white;padding:clamp(20px,5vw,36px);border-radius:18px;box-shadow:0 6px 28px #17233a12}
+    h1{margin:0 0 6px}h2{font-size:1.2rem}
+    label{display:block;font-weight:600;font-size:.9rem;margin-top:18px}
+    input{display:block;border:1px solid #aab8cb;font:inherit;padding:12px;border-radius:9px;margin-top:6px;width:min(350px,100%)}
+    button{font:inherit;padding:12px 18px;border:0;background:#154e73;color:white;border-radius:9px;cursor:pointer;margin-top:20px}
+    button:disabled{opacity:.55;cursor:wait}
+    .muted{color:#637084}.error{color:#a02330;white-space:pre-line;min-height:1.4em}
+    a{color:#154e73}
+    [hidden]{display:none!important}
+    .status{font-size:.88rem}
+  </style>
+</head>
+<body>
+  <main><div class="panel">
+    <h1>Roger HQ</h1>
+    <p class="muted">Platform owner · Private master dashboard preview</p>
+    <section id="login">
+      <h2>Owner sign in</h2>
+      <p class="muted status">This is a private test. The owner account is separate from Oak and Birch agency accounts.</p>
+      <form id="form">
+        <label for="username">Owner username</label>
+        <input id="username" name="username" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button id="submit" type="submit">Sign in</button>
+      </form>
+      <p class="error" id="error" role="alert" aria-live="polite"></p>
+    </section>
+    <section id="dashboard" hidden>
+      <h2>Welcome, <span id="owner"></span></h2>
+      <p>Owner authentication works. The live agency directory and management controls are the next milestone.</p>
+      <p><a href="/hq-agency">View development agency portal</a></p>
+      <button id="signout" type="button">Sign out</button>
+      <p class="error" id="signout-error" role="alert" aria-live="polite"></p>
+    </section>
+  </div></main>
+  <script>
+    const el = id => document.getElementById(id);
+    function showLogin() {
+      el('dashboard').hidden = true;
+      el('login').hidden = false;
+    }
+    function showDashboard(username) {
+      el('owner').textContent = username;
+      el('login').hidden = true;
+      el('dashboard').hidden = false;
+    }
+    async function fetchJSON(path, options={}) {
+      const response = await fetch(path, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        ...options
+      });
+      let data;
+      try { data = await response.json(); }
+      catch { throw Error('HQ returned an unexpected response. Check the test server.'); }
+      return {response, data};
+    }
+    async function checkSession() {
+      const {response, data} = await fetchJSON('/api/hq-owner/whoami');
+      if (response.ok && data.role === 'platform_owner' && data.username) {
+        showDashboard(data.username);
+        return true;
+      }
+      showLogin();
+      return false;
+    }
+    el('form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = el('submit');
+      const error = el('error');
+      error.textContent = '';
+      button.disabled = true;
+      button.textContent = 'Signing in…';
+      try {
+        const form = new FormData(event.currentTarget);
+        const {response, data} = await fetchJSON('/api/hq-owner/login', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            username: form.get('username'),
+            password: form.get('password')
+          })
+        });
+        if (!response.ok) {
+          if (response.status === 503) throw Error('HQ owner account is not configured on the private test server.');
+          throw Error(data.error || 'Sign in failed.');
+        }
+        if (!await checkSession()) {
+          throw Error('Password accepted, but your browser did not keep the login session. The private HTTP test connection may have a Secure-cookie configuration mismatch.');
+        }
+        event.currentTarget.reset();
+      } catch (err) {
+        showLogin();
+        error.textContent = err.message || 'Cannot reach Roger HQ. Please check the private connection.';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Sign in';
+      }
+    });
+    el('signout').addEventListener('click', async () => {
+      const button = el('signout');
+      el('signout-error').textContent = '';
+      button.disabled = true;
+      try {
+        const {response, data} = await fetchJSON('/api/hq-owner/logout', {method:'POST'});
+        if (!response.ok) throw Error(data.error || 'Sign out failed.');
+        if (await checkSession()) throw Error('HQ did not clear your session.');
+        el('password').value = '';
+        el('error').textContent = '';
+      } catch (err) {
+        el('signout-error').textContent = err.message || 'Unable to sign out.';
+      } finally {
+        button.disabled = false;
+      }
+    });
+    checkSession().catch(() => {
+      showLogin();
+      el('error').textContent = 'Cannot reach Roger HQ. Check that the private test server is running.';
+    });
+  </script>
+</body>
+</html>
