@@ -74,7 +74,7 @@ class H(SimpleHTTPRequestHandler):
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/logout", "/signin", "/register/landlord", "/register/trades",
               "/dash.css", "/favicon.svg", "/sample-home.jpg", "/api/whoami"}
-    PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/agency/login", "/api/hq-owner/login"}
+    PUBLIC_POST = {"/login", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/agency/login", "/api/hq-owner/login", "/api/hq-owner/logout"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -441,6 +441,28 @@ class H(SimpleHTTPRequestHandler):
             ck[hq_owner.COOKIE]["path"] = "/api/hq-owner/"
             if os.environ.get("ROGER_COOKIE_SECURE", "1") != "0":
                 ck[hq_owner.COOKIE]["secure"] = True
+            self.send_header("Set-Cookie", ck.output(header="").strip())
+            self.end_headers()
+            return self.wfile.write(b'{"ok":true}')
+        if path == "/api/hq-owner/logout":
+            # Logout must not rely on the legacy agency session.
+            # Require same-origin for the state-changing request.
+            origin = self.headers.get("Origin", "")
+            host = self.headers.get("Host", "")
+            expected_scheme = "https" if os.environ.get("ROGER_COOKIE_SECURE", "1") != "0" else "http"
+            if not host or origin != expected_scheme + "://" + host:
+                return self._json({"error": "origin verification required"}, 403)
+            ck = http.cookies.SimpleCookie()
+            ck[hq_owner.COOKIE] = ""
+            ck[hq_owner.COOKIE]["httponly"] = True
+            ck[hq_owner.COOKIE]["samesite"] = "Strict"
+            ck[hq_owner.COOKIE]["path"] = "/api/hq-owner/"
+            ck[hq_owner.COOKIE]["max-age"] = 0
+            if os.environ.get("ROGER_COOKIE_SECURE", "1") != "0":
+                ck[hq_owner.COOKIE]["secure"] = True
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Set-Cookie", ck.output(header="").strip())
             self.end_headers()
             return self.wfile.write(b'{"ok":true}')
