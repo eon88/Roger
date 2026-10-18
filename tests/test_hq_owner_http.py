@@ -107,6 +107,13 @@ class HQOwnerHTTPTests(unittest.TestCase):
         status, _, _ = self.send("/api/hq-owner/whoami", cookie=cookie)
         self.assertEqual(status, 200)
 
+    def test_login_rejects_missing_origin_before_checking_password(self):
+        status, body, _ = self.send("/api/hq-owner/login", data={
+            "username": "hq-fixture-owner", "password": self.password
+        }, origin=False)
+        self.assertEqual(status, 403, body)
+        self.assertIn("origin verification required", json.loads(body)["error"])
+
     def test_wrong_owner_password_is_rejected(self):
         status, body, _ = self.send("/api/hq-owner/login", data={
             "username": "hq-fixture-owner", "password": "nope"})
