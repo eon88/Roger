@@ -155,6 +155,9 @@ async function run(){
     const cases=await getCases(tenant);
     assert.match(cases[0].message,/Tenant's initial description:/);
     assert.equal(cases[0].property_id,'house-one');
+    assert.equal(cases[0].diagnostic_dossier.schema,'roger-repair-interview-v1');
+    assert.equal(cases[0].diagnostic_dossier.answers.length,3);
+    assert.equal(cases[0].diagnostic_dossier.source,'tenant_submitted_unverified');
     console.log('PASS: three questions → review → explicit Send report → one saved case');
 
     await tenant.locator('#issue-msg').fill('I smell gas in the kitchen');
@@ -172,7 +175,10 @@ async function run(){
       });
       assert.equal(denied.status,403);
       assert.match(denied.data.error,/not your property/);
-      console.log('PASS: different tenant cannot diagnose an unrelated property');
+      const briefingDenied=await separate.page.evaluate(async()=>(
+        await fetch('/api/agent/briefing')).status);
+      assert.equal(briefingDenied,403);
+      console.log('PASS: different tenant cannot diagnose an unrelated property or access Agent Desk briefing');
     }finally{await separate.context.close();}
 
     const agent=await login('agent-one');
@@ -180,7 +186,19 @@ async function run(){
       const stage=await agent.page.evaluate(async()=> (await(await fetch('/api/stage')).json()));
       assert.equal(stage.cases.length,1);
       assert.match(stage.cases[0].message,/Synthetic observation number 3/);
-      console.log('PASS: agent can see the submitted interview report');
+      assert.equal(stage.cases[0].diagnostic_dossier.answers.length,3);
+      const summary=await agent.page.evaluate(async()=>{
+        const r=await fetch('/api/agent/briefing');
+        if(!r.ok)throw new Error('Agent briefing endpoint: '+r.status);
+        return r.json();
+      });
+      assert.equal(summary.engine,'deterministic-rules');
+      assert.equal(summary.read_only,true);
+      assert(summary.cards.some(card=>card.key==='case:100'));
+      await agent.page.locator('#view-overview').getByText('Operational priorities').first().waitFor();
+      await agent.page.locator('nav a[data-view="cases"]').click();
+      await agent.page.locator('#case-100').getByText('Tenant diagnostic interview · unverified').waitFor();
+      console.log('PASS: Agent Desk briefing and structured diagnostic evidence are visible with correct permissions');
     }finally{await agent.context.close();}
 
     // A real small PNG; no AI visual inference without a configured vision model.
