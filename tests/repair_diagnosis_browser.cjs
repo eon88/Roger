@@ -30,6 +30,20 @@ stage.parties=[
   {id:'tenant-one',account_id:'account-one',roles:['tenant'],status:'active',display_name:'Resident One'},
   {id:'tenant-other',account_id:'account-other',roles:['tenant'],status:'active',display_name:'Resident Other'}
 ];
+// Two synthetic assured-periodic tenancies exercise the new 2026 policy and inspection UI.
+stage.properties[0].lifecycle_status='occupied';
+stage.properties[1].lifecycle_status='occupied';
+stage.next_inventory_id=1;
+stage.tenancies=[
+ {id:'tenancy-one',property_id:'house-one',tenant_party_ids:['tenant-one'],
+  landlord_party_ids:[],status:'active',tenancy_type:'assured_periodic',
+  start_date:'2025-01-01',rent_amount_pence:90000,rent_frequency:'monthly',
+  agreement_status:'signed',pet_requests:[],history:[]},
+ {id:'tenancy-two',property_id:'house-two',tenant_party_ids:['tenant-other'],
+  landlord_party_ids:[],status:'active',tenancy_type:'assured_periodic',
+  start_date:'2025-01-01',rent_amount_pence:100000,rent_frequency:'monthly',
+  agreement_status:'signed',pet_requests:[],history:[]}
+];
 const users={users:[],sessions:{}};
 for(const [username,role,account_id] of [['tenant-one','tenant','account-one'],
                                          ['tenant-other','tenant','account-other'],
@@ -107,6 +121,11 @@ async function run(){
   const resident=await login('tenant-one');
   const tenant=resident.page;
   try{
+    await tenant.locator('#pet-request-tenancy-one').fill('One indoor cat');
+    await tenant.locator('#tenancy-info button[data-tenancy-id="tenancy-one"]').click();
+    await tenant.getByText('pending_agent_review').first().waitFor({timeout:15000});
+    assert.equal(await tenant.locator('#pet-request-tenancy-two').count(),0);
+    console.log('PASS: tenant can request a pet for their own tenancy only');
     assert.equal(await tenant.locator('#repair-interview').isVisible(),false);
     await tenant.locator('#issue-msg').fill('Water is leaking under the kitchen sink');
     await tenant.locator('#issue-email').fill('synthetic-resident@example.invalid');
@@ -178,6 +197,11 @@ async function run(){
       const briefingDenied=await separate.page.evaluate(async()=>(
         await fetch('/api/agent/briefing')).status);
       assert.equal(briefingDenied,403);
+      const inventoryDenied=await separate.page.evaluate(async()=>{
+        const response=await fetch('/api/inventories');
+        return (await response.json()).inventories.length;
+      });
+      assert.equal(inventoryDenied,0);
       console.log('PASS: different tenant cannot diagnose an unrelated property or access Agent Desk briefing');
     }finally{await separate.context.close();}
 
@@ -198,8 +222,49 @@ async function run(){
       await agent.page.locator('#view-overview').getByText('Operational priorities').first().waitFor();
       await agent.page.locator('nav a[data-view="cases"]').click();
       await agent.page.locator('#case-100').getByText('Tenant diagnostic interview · unverified').waitFor();
+      // Human-reviewed pet response and real rent notice record on Agent Desk.
+      await agent.page.locator('nav a[data-view="people"]').click();
+      await agent.page.locator('#tenancy-one .pet-reason').fill('Agent reviewed the request and recorded consent.');
+      await agent.page.locator('#tenancy-one').getByRole('button',{name:'Approve pet'}).click();
+      await agent.page.waitForFunction(()=>(
+        (document.querySelector('#tenancy-one')?.innerText||'').includes('approved')
+      ),null,{timeout:15000});
+      await agent.page.locator('#tenancy-one .rent-change-amount').fill('950');
+      await agent.page.locator('#tenancy-one .rent-change-notice').fill('2026-08-01');
+      await agent.page.locator('#tenancy-one .rent-change-effective').fill('2026-10-01');
+      await agent.page.locator('#tenancy-one').getByRole('button',{name:'Record proposed rent increase'}).click();
+      await agent.page.locator('#tenancy-one').getByText('Proposed rent:').waitFor({timeout:15000});
+      console.log('PASS: agent can review pet request and record a Section 13 rent proposal');
+
+      // Agent drafts, records room condition, then issues an immutable inspection.
+      await agent.page.locator('nav a[data-view="inventories"]').click();
+      await agent.page.locator('#inventory-tenancy').selectOption('tenancy-one');
+      await agent.page.locator('#inventory-kind').selectOption('check_in');
+      await agent.page.locator('#inventory-date').fill('2026-11-08');
+      await agent.page.getByRole('button',{name:'Create inspection'}).click();
+      await agent.page.locator('#inventory-inventory-1').waitFor({timeout:15000});
+      await agent.page.locator('#inventory-inventory-1 .room-label').fill('Kitchen');
+      await agent.page.locator('#inventory-inventory-1 .room-condition').fill('Walls in good condition');
+      await agent.page.locator('#inventory-inventory-1').getByRole('button',{name:'Record room condition'}).click();
+      await agent.page.locator('#inventory-inventory-1').getByText('Walls in good condition').waitFor({timeout:15000});
+      agent.page.once('dialog',d=>d.accept());
+      await agent.page.locator('#inventory-inventory-1').getByRole('button',{name:'Issue inventory to tenant'}).click();
+      await agent.page.locator('#inventory-inventory-1').getByText('issued').first().waitFor({timeout:15000});
+      console.log('PASS: agent created and issued a dated property condition inventory');
       console.log('PASS: Agent Desk briefing and structured diagnostic evidence are visible with correct permissions');
     }finally{await agent.context.close();}
+
+    await tenant.reload({waitUntil:'domcontentloaded'});
+    await tenant.locator('#main[aria-busy="false"]').waitFor({timeout:15000});
+    await tenant.locator('#tenant-inventory-inventory-1').getByText('Walls in good condition').waitFor({timeout:15000});
+    await tenant.locator('#tenant-inventory-inventory-1 .inspection-feedback').fill('There is a scratch near the sink.');
+    await tenant.locator('#tenant-inventory-inventory-1').getByRole('button',{name:'Dispute an item'}).click();
+    await tenant.locator('#tenant-inventory-inventory-1').getByText('Disputed').first().waitFor({timeout:15000});
+    const policy=await tenant.evaluate(async()=> (await(await fetch('/api/tenancy-policy')).json()));
+    assert.equal(policy.tenancies.length,1);
+    assert.equal(policy.tenancies[0].pet_requests[0].status,'approved');
+    assert(policy.tenancies[0].pending_rent_increase);
+    console.log('PASS: tenant sees approved pet, proposed rent, issued inventory and can dispute it');
 
     // A real small PNG; no AI visual inference without a configured vision model.
     const png=Buffer.from(
