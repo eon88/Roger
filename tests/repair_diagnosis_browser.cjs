@@ -298,6 +298,7 @@ async function run(){
     await tenant.locator('#tenant-inventory-inventory-1').getByText('Disputed').first().waitFor({timeout:15000});
     const policy=await tenant.evaluate(async()=> (await(await fetch('/api/tenancy-policy')).json()));
     const deposits=await tenant.evaluate(async()=> (await(await fetch('/api/deposits')).json()));
+    console.log('Synthetic tenant policy/deposit scoping:',JSON.stringify({tenancies:policy.tenancies.map(t=>t.id),deposits:deposits.deposits.map(d=>({id:d.id,tenancy_id:d.tenancy_id}))}));
     assert.equal(deposits.deposits.length,1);
     assert.equal(deposits.deposits[0].amount_pence,90000);
     assert.equal(deposits.deposits[0].status,'received_unverified');
