@@ -5,6 +5,7 @@ NOT an LLM result, risk certification, accounting reconciliation or emergency
 response system. Agents decide actions; this module never changes stage.
 """
 from datetime import date, datetime, timedelta
+import prs_register
 
 
 CLOSED_CASES = {"closed", "resolved", "cancelled"}
@@ -124,6 +125,21 @@ def make_briefing(stage, today=None):
             _add(cards, "compliance", record, name + " — reminder due",
                  "Review renewal even if no expiry has been recorded",
                  "normal", "compliance", "Recorded reminder date", reminder)
+
+    # Government registration rollout applies to occupied England properties;
+    # this is a reminder, not a statement that a property violates any law.
+    for prop in stage.get("properties", []):
+        if not isinstance(prop, dict):
+            continue
+        candidate = prs_register.due_for_review(prop, today)
+        if not candidate:
+            continue
+        priority, detail, deadline = candidate
+        _add(cards, "prs-registration", prop,
+             "PRS landlord registration — " + _short(prop.get("title"), 100),
+             detail, priority, "compliance",
+             "Agent-supplied region/evidence; verify council and government record",
+             deadline)
 
     for reg in stage.get("registrations", []):
         if not isinstance(reg, dict) or reg.get("role") != "trades":
