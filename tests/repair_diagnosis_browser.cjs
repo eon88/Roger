@@ -285,6 +285,14 @@ async function run(){
         return r.ok && (await r.json()).deposits?.some(d=>
           d.tenancy_id==='tenancy-one'&&d.amount_pence===90000&&d.status==='received_unverified');
       },null,{timeout:15000});
+      const auditAfterDeposit=await agent.page.evaluate(async()=>{
+        const r=await fetch('/api/stage'),d=await r.json();
+        return {deposits:(d.deposit_records||[]).length,
+                tail:(d.audit_log||[]).slice(-5).map(x=>x.action)};
+      });
+      console.log('Synthetic stage immediately after deposit action:',JSON.stringify(auditAfterDeposit));
+      assert(auditAfterDeposit.tail.includes('deposit_receipt_recorded_unverified'),
+             'Deposit receipt must be committed and audited before proceeding');
       console.log('PASS: agent recorded a distinct unverified tenancy deposit with protection deadline');
 
       console.log('PASS: Agent Desk briefing and structured diagnostic evidence are visible with correct permissions');
