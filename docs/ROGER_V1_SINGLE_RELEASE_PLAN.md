@@ -86,5 +86,12 @@ Status refers to *code on the development baseline and automated tests*, not a p
 - [x] Agent-only read-only operational priority feed: cases, tasks, approvals, compliance, contractor checks and tenancy dates. Rule-based, not an AI claim.
 - [x] 462 Python regression tests passed on v1 draft PR; Agent Desk, repair dossier and permissions were exercised in Chromium. See [Python tests](https://github.com/eon88/Roger/actions/runs/42525539101) and [four-role browser tests](https://github.com/eon88/Roger/actions/runs/42525539038).
 - [ ] Whole-system acceptance (12 release gates), including genuine vision checks, multi-agency production readiness and other competitor parity workflows.
+- [x] England 2026 assured-periodic tenancy validations, human-reviewed rent notices and tenant pet requests wired through agent/tenant portals and regression tests.
+- [x] New condition inventory engine: check-in/mid-term/check-out records, evidence documents, meters, keys and tenant disputes; real Chromium journey has passed.
+- [x] New offline dry-run agency people/property/tenancy CSV importer with deterministic IDs and rollback backup; automated tests passed. **Historic records and PostgreSQL migration remain open.**
+- [x] Agent-scoped regional PRS landlord registration evidence and reminders, based on current GOV.UK rollout dates; tests passed.
+- [x] Rent bank-statement candidate matching with private evidence and clearly marked human review; **not a banking integration**.
+- [x] Separate tenancy versus holding deposit records, statutory deadlines, scheme evidence and agent/tenant portals; Python tests passed.
+- [ ] Provider-backed integration acceptance, end-to-end deposit mobile test and production legal/accounting/security review still open.
 - [ ] Complete the remaining v1.0 feature and operations gates.
 - [ ] Final single release deployed (must remain unchecked until explicit deployment).
