@@ -76,5 +76,9 @@ Status refers to *code on the development baseline and automated tests*, not a p
 
 - [x] Baseline experimental AI repair interview with genuine Ollama text/Chromium run, safety fallback and no vision claim.
 - [x] Five-platform comparative evidence and single-release criteria documented.
+- [x] Server-side bounded, unverified repair dossier: tenant answers, re-derived safety flags, idempotent submission check and Agent Desk evidence panel.
+- [x] Agent-only read-only operational priority feed: cases, tasks, approvals, compliance, contractor checks and tenancy dates. Rule-based, not an AI claim.
+- [x] 462 Python regression tests passed on v1 draft PR; Agent Desk, repair dossier and permissions were exercised in Chromium. See [Python tests](https://github.com/eon88/Roger/actions/runs/42525539101) and [four-role browser tests](https://github.com/eon88/Roger/actions/runs/42525539038).
+- [ ] Whole-system acceptance (12 release gates), including genuine vision checks, multi-agency production readiness and other competitor parity workflows.
 - [ ] Complete the remaining v1.0 feature and operations gates.
 - [ ] Final single release deployed (must remain unchecked until explicit deployment).
