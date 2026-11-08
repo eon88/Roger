@@ -240,14 +240,14 @@ async function fileAttachment(file){
   return {file_name:file.name,content_type:file.type||'application/octet-stream',content_b64:raw.split(',')[1]||''};
 }
 // Repair assistant is intentionally opt-in and stateless; no report is sent until Send report.
-let repairHistory=[], repairDescription='', repairState=null, repairImage=null;
+let repairHistory=[], repairDescription='', repairState=null, repairImage=null, repairPreparedContext=null;
 function repairEl(id){ return document.getElementById(id); }
 async function startRepairInterview(){
   repairDescription=msg.value.trim();
   if(!repairDescription){ toast('Describe the problem first, then start the interview.','bad'); msg.focus(); return; }
   const prop=stage?.properties?.[0];
   if(!prop){ toast('No linked home was found.','bad'); return; }
-  repairHistory=[]; repairState=null; repairImage=null;
+  repairHistory=[]; repairState=null; repairImage=null; repairPreparedContext=null;
   const files=Array.from(repairEl('issue-files').files||[]);
   const photo=files.find(f=>['image/jpeg','image/png','image/webp'].includes(f.type));
   if(photo&&photo.size<=1024*1024){
@@ -301,6 +301,7 @@ async function repairInterviewNext(){
 function useRepairReport(){
   if(!repairState)return;
   msg.value=repairState.report;
+  repairPreparedContext={description:repairDescription,history:repairHistory.map(a=>({question:a.question,answer:a.answer}))};
   if(repairState.safety_flags.length){
     toast('Potential danger: do not wait for this form. Follow the safety advice above.','bad');
   }else{
@@ -321,8 +322,8 @@ async function report(){
     const prop=(stage.properties||[])[0];
     const files=Array.from(document.getElementById('issue-files').files||[]).slice(0,4);
     const attachments=await Promise.all(files.map(fileAttachment));
-    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments,request_id:pendingReportId});
-    pendingReportId=null;
+    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments,request_id:pendingReportId,...(repairPreparedContext?{diagnostic:repairPreparedContext}:{})});
+    pendingReportId=null; repairPreparedContext=null;
     msg.value=''; document.getElementById('issue-files').value='';
     toast(`${res.already_received?'Already received':'Logged'} as #${res.case_id}. ${res.document_ids?.length?res.document_ids.length+' evidence file(s) saved. ':''}${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
     await load();
