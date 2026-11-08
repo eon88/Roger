@@ -12,6 +12,11 @@ import urllib.request
 
 
 QUESTIONS = {
+    "gas": [
+        "Is there a gas smell or an audible hissing sound? If so, leave the building.",
+        "Is a gas appliance or gas supply involved?",
+        "When did you first notice it?",
+    ],
     "plumbing": [
         "Where is the water coming from, and is it still leaking?",
         "Which rooms or fixtures are affected?",
@@ -57,6 +62,7 @@ NEGATIONS = [
     r"\b(?:no|not|without|never)\s+(?:signs?\s+of\s+)?(?:flooding|carbon monoxide)\b",
 ]
 TRADES = [
+    ("gas", r"\\b(?:gas\\s+(?:leak|smell|supply|appliance)|smell\\s+(?:of\\s+)?gas)\\b"),
     ("heating", r"\b(?:boiler|radiator|heating|hot water|no heat)\b"),
     ("electric", r"\b(?:socket|electric|light|fuse|power|wire|switch|sparking)\b"),
     ("locksmith", r"\b(?:lock|key|locked|door won't close|window won't lock)\b"),
@@ -84,7 +90,7 @@ def danger_flags(text):
 
 
 def trade_for(text):
-    s = text.lower()
+    s = _clean_for_safety(text)
     for trade, pattern in TRADES:
         if re.search(pattern, s):
             return trade
