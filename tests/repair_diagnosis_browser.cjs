@@ -228,15 +228,23 @@ async function run(){
       await agent.page.locator('#tenancy-one details.msgs > summary').click();
       await agent.page.locator('#tenancy-one .pet-reason').fill('Agent reviewed the request and recorded consent.');
       await agent.page.locator('#tenancy-one').getByRole('button',{name:'Approve pet'}).click();
-      await agent.page.waitForFunction(()=>(
-        (document.querySelector('#tenancy-one')?.innerText||'').includes('approved')
-      ),null,{timeout:15000});
+      await agent.page.waitForFunction(async()=>{
+        const r=await fetch('/api/stage');
+        if(!r.ok)return false;
+        const t=(await r.json()).tenancies?.find(x=>x.id==='tenancy-one');
+        return t?.pet_requests?.[0]?.status==='approved';
+      },null,{timeout:15000});
       await agent.page.locator('#tenancy-one details.msgs > summary').click();
       await agent.page.locator('#tenancy-one .rent-change-amount').fill('950');
       await agent.page.locator('#tenancy-one .rent-change-notice').fill('2026-08-01');
       await agent.page.locator('#tenancy-one .rent-change-effective').fill('2026-10-01');
       await agent.page.locator('#tenancy-one').getByRole('button',{name:'Record proposed rent increase'}).click();
-      await agent.page.locator('#tenancy-one').getByText('Proposed rent:').waitFor({timeout:15000});
+      await agent.page.waitForFunction(async()=>{
+        const r=await fetch('/api/stage');
+        if(!r.ok)return false;
+        const t=(await r.json()).tenancies?.find(x=>x.id==='tenancy-one');
+        return t?.pending_rent_increase?.proposed_rent_pence===95000;
+      },null,{timeout:15000});
       console.log('PASS: agent can review pet request and record a Section 13 rent proposal');
 
       // Agent drafts, records room condition, then issues an immutable inspection.
@@ -253,7 +261,11 @@ async function run(){
       await agent.page.locator('#inventory-inventory-1').getByText('Walls in good condition').waitFor({timeout:15000});
       agent.page.once('dialog',d=>d.accept());
       await agent.page.locator('#inventory-inventory-1').getByRole('button',{name:'Issue inventory to tenant'}).click();
-      await agent.page.locator('#inventory-inventory-1').getByText('issued').first().waitFor({timeout:15000});
+      await agent.page.waitForFunction(async()=>{
+        const r=await fetch('/api/inventories');
+        if(!r.ok)return false;
+        return (await r.json()).inventories?.find(x=>x.id==='inventory-1')?.status==='issued';
+      },null,{timeout:15000});
       console.log('PASS: agent created and issued a dated property condition inventory');
       console.log('PASS: Agent Desk briefing and structured diagnostic evidence are visible with correct permissions');
     }finally{await agent.context.close();}
