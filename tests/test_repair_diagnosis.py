@@ -67,7 +67,7 @@ class RepairDiagnosticTests(unittest.TestCase):
             diag.diagnose("Leaking pipe", image_b64=fake_png, mime="image/png")
 
     def test_photo_without_vision_is_explicitly_not_analysed(self):
-        picture = base64.b64encode(b"\\xff\\xd8\\xffsample").decode()
+        picture = base64.b64encode(b"\xff\xd8\xffsample").decode()
         with patch.dict(os.environ, {"ROGER_REPAIR_TEXT_MODEL": "", "ROGER_REPAIR_VISION_MODEL": ""}):
             response = diag.diagnose("The tap is dripping", image_b64=picture, mime="image/jpeg")
         self.assertTrue(response["image_supplied"])
@@ -75,7 +75,7 @@ class RepairDiagnosticTests(unittest.TestCase):
         self.assertEqual(response["photo_observation"], "")
 
     def test_local_vision_model_can_propose_a_question_and_photo_observation(self):
-        picture = base64.b64encode(b"\\xff\\xd8\\xffsample").decode()
+        picture = base64.b64encode(b"\xff\xd8\xffsample").decode()
         response_body = json.dumps({"message": {"content": json.dumps({
             "question": "Can you see active dripping beneath the joint?",
             "likely_cause": "Joint or fitting might be loose",
