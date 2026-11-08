@@ -202,6 +202,11 @@ async function run(){
         return (await response.json()).inventories.length;
       });
       assert.equal(inventoryDenied,0);
+      const crossDeposits=await separate.page.evaluate(async()=>{
+        const response=await fetch('/api/deposits');
+        return (await response.json()).deposits.length;
+      });
+      assert.equal(crossDeposits,0);
       console.log('PASS: different tenant cannot diagnose an unrelated property or access Agent Desk briefing');
     }finally{await separate.context.close();}
 
@@ -267,6 +272,20 @@ async function run(){
         return (await r.json()).inventories?.find(x=>x.id==='inventory-1')?.status==='issued';
       },null,{timeout:15000});
       console.log('PASS: agent created and issued a dated property condition inventory');
+      // Funds are never moved; an agent merely records an unverified deposit receipt.
+      await agent.page.locator('nav a[data-view="money"]').click();
+      await agent.page.locator('#dep-tenancy').selectOption('tenancy-one');
+      await agent.page.locator('#dep-kind').selectOption('tenancy');
+      await agent.page.locator('#dep-amount').fill('900');
+      await agent.page.locator('#dep-date').fill('2026-11-01');
+      await agent.page.getByRole('button',{name:'Record receipt (unverified)'}).click();
+      await agent.page.waitForFunction(async()=>{
+        const r=await fetch('/api/deposits');
+        return r.ok && (await r.json()).deposits?.some(d=>
+          d.tenancy_id==='tenancy-one'&&d.amount_pence===90000&&d.status==='received_unverified');
+      },null,{timeout:15000});
+      console.log('PASS: agent recorded a distinct unverified tenancy deposit with protection deadline');
+
       console.log('PASS: Agent Desk briefing and structured diagnostic evidence are visible with correct permissions');
     }finally{await agent.context.close();}
 
@@ -277,6 +296,11 @@ async function run(){
     await tenant.locator('#tenant-inventory-inventory-1').getByRole('button',{name:'Dispute an item'}).click();
     await tenant.locator('#tenant-inventory-inventory-1').getByText('Disputed').first().waitFor({timeout:15000});
     const policy=await tenant.evaluate(async()=> (await(await fetch('/api/tenancy-policy')).json()));
+    const deposits=await tenant.evaluate(async()=> (await(await fetch('/api/deposits')).json()));
+    assert.equal(deposits.deposits.length,1);
+    assert.equal(deposits.deposits[0].amount_pence,90000);
+    assert.equal(deposits.deposits[0].status,'received_unverified');
+    await tenant.locator('#tenant-deposits').getByText('£900.00').waitFor({timeout:15000});
     assert.equal(policy.tenancies.length,1);
     assert.equal(policy.tenancies[0].pet_requests[0].status,'approved');
     assert(policy.tenancies[0].pending_rent_increase);
