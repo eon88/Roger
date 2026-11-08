@@ -279,6 +279,10 @@ async function run(){
       await agent.page.locator('#dep-kind').selectOption('tenancy');
       await agent.page.locator('#dep-amount').fill('900');
       await agent.page.locator('#dep-date').fill('2026-11-01');
+      // Every Agent Desk form must keep user's edits during a background refresh.
+      await agent.page.evaluate(()=>renderAll());
+      assert.equal(await agent.page.locator('#dep-amount').inputValue(),'900');
+      assert.equal(await agent.page.locator('#dep-date').inputValue(),'2026-11-01');
       await agent.page.getByRole('button',{name:'Record receipt (unverified)'}).click();
       await agent.page.waitForTimeout(350);
       console.log('Synthetic deposit-click UI diagnostics:',JSON.stringify(
