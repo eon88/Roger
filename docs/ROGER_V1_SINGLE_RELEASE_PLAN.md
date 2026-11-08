@@ -6,6 +6,8 @@
 
 **One installation/deployment, after all agreed release gates pass.** All implementation commits, experiments, model changes and test failures stay on this development branch or disposable test infrastructure. Do not merge to main, replace the working Hostinger deployment, migrate production data, or direct a user to install partial releases. The existing production system remains untouched. Rollback must be demonstrated from a current encrypted production backup **before** launch.
 
+**Fixed product scope: LETTINGS AND PROPERTY MANAGEMENT ONLY. Roger does not handle property sales, buyers, sellers/vendors, sale offers, conveyancing, sales chains or sales progression.** Rental property advertising, rental applicants, tenant viewings, rental offers, referencing, tenancy renewals and landlord acquisition ARE in scope. Competitors' sales features must never be added to the build backlog.
+
 The goal is to reproduce the *functional level* of modern lettings/property-management platforms in original code. Do not copy competitor proprietary implementation, UI assets, confidential data, or protected brands. "Parity" applies to the **England-first small letting agency and property-management use case**, not every sales, auctions, block management, client-money or enterprise feature advertised by giant competitors.
 
 ## Evidence from five competitors (+ specialised Fixflo)
@@ -14,7 +16,7 @@ Primary sources, reviewed 8 November 2026:
 
 | Platform | Publicly documented capabilities worth reproducing |
 | --- | --- |
-| [Street.co.uk feature index](https://street.co.uk/product/index) and [platform](https://street.co.uk/) | Sales and lettings CRM, lead management, booking and calendar, multi-branch workflows, tenant/landlord apps, AI maintenance triage, contractor compliance, rent/arrears, statements, AI onboarding, AI call handler, notifications |
+| [Street.co.uk feature index](https://street.co.uk/product/index) and [platform](https://street.co.uk/) | Lettings CRM, rental lead management, booking and calendar, multi-branch workflows, tenant/landlord apps, AI maintenance triage, contractor compliance, rent/arrears, statements, AI onboarding, AI call handler, notifications |
 | [Reapit lettings CRM](https://www.reapit.com/platform/lettings-crm) | Tenancy progression, viewing bookings, works orders, compliance checklists and certificate tracking, renewals and client accounting; [client accounting](https://www.reapit.com/platform/client-accounts) also supports reconciliation and landlord payments |
 | [Alto PropertyFile tenant](https://support.altosoftware.co.uk/hc/en-gb/articles/5048069943327-PropertyFile-Tenant-Portal) and [landlord](https://support.altosoftware.co.uk/hc/en-gb/articles/5048084684959-PropertyFile-Landlord-Portal) | Property/tenancy timeline, rent/deposit/account summary, repair reporting and status, selective sharing of documents, landlord statements, viewings/feedback and maintenance transparency |
 | [Arthur Online stakeholder apps](https://support.arthuronline.co.uk/support/solutions/articles/202000052158/) and [repair workflows](https://www.arthuronline.co.uk/features/workflow-management) | Separate apps for manager, tenant, contractor and owner; contractor updates, work orders, reminders, evidence and links to Fixflo |
@@ -29,7 +31,7 @@ Status refers to *code on the development baseline and automated tests*, not a p
 
 | Area | Roger starting point | v1.0 gap and acceptance |
 | --- | --- | --- |
-| Public marketing / leads | **Partial:** listings, tenant enquiries, landlord and trades funnels | Accurate property publication state, lead stages, agent responses, no placeholder offers, mobile browsing, conversion/audit tests |
+| Public marketing / leads | **Partial:** listings, tenant enquiries, landlord and trades funnels | Accurate rental listing publication, applicant/landlord lead stages, agent responses, rental applications and viewing follow-up, mobile browsing, conversion/audit tests |
 | Agency accounts / multitenancy | **Partial:** per-agency isolated stacks, invite/first-login, owner recovery | Lifecycle, staff permissions, MFA/recovery, documented data export, complete cross-agency permission/browser tests, provisioning controls |
 | People / Properties / Tenancies | **Partial:** linked Party, property and tenancy models in SaaS branch | Full lifecycle and immutable IDs, multiple tenants/owners, dates/rent/deposits, no duplicated person/property records, safe migrations |
 | Landlord portal | **Partial:** onboarding, linked property view, approvals | statements/marketing/viewings, explicit document sharing, fully joined portfolio history and period reports |
@@ -47,7 +49,7 @@ Status refers to *code on the development baseline and automated tests*, not a p
 ## Fixed acceptance gates for the *single* v1.0 release
 
 1. **Functional baseline:** four independent portals and public marketing use the same authoritative property/person/tenancy/case/invoice identifiers. No contradictory statuses or manual re-entry.
-2. **Life cycle:** lead → property onboarding → listing → applicant/viewing → tenancy → renewal/notice → checkout survives reload and has negative-permission tests.
+2. **Lettings life cycle only:** landlord lead → managed property onboarding → rental listing → rental applicant/viewing → rental offer/referencing → tenancy → renewal/notice → checkout survives reload and has negative-permission tests. Property sales, buyer/vendor journeys and sales chains are excluded.
 3. **Repair life cycle:** resident → guided AI/rules → agent review → contractor → quote/owner authority → appointment → completion → resident resolution → invoice/recorded external payment; urgent/decline/reopen/variation/timeout/duplicate branches are checked.
 4. **Financial controls:** rent charges/receipts, arrears, fees and landlord statements have correct amount/date ownership; no claims of verified payments without reconciliation evidence. Legal/accounting review gates regulated processing.
 5. **Compliance:** valid requirement mapping per property/jurisdiction, document lifecycle, accurate expiry warnings and externally checked contractor credentials.
