@@ -6,6 +6,7 @@ response system. Agents decide actions; this module never changes stage.
 """
 from datetime import date, datetime, timedelta
 import prs_register
+import deposit_controls
 
 
 CLOSED_CASES = {"closed", "resolved", "cancelled"}
@@ -140,6 +141,17 @@ def make_briefing(stage, today=None):
              detail, priority, "compliance",
              "Agent-supplied region/evidence; verify council and government record",
              deadline)
+
+    for deposit in stage.get("deposit_records",[]):
+        if not isinstance(deposit,dict):
+            continue
+        warning=deposit_controls.due_for_review(deposit,today)
+        if not warning:
+            continue
+        priority,detail,due=warning
+        _add(cards,"deposit",deposit,"Deposit check — "+str(deposit.get("id")),
+             detail,priority,"money","Recorded deposit receipt/status and statutory deadline",
+             due)
 
     for reg in stage.get("registrations", []):
         if not isinstance(reg, dict) or reg.get("role") != "trades":
