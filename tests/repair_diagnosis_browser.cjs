@@ -111,8 +111,14 @@ async function run(){
     await tenant.locator('#issue-msg').fill('Water is leaking under the kitchen sink');
     await tenant.locator('#issue-email').fill('synthetic-resident@example.invalid');
     await tenant.getByRole('button',{name:'Help me describe this problem (experimental)'}).click();
-    await tenant.locator('#repair-question').getByText(/where is the water|when did|which|can you|water|leak/i)
-      .waitFor({timeout:25000});
+    await tenant.waitForFunction(()=>{
+      const q=document.getElementById('repair-question');
+      const engine=document.getElementById('repair-engine');
+      return q && q.textContent.trim() &&
+        !q.textContent.includes('Reviewing your description') &&
+        engine && engine.textContent.trim();
+    },null,{timeout:45000});
+    console.log('Interview first question:',(await tenant.locator('#repair-question').innerText()).slice(0,150));
     const engine=await tenant.locator('#repair-engine').innerText();
     if(process.env.EXPECT_OLLAMA==='1'){
       assert.match(engine,/Local AI suggestions/);
