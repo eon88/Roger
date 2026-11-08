@@ -78,6 +78,23 @@ def _short(value, limit):
     return re.sub(r"\s+", " ", value).strip()[:limit]
 
 
+def safe_interview_question(question):
+    """Allow symptom questions; never ask residents to plan or perform repairs."""
+    if not question or not question.endswith("?"):
+        return False
+    if len(question) > 160:
+        return False
+    if re.search(
+        r"\b(?:fix|fixing|repair|repairing|replace|reset|open|remove|"
+        r"touch|disassemble|disconnect|rewire|unscrew|adjust|"
+        r"take action|actions can be taken|actions should be taken|"
+        r"what should (?:i|you) do)\b",
+        question, flags=re.I
+    ):
+        return False
+    return True
+
+
 def _clean_for_safety(value):
     value = value.lower()
     for pattern in NEGATIONS:
@@ -207,7 +224,9 @@ def diagnose(description, history=None, image_b64=None, mime=None):
     photo_note = ""
     if model:
         if not is_complete:
-            question = _short(model.get("question"), 160) or question
+            suggested_question = _short(model.get("question"), 160)
+            if safe_interview_question(suggested_question):
+                question = suggested_question
         possible = _short(model.get("likely_cause"), 180) or possible
         if photo_analyzed:
             photo_note = _short(model.get("photo_observation"), 250)
