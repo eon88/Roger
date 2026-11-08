@@ -51,6 +51,14 @@ For PowerShell, use `$env:ROGER_REPAIR_TEXT_MODEL="name-of-installed-model"`, an
 - Inputs remain private to the Roger instance and its configured model. By default only loopback/Docker-local Ollama URLs are allowed; sending to a remote model requires a deliberate `ROGER_REPAIR_ALLOW_REMOTE_MODEL=1` setting and your own data-protection review.
 - Reports are still manually submitted. Until then interview state exists only in the tenant's browser; the API is stateless.
 
+## Verified laboratory outcomes
+
+- **Chromium (synthetic tenant, unrelated tenant, and agent):** opt-in interview, three answers, manual report submission, safety warning, property access denial, and explicit no-vision disclosure all passed: [four-role browser run](https://github.com/eon88/Roger/actions/runs/42523785840).
+- **Real Ollama text model:** disposable GitHub-hosted Docker Ollama with `qwen2.5:0.5b` performed a true browser interview, with `engine=local-ollama`, and passed the browser integration: [real model run](https://github.com/eon88/Roger/actions/runs/42523781359).
+- The real-model run revealed a low-quality question asking how to **fix** the fault. A symptom-only question filter now rejects repair-action questions and falls back to safe deterministic questions; regression tests cover this.
+- **Not verified:** actual vision-model inference with photos, model behaviour on the user's Windows laptop, production scalability, or legal/compliance suitability.
+- All CI data is disposable. None of the runs contact production Roger or process live tenant records.
+
 ## Tests and acceptance gates
 
 CI uses the repository's existing Python regression suite plus ten synthetic fault scenarios, role/property isolation, invalid-photo checks, AI-down fallback, a mocked local vision model and inline JavaScript compilation.
