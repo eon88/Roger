@@ -196,6 +196,7 @@ async function load(manual){
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
     try{ const t=await api('/api/tasks'); window._tasks=t.tasks||[] }catch(e){ window._tasks=[] }
+    try{ window._briefing=await api('/api/agent/briefing') }catch(e){ window._briefing=null }
     try{ const n=await api('/api/notifications'); window._notifications=n.notifications||[] }catch(e){ window._notifications=[] }
     try{ const o=await api('/api/office-settings'); window._office=o.office||{} }catch(e){ window._office={} }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
@@ -327,6 +328,28 @@ function renderAttentionBoard(){
   const panel=(title,items,empty)=>'<div class="card"><div class="cardtop"><h3>'+title+'</h3><span class="badge '+(items.length?'pending':'completed')+'">'+items.length+'</span></div>'+(items.length?items.slice(0,6).map(x=>deskLink(x.label,x.detail,x.view,x.id,x.tag)).join('')+(items.length>6?'<div class="meta">Showing 6 of '+items.length+' matching items.</div>':''):'<div class="meta">'+empty+'</div>')+'</div>';
   return '<div class="move">daily command centre</div>'+cockpit+'<div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
 }
+function renderAgentBriefing(){
+  const b=window._briefing;
+  if(!b)return '<div class="card"><div class="fineprint">Operational priorities are temporarily unavailable. Check cases and tasks directly.</div></div>';
+  const counts=b.priority_counts||{};
+  const allowedViews=new Set(['cases','jobs','tasks','compliance','registrations','people','properties','money']);
+  const rows=(b.cards||[]).slice(0,10).map(card=>{
+    const view=allowedViews.has(card.view)?card.view:'cases';
+    return '<div class="thread" style="margin:8px 0">'+
+      '<div><b>'+esc(card.title)+'</b> · '+esc(card.priority)+'</div>'+
+      '<div class="meta">'+esc(card.detail)+' · '+esc(card.reason)+'</div>'+
+      (card.due_date?'<div class="fineprint">Recorded date: '+esc(card.due_date)+'</div>':'')+
+      '<a href="#" onclick="show(\''+view+'\');return false">Open '+esc(view)+' →</a></div>';
+  }).join('');
+  return '<section class="card" aria-label="Operational priorities">'+
+    '<div class="cardtop"><h3>Operational priorities</h3><span class="fineprint">Read-only · recorded evidence · '+esc(b.as_of)+'</span></div>'+
+    '<div class="meta">'+esc(b.total_actions)+' recorded actions · '+esc(counts.urgent||0)+' urgent · '+
+      esc(counts.high||0)+' high · '+esc(counts.normal||0)+' normal</div>'+
+    (rows||'<div class="fineprint">No due or flagged records were found. This does not prove every obligation is complete.</div>')+
+    (b.total_actions>10?'<div class="fineprint">Showing ten highest-ranked items. Use the linked workspaces for all records.</div>':'')+
+    '<div class="fineprint">'+esc(b.limitations||'')+'</div>'+
+    '</section>';
+}
 function renderOverview(){
   const cases=(stage.cases||[]).filter(c=>!['closed','resolved','declined'].includes(c.status));
   const urg=cases.filter(c=>c.triage&&c.triage.urgency>=2).length;
@@ -340,6 +363,7 @@ function renderOverview(){
   const tile=(n,label,view,hot)=>`<a class="stat ${hot?'hot':''}" href="#" onclick="show('${view}');return false"><div class="value">${n}</div><div class="label">${label}</div></a>`;
   const quiet=(urg+gated+unassigned+waiting.length+regs)===0;
   document.getElementById('view-overview').innerHTML=`
+      ${renderAgentBriefing()}
       ${renderAttentionBoard()}
       <div class="card"><label class="field"><span>Search Roger</span><input id="desk-search" type="text" value="${esc(deskSearch)}" placeholder="Name, property, case, job or email" aria-label="Search Roger records"></label><div id="desk-search-results" aria-live="polite">${deskSearch?'<div class="meta">Updating search…</div>':'<div class="meta">Search names and contacts, properties, cases, jobs, tasks, notifications, registrations, appointments and documents.</div>'}</div></div>
       <div class="move">overview</div>
