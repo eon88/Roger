@@ -232,10 +232,10 @@ jobs:
             console.log('FOUR-ROLE BROWSER SMOKE PASSED');
           })().catch(err => { console.error(err.stack || err); process.exitCode = 1; });
           JS
-      - name: Exercise full role-based repair journey with Chromium
-        run: node tests/full_repair_browser.cjs
       - name: Exercise new tenant repair interview in Chromium
         run: node tests/repair_diagnosis_browser.cjs
+      - name: Exercise full role-based repair journey with Chromium
+        run: node tests/full_repair_browser.cjs
       - name: Verify redesigned public homepage, lead forms and mobile layout
         run: node tests/public_homepage_browser.cjs
       - name: Upload public homepage visual previews
