@@ -92,6 +92,7 @@ input,textarea,select{accent-color:#2b6045}
           <a href="#" class="tab" data-view="tasks">Tasks</a>
           <a href="#" class="tab" data-view="compliance">Compliance</a>
           <a href="#" class="tab" data-view="appointments">Appointments</a>
+          <a href="#" class="tab" data-view="inventories">Inspections &amp; inventories</a>
           <a href="#" class="tab" data-view="documents">Documents</a>
           <a href="#" class="tab" data-view="registrations">Registrations</a>
           <a href="#" class="tab" data-view="prospects">Prospects</a>
@@ -113,6 +114,7 @@ input,textarea,select{accent-color:#2b6045}
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
     <section id="view-appointments" style="display:none"></section>
+    <section id="view-inventories" style="display:none"></section>
     <section id="view-documents" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
@@ -195,6 +197,7 @@ const fl=k=>FL.flip[k]?'flash-once':'';
 async function load(manual){
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
+    try{ const i=await api('/api/inventories'); window._inventories=i.inventories||[] }catch(e){ window._inventories=[] }
     try{ const t=await api('/api/tasks'); window._tasks=t.tasks||[] }catch(e){ window._tasks=[] }
     try{ window._briefing=await api('/api/agent/briefing') }catch(e){ window._briefing=null }
     try{ const n=await api('/api/notifications'); window._notifications=n.notifications||[] }catch(e){ window._notifications=[] }
@@ -212,7 +215,7 @@ async function load(manual){
 }
 function renderAll(){
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderOffice(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderOffice(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderInventories(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -1119,6 +1122,75 @@ async function decidePet(btn,decision){
  const reason=Array.from(card.querySelectorAll('.pet-reason')).find(el=>el.dataset.requestId===btn.dataset.requestId)?.value||'';
  if(reason.trim().length<8){toast('Record a reason (at least 8 characters).','bad');return;}
  await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',{action:'decide_pet',tenancy_id:t.id,request_id:btn.dataset.requestId,decision,reason});toast('Pet request decision recorded.');await load();}catch(e){}});
+}
+function renderInventories(){
+ const list=window._inventories||[],tenancies=stage.tenancies||[];
+ const select=tenancies.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc((stage.properties||[]).find(p=>p.id===t.property_id)?.title||t.property_id)+'</option>').join('');
+ const display=list.slice().reverse().map(i=>{
+   const rooms=(i.rooms||[]).map(r=>'<div class="thread"><b>'+esc(r.name)+'</b> · '+esc(r.condition)+
+     (r.document_ids?.length?' · evidence: '+r.document_ids.map(esc).join(', '):'')+'</div>').join('');
+   const meter=Object.entries(i.meter_readings||{}).map(([type,r])=>esc(type)+': '+esc(r.reading)).join(' · ');
+   const keys=(i.keys||[]).map(k=>esc(k.description)+' ('+k.count+')').join(' · ');
+   const draft=i.status==='draft';
+   return '<div class="card" id="inventory-'+esc(i.id)+'"><div class="cardtop"><h3>'+
+     esc(i.id)+' · '+esc(i.kind.replace(/_/g,' '))+'</h3><span class="badge">'+esc(i.status)+'</span></div>'+
+     '<div class="meta">Tenancy '+esc(i.tenancy_id)+' · '+esc(i.inspection_date)+' · property '+esc(i.property_id)+'</div>'+
+     '<div class="fineprint">'+esc(i.summary||'No summary')+'</div>'+rooms+
+     (meter?'<div class="meta">Meters: '+meter+'</div>':'')+
+     (keys?'<div class="meta">Keys: '+keys+'</div>':'')+
+     (i.tenant_feedback||[]).map(f=>'<div class="thread">'+(f.accepted?'Tenant confirmed':'Tenant disputes')+
+       ': '+esc(f.comment||'')+'</div>').join('')+
+     (draft?'<div class="grid2"><label class="field"><span>Room</span><input class="room-label" maxlength="100"></label>'+
+       '<label class="field"><span>Observed condition</span><textarea class="room-condition" maxlength="1000" rows="2"></textarea></label>'+
+       '<label class="field"><span>Evidence document IDs (comma-separated; upload documents first)</span><input class="room-docs" placeholder="doc-1, doc-2"></label></div>'+
+       '<button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'room\')">Record room condition</button>'+
+       '<div class="grid2"><label class="field"><span>Meter</span><select class="meter-type"><option>electricity</option><option>gas</option><option>water</option><option>heat</option><option>other</option></select></label>'+
+       '<label class="field"><span>Meter reading</span><input class="meter-reading" maxlength="80"></label>'+
+       '<label class="field"><span>Serial (optional)</span><input class="meter-serial" maxlength="90"></label></div>'+
+       '<button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'meter\')">Record meter</button>'+
+       '<div class="grid2"><label class="field"><span>Keys / access item</span><input class="keys-description" maxlength="160"></label>'+
+       '<label class="field"><span>Count</span><input class="keys-count" type="number" min="0" max="100" value="1"></label></div>'+
+       '<div class="actions"><button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'keys\')">Record keys</button>'+
+       '<button class="btn primary" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'issue\')">Issue inventory to tenant</button></div>':
+       '<div class="fineprint">Issued record is immutable. Create a new dated inspection if more evidence is required.</div>')+
+   '</div>';
+ }).join('');
+ document.getElementById('view-inventories').innerHTML=
+   '<div class="move">inspection and inventory book</div>'+
+   '<p class="fineprint">Room condition, photographs, meter readings and keys are recorded against the tenancy. Evidence photos use the authenticated document library. Issuing freezes the record for tenant feedback.</p>'+
+   '<div class="card"><h2>New inspection</h2><div class="grid2">'+
+     '<label class="field"><span>Tenancy</span><select id="inventory-tenancy">'+select+'</select></label>'+
+     '<label class="field"><span>Type</span><select id="inventory-kind"><option value="check_in">Check-in</option><option value="mid_term">Mid-term</option><option value="check_out">Check-out</option></select></label>'+
+     '<label class="field"><span>Inspection date</span><input id="inventory-date" type="date"></label>'+
+     '<label class="field"><span>Summary</span><input id="inventory-summary" maxlength="1000"></label></div>'+
+     '<button class="btn primary" onclick="inventoryAction(this,\'create\')">Create inspection</button></div>'+
+   (display||'<div class="empty">No inspections recorded.</div>');
+}
+async function inventoryAction(btn,action){
+ const id=btn.dataset.inventoryId;
+ const card=id?document.getElementById('inventory-'+id):null;
+ const data={action};
+ if(action==='create'){
+   data.tenancy_id=document.getElementById('inventory-tenancy')?.value;
+   data.kind=document.getElementById('inventory-kind')?.value;
+   data.inspection_date=document.getElementById('inventory-date')?.value;
+   data.summary=document.getElementById('inventory-summary')?.value;
+ } else {
+   data.inventory_id=id;
+   if(action==='room'){
+     data.room=card?.querySelector('.room-label')?.value;
+     data.condition=card?.querySelector('.room-condition')?.value;
+     data.document_ids=(card?.querySelector('.room-docs')?.value||'').split(',').map(x=>x.trim()).filter(Boolean);
+   }else if(action==='meter'){
+     data.meter=card?.querySelector('.meter-type')?.value;
+     data.reading=card?.querySelector('.meter-reading')?.value;
+     data.serial=card?.querySelector('.meter-serial')?.value;
+   }else if(action==='keys'){
+     data.description=card?.querySelector('.keys-description')?.value;
+     data.count=Number(card?.querySelector('.keys-count')?.value);
+   }else if(action==='issue'&&!confirm('Issue this frozen inventory to the linked tenants? Future edits will require a new inventory.'))return;
+ }
+ await busy(btn,async()=>{try{await post('/api/inventory-action',data);toast('Inspection record saved.');await load();}catch(e){}});
 }
 function renderPeopleTenancies(){
  const parties=stage.parties||[],tenancies=stage.tenancies||[],props=stage.properties||[];
