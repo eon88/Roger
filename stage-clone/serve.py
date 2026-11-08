@@ -32,6 +32,7 @@ import jev_client
 import repair_diagnosis
 import repair_case_dossier
 import agent_briefing
+import tenancy_2026
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -342,7 +343,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -526,6 +527,11 @@ class H(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
+        if path == "/api/tenancy-policy":
+            user = self.require({"agent", "tenant"})
+            if not user:
+                return
+            return self._json(self.tenancy_policy_view(load_stage(), user))
         if path == "/api/agent/briefing":
             if not self.require({"agent"}):
                 return
@@ -1090,6 +1096,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/agent/property-submission": self.handle_agent_property_submission,
             "/api/party-action": self.handle_party_action,
             "/api/tenancy-action": self.handle_tenancy_action,
+            "/api/tenancy-policy-action": self.handle_tenancy_policy_action,
             "/api/management-agreement-action": self.handle_management_agreement_action,
             "/api/case-action": self.handle_case_action,
             "/api/email-reply": self.handle_email_reply,
@@ -1753,8 +1760,11 @@ class H(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 return self._json({"error": "valid start_date and integer pence amounts are required"}, 400)
             frequency = str(data.get("rent_frequency", "monthly"))
-            if rent <= 0 or deposit < 0 or frequency not in ("weekly", "fortnightly", "monthly", "quarterly", "annually"):
-                return self._json({"error": "invalid rent, deposit or rent frequency"}, 400)
+            try:
+                periodic_terms = tenancy_2026.assured_periodic_terms(
+                    start_date.isoformat(), frequency, rent, deposit)
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
             tenancy_num = int(stage.get("next_tenancy_id", 1))
             tid = "tenancy-" + str(tenancy_num)
             at = now()
@@ -1764,6 +1774,7 @@ class H(SimpleHTTPRequestHandler):
                 "tenant_party_ids": tenant_ids, "landlord_party_ids": landlord_ids,
                 "start_date": start_date.isoformat(), "end_date": None,
                 "rent_amount_pence": rent, "rent_frequency": frequency,
+                **periodic_terms,
                 "deposit_amount_pence": deposit, "deposit_scheme": None,
                 "deposit_reference": None, "agreement_status": "draft",
                 "status": "application", "move_in_date": None, "notice_date": None,
@@ -1822,6 +1833,8 @@ class H(SimpleHTTPRequestHandler):
         current = tenancy.get("status")
         if target not in transitions:
             return self._json({"error": "invalid tenancy status"}, 400)
+        if target == "renewal" and tenancy.get("tenancy_type") == "assured_periodic":
+            return self._json({"error": "assured periodic tenancies have no fixed term to renew; use the rent notice workflow"}, 409)
         if target == current:
             return self._json({"success": True, "unchanged": True, "status": current})
         if target not in transitions.get(current, ()):
@@ -1883,6 +1896,132 @@ class H(SimpleHTTPRequestHandler):
                            "note": current + " -> " + target})
         save_stage(stage)
         return self._json({"success": True, "status": target, "updated_at": at})
+
+    def tenancy_policy_view(self, stage, user):
+        """No other tenant's details or private records can cross this boundary."""
+        if user.get("role") == "agent":
+            tenancies = stage.get("tenancies", [])
+        else:
+            party_ids = self.account_party_ids(stage, user, "tenant")
+            tenancies = [t for t in stage.get("tenancies", [])
+                         if any(p in party_ids for p in t.get("tenant_party_ids", []))]
+        # Explicit output schema. Do not return Party, verification, or private document data.
+        allowed = ("id", "property_id", "tenancy_type", "start_date", "status",
+                   "rent_amount_pence", "rent_frequency", "pending_rent_increase",
+                   "last_rent_increase_effective_at", "pet_requests")
+        return {"tenancies": [{k: t.get(k) for k in allowed} for t in tenancies]}
+
+    def handle_tenancy_policy_action(self, data):
+        """Capture tenant/agent requests; only agents can record formal rent actions."""
+        stage = load_stage()
+        tenancy = next((t for t in stage.get("tenancies", [])
+                        if t.get("id") == data.get("tenancy_id")), None)
+        if not tenancy:
+            return self._json({"error": "tenancy not found"}, 404)
+        actor = self.user or {}
+        role = actor.get("role")
+        action = data.get("action")
+        if role == "tenant":
+            party_ids = self.account_party_ids(stage, actor, "tenant")
+            if not party_ids.intersection(tenancy.get("tenant_party_ids", [])):
+                return self._json({"error": "not your tenancy"}, 403)
+            if action != "request_pet":
+                return self._json({"error": "tenant may only request a pet"}, 403)
+        elif role != "agent":
+            return self._json({"error": "agent or tenant access required"}, 403)
+        elif action == "request_pet":
+            return self._json({"error": "tenant must request a pet from their own account"}, 403)
+
+        at = now()
+        try:
+            if action == "request_pet":
+                record = tenancy_2026.pet_request(data.get("description"), at)
+                key = str(data.get("request_id") or "")
+                if not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", key):
+                    raise ValueError("A request id is required")
+                existing = next((p for p in tenancy.get("pet_requests", [])
+                                 if p.get("request_id") == key), None)
+                if existing:
+                    if existing.get("description") != record["description"]:
+                        return self._json({"error": "duplicate request id with different content"}, 409)
+                    return self._json({"success": True, "unchanged": True, "request": existing})
+                record["request_id"] = key
+                record["id"] = "pet-" + secrets.token_hex(8)
+                record["requested_by_account_id"] = actor.get("account_id")
+                tenancy.setdefault("pet_requests", []).append(record)
+                change = "pet_request_created"
+                reply = {"success": True, "request": record}
+            elif action == "decide_pet":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                record = next((p for p in tenancy.get("pet_requests", [])
+                               if p.get("id") == data.get("request_id")), None)
+                if not record:
+                    return self._json({"error": "pet request not found"}, 404)
+                record.update(tenancy_2026.pet_decision(
+                    record, data.get("decision"), data.get("reason"), at))
+                record["decided_by"] = actor.get("username")
+                change = "pet_request_decided"
+                reply = {"success": True, "request": record}
+            elif action == "propose_rent_increase":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                proposed = tenancy_2026.rent_increase_proposal(
+                    tenancy, data.get("amount_pence"),
+                    data.get("notice_served_on"), data.get("effective_on"))
+                proposed["created_by"] = actor.get("username")
+                proposed["created_at"] = at
+                tenancy["pending_rent_increase"] = proposed
+                change = "rent_increase_draft_recorded"
+                reply = {"success": True, "proposal": proposed,
+                         "warning": "Roger has not verified service of Form 4A or any tribunal dispute"}
+            elif action == "mark_rent_increase_disputed":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                pending = tenancy.get("pending_rent_increase")
+                if not pending:
+                    return self._json({"error": "no pending rent increase"}, 409)
+                pending["tenant_objection_status"] = "disputed"
+                change = "rent_increase_dispute_recorded"
+                reply = {"success": True, "proposal": pending}
+            elif action == "withdraw_rent_increase":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                pending = tenancy.pop("pending_rent_increase", None)
+                if not pending:
+                    return self._json({"error": "no pending rent increase"}, 409)
+                tenancy.setdefault("rent_increase_history", []).append(
+                    {**pending, "status": "withdrawn", "recorded_at": at})
+                change = "rent_increase_withdrawn"
+                reply = {"success": True}
+            elif action == "apply_rent_increase":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                amount, effective = tenancy_2026.confirm_rent_increase(tenancy)
+                pending = tenancy.pop("pending_rent_increase")
+                tenancy.setdefault("rent_increase_history", []).append(
+                    {**pending, "status": "recorded_effective", "recorded_at": at})
+                previous = tenancy.get("rent_amount_pence")
+                tenancy["rent_amount_pence"] = amount
+                tenancy["last_rent_increase_effective_at"] = effective
+                # Future charges must be recalculated explicitly and reviewed;
+                # never silently rewrite historic ledger or existing receipts.
+                change = "rent_increase_recorded_effective"
+                reply = {"success": True, "previous_rent_pence": previous,
+                         "rent_amount_pence": amount,
+                         "warning": "Existing scheduled ledger entries are unchanged; agent must reconcile future charges"}
+            else:
+                return self._json({"error": "unknown tenancy policy action"}, 400)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+
+        tenancy["updated_at"] = at
+        tenancy.setdefault("history", []).append({
+            "event": change, "at": at, "by": actor.get("username", role)})
+        self.audit(stage, {"actor": actor.get("username", role),
+                           "action": change, "target": tenancy["id"]})
+        save_stage(stage)
+        return self._json(reply)
 
     # ---------- authenticated landlord property onboarding ----------
     def handle_landlord_property_submission(self, data):
