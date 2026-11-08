@@ -279,14 +279,19 @@ async function run(){
       await agent.page.locator('#dep-kind').selectOption('tenancy');
       await agent.page.locator('#dep-amount').fill('900');
       await agent.page.locator('#dep-date').fill('2026-11-01');
-      const [depositPost]=await Promise.all([
-        agent.page.waitForResponse(resp=>resp.url().includes('/api/deposit-action')&&
-          resp.request().method()==='POST',{timeout:15000}),
-        agent.page.getByRole('button',{name:'Record receipt (unverified)'}).click()
-      ]);
-      const depositResult=await depositPost.json();
-      assert.equal(depositPost.status(),200,JSON.stringify(depositResult));
-      assert.equal(depositResult.success,true);
+      await agent.page.getByRole('button',{name:'Record receipt (unverified)'}).click();
+      await agent.page.waitForTimeout(350);
+      console.log('Synthetic deposit-click UI diagnostics:',JSON.stringify(
+        await agent.page.evaluate(()=>({
+          formAmount:document.getElementById('dep-amount')?.value,
+          handler:typeof window.createDeposit,
+          toasts:Array.from(document.querySelectorAll('#toast-host .toast')).map(x=>x.textContent),
+        }))),JSON.stringify(agent.errors));
+      const persisted=await agent.page.evaluate(async()=>{
+        const r=await fetch('/api/deposits');
+        return r.ok?(await r.json()).deposits:[];
+      });
+      assert(persisted.length===1,'Deposit button did not commit a record');
       const persistedDeposit=await agent.page.evaluate(async()=>{
         const r=await fetch('/api/deposits');if(!r.ok)throw new Error('No deposits');
         return (await r.json()).deposits;
