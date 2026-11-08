@@ -29,6 +29,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 import jev_client
+import repair_diagnosis
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -338,7 +339,7 @@ class H(SimpleHTTPRequestHandler):
         return user if user and not user.get("disabled_at") else None
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
-    ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
+    ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
                 "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
@@ -992,6 +993,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/change-password": 8 * 1024,
             "/api/document": 8 * 1024 * 1024,
             "/api/tenant/issue": 32 * 1024 * 1024,
+            "/api/repair-diagnose": 2 * 1024 * 1024,
         }
         max_length = limits.get(path, 256 * 1024)
 
@@ -1068,6 +1070,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/document": self.handle_document,
             "/api/document-action": self.handle_document_action,
             "/api/tenant/issue": self.handle_tenant_issue,
+            "/api/repair-diagnose": self.handle_repair_diagnosis,
             "/api/job-action": self.handle_job_action,
             "/api/landlord-action": self.handle_landlord_action,
             "/api/registration-action": self.handle_registration_action,
@@ -1092,6 +1095,14 @@ class H(SimpleHTTPRequestHandler):
         }
         if path not in handlers:
             return self._json({"error": "unknown endpoint"}, 404)
+        # Diagnosis only reads a role-scoped property and makes an optional
+        # slow local-model call. Never hold the write lock during AI inference.
+        if path == "/api/repair-diagnose":
+            fresh = self.require(self.ROLE_API[path])
+            if not fresh:
+                return
+            self.user = fresh
+            return self.handle_repair_diagnosis(data)
         try:
             with storage_write_lock():
                 # A revoked session must not finish an in-flight modification
@@ -2399,6 +2410,31 @@ class H(SimpleHTTPRequestHandler):
         case["next_due_at"] = due_date
         case["next_action_updated_at"] = now()
         case["next_action_by"] = changed_by
+
+    def handle_repair_diagnosis(self, data):
+        """Stateless guided interview; verify the logged-in party/property link."""
+        stage = load_stage()
+        prop = self.find_prop(stage, data.get("property_id"))
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        user = getattr(self, "user", None) or {}
+        role = user.get("role")
+        if role not in ("tenant", "agent"):
+            return self._json({"error": "not authorised"}, 403)
+        if role == "tenant":
+            party_ids = self.account_party_ids(stage, user, "tenant")
+            if not self.has_party_link(prop, "tenant", party_ids):
+                return self._json({"error": "not your property"}, 403)
+        try:
+            result = repair_diagnosis.diagnose(
+                data.get("description"),
+                history=data.get("history"),
+                image_b64=data.get("image_b64"),
+                mime=data.get("image_mime"),
+            )
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        return self._json(result)
 
     def handle_tenant_issue(self, data):
         stage = load_stage()
