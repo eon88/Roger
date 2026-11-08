@@ -28,6 +28,12 @@
   </section>
 
   <section class="section">
+    <div class="move">deposits</div>
+    <h2>Your deposit records</h2>
+    <div id="tenant-deposits"><div class="fineprint">Loading deposit records…</div></div>
+  </section>
+
+  <section class="section">
     <div class="move">property condition</div>
     <h2>Inventories and inspections</h2>
     <div id="tenant-inventories"><div class="fineprint">Loading inspection records…</div></div>
@@ -130,8 +136,9 @@ async function boot(){
 }
 async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{tenantPolicyData=await api('/api/tenancy-policy');}catch(e){tenantPolicyData={tenancies:[]};} try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh your cases. We will try again with the next update.','bad'); } }
-let appts=[], docs=[], inventories=[];
+let appts=[], docs=[], inventories=[], depositRecords=[];
 async function loadExtras(){
+  try{ const d=await api('/api/deposits'); depositRecords=d.deposits||[]; }catch(e){ depositRecords=[]; }
   try{ const i=await api('/api/inventories'); inventories=i.inventories||[]; }catch(e){ inventories=[]; }
   try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
   try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
@@ -221,7 +228,21 @@ async function respondToInventory(btn,accepted){
  }catch(e){toast(e.message||'Could not save inventory response','bad');}
  finally{btn.disabled=false;}
 }
-function render(){ renderOfficeContacts(); renderTenancyPolicy(); renderInventories();
+function renderDepositRecords(){
+ const box=document.getElementById('tenant-deposits');
+ if(!box)return;
+ box.innerHTML=depositRecords.length?depositRecords.slice().reverse().map(d=>
+   '<div class="card"><h3>'+esc(d.kind==='holding'?'Holding deposit':'Tenancy deposit')+' · £'+
+   (Number(d.amount_pence||0)/100).toFixed(2)+'</h3>'+
+   '<div class="meta">Recorded '+esc(d.received_date)+' · '+esc(d.status)+'</div>'+
+   (d.protection_deadline?'<div class="meta">Protection / prescribed information deadline: '+esc(d.protection_deadline)+'</div>':'')+
+   (d.decision_deadline?'<div class="meta">Holding-deposit decision deadline: '+esc(d.decision_deadline)+'</div>':'')+
+   (d.scheme?'<div class="meta">Recorded scheme: '+esc(d.scheme)+' · reference '+esc(d.scheme_reference||'')+'</div>':'')+
+   (d.protection_late?'<div class="banner danger">Protection or prescribed information was recorded late. Contact the agency to verify your rights.</div>':'')+
+   '<div class="fineprint">Roger displays agent-recorded information. It does not confirm a bank payment or verify your scheme membership; check with the deposit provider.</div></div>'
+ ).join(''):'<div class="empty">No deposits are recorded against your linked tenancy. Contact your agency if you expect one.</div>';
+}
+function render(){ renderOfficeContacts(); renderTenancyPolicy(); renderInventories(); renderDepositRecords();
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
   // Preserve the user's own email input across rerenders.
