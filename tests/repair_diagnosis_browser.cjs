@@ -127,8 +127,12 @@ async function run(){
         await tenant.locator('#repair-answer').fill('Synthetic observation number '+(i+1));
         await tenant.locator('#repair-next').click();
         await tenant.locator('#repair-question').waitFor({state:'visible'});
-        await tenant.waitForFunction(count=>
-          repairHistory.length===count, i+1, {timeout:20000});
+        await tenant.waitForFunction(()=>{
+          const answer=document.getElementById('repair-answer');
+          const question=document.getElementById('repair-question');
+          return answer && answer.value==='' && question &&
+            !question.textContent.includes('Reviewing your description');
+        },null,{timeout:20000});
       }
     }
     await tenant.getByRole('button',{name:'Use interview in my report'}).click();
