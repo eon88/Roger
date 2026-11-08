@@ -297,6 +297,11 @@ async function run(){
         return (await r.json()).deposits.map(x=>({id:x.id,tenancy_id:x.tenancy_id}));
       });
       console.log('Synthetic agent deposit records after separate login:',JSON.stringify(summary));
+      const stateDebug=await auditLogin.page.evaluate(async()=>{
+        const r=await fetch('/api/stage'),d=await r.json();
+        return {deposits:d.deposit_records||[],events:(d.audit_log||[]).slice(-8).map(x=>x.action)};
+      });
+      console.log('Synthetic stage deposit persistence and latest event types:',JSON.stringify(stateDebug));
     }finally{await auditLogin.context.close();}
     const depositBeforeInventory=await tenant.evaluate(async()=>{
       const r=await fetch('/api/deposits');
