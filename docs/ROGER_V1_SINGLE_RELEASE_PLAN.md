@@ -2,6 +2,10 @@
 
 **Date:** 8 November 2026 · **Work branch:** `feature/roger-v1-single-release-20261108`
 
+## Locked product contract — read before implementation
+
+**The definitive functional scope and end-to-end acceptance checks are in [ROGER_V1_FINAL_SCOPE_FREEZE.md](ROGER_V1_FINAL_SCOPE_FREEZE.md).** They include 2026 England tenancy reforms, landlord registration, inventory/check-in/checkout, landlord and agency compliance, tenant deposits and rent controls, client-money boundaries, agency CSV migration/export, key management, communications and operator SaaS controls. Where this earlier plan is vague, the locked scope contract takes precedence. **No sales. No intermediate deployment.**
+
 ## Release promise
 
 **One installation/deployment, after all agreed release gates pass.** All implementation commits, experiments, model changes and test failures stay on this development branch or disposable test infrastructure. Do not merge to main, replace the working Hostinger deployment, migrate production data, or direct a user to install partial releases. The existing production system remains untouched. Rollback must be demonstrated from a current encrypted production backup **before** launch.
