@@ -1419,14 +1419,56 @@ async function adjustRentEntry(btn){
  if(!Number.isFinite(amount)||amount===0||!reason){toast('Enter a non-zero amount and a reason.','bad');return;}
  await busy(btn,async()=>{try{await post('/api/rent-ledger-action',{action:'adjustment',entry_id:btn.dataset.entryId,amount_pence:Math.round(amount*100),reason});toast('Rent adjustment recorded.');load();}catch(e){}});
 }
+const PRS_REGIONS=['West Midlands','East of England','East Midlands','South East',
+   'Yorkshire and Humber','North West','North East','London','South West'];
+function renderPRSRegistration(){
+ const props=stage.properties||[],docs=window._docs||[];
+ const propOpts=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+'</option>').join('');
+ const regionOptions=PRS_REGIONS.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+ const docOptions=docs.filter(d=>d.status==='verified').map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.id)+'</option>').join('');
+ const listing=props.map(p=>{
+   const x=p.prs_registration||{};
+   return '<div class="thread"><b>'+esc(p.title||p.id)+'</b> · '+esc(x.status||'Not recorded')+
+     (x.region?' · '+esc(x.region):'')+
+     (x.rollout_deadline?' · deadline '+esc(x.rollout_deadline):'')+
+     (x.property_registration_number?' · property number '+esc(x.property_registration_number):'')+'</div>';
+ }).join('');
+ return '<div class="card"><h2>Register your rental property — England</h2>'+
+   '<p class="fineprint">Record official landlord/property registration details after checking them externally. Roger does NOT submit to or verify with GOV.UK. First regional deadline: West Midlands, 14 March 2027. Check other regions and council areas.</p>'+
+   (listing||'<div class="fineprint">No properties recorded.</div>')+
+   '<div class="grid2"><label class="field"><span>Property</span><select id="prs-property">'+propOpts+'</select></label>'+
+   '<label class="field"><span>Region (confirm against council)</span><select id="prs-region">'+regionOptions+'</select></label>'+
+   '<label class="field"><span>Registration state</span><select id="prs-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="registered">Registered</option><option value="exempt">Exempt (needs written basis)</option></select></label>'+
+   '<label class="field"><span>Landlord registration number</span><input id="prs-landlord-number" maxlength="120"></label>'+
+   '<label class="field"><span>Property registration number</span><input id="prs-property-number" maxlength="120"></label>'+
+   '<label class="field"><span>Registered on</span><input id="prs-registered-on" type="date"></label>'+
+   '<label class="field"><span>Renewal date</span><input id="prs-renewal" type="date"></label>'+
+   '<label class="field"><span>Verified private evidence document</span><select id="prs-evidence"><option value="">Select evidence</option>'+docOptions+'</select></label></div>'+
+   '<label class="field"><span>Notes / exemption reason</span><textarea id="prs-notes" maxlength="1000" rows="2"></textarea></label>'+
+   '<button class="btn" onclick="savePRSRegistration(this)">Record registration evidence</button></div>';
+}
+async function savePRSRegistration(btn){
+ await busy(btn,async()=>{try{
+   const field=id=>document.getElementById(id)?.value||'';
+   const result=await post('/api/property-registration-action',{
+     property_id:field('prs-property'),region:field('prs-region'),
+     status:field('prs-status'),landlord_registration_number:field('prs-landlord-number'),
+     property_registration_number:field('prs-property-number'),
+     registered_on:field('prs-registered-on'),renewal_date:field('prs-renewal'),
+     evidence_document_id:field('prs-evidence'),notes:field('prs-notes')
+   });
+   toast('Registration evidence recorded; government verification remains external.');
+   await load();
+ }catch(e){}});
+}
 function renderCompliance(){
  const props=stage.properties||[],docs=window._docs||[];
  const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
  const docOptions=docs.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.file_name||d.id)+'</option>').join('');
- const labels={gas_safety:'Gas safety',eicr:'EICR',epc:'EPC',smoke_co_alarms:'Smoke / CO alarms',deposit_protection:'Deposit protection',right_to_rent:'Right to Rent',tenancy_agreement:'Tenancy agreement',inventory:'Inventory',landlord_authority:'Landlord authority',trades_credentials:'Trades credentials',other:'Other'};
+ const labels={gas_safety:'Gas safety',eicr:'EICR',epc:'EPC',smoke_co_alarms:'Smoke / CO alarms',deposit_protection:'Deposit protection',right_to_rent:'Right to Rent',tenancy_agreement:'Tenancy agreement',inventory:'Inventory',landlord_authority:'Landlord authority',trades_credentials:'Trades credentials',hmo_licence:'HMO licence',additional_licence:'Additional licence',selective_licence:'Selective licence',prs_landlord_registration:'PRS landlord registration',redress_scheme:'Agency redress scheme',client_money_protection:'Client money protection',other:'Other'};
  const typeOptions=Object.entries(labels).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
  const rows=(window.complianceRecords||[]).slice().reverse().map(r=>{const p=props.find(x=>x.id===r.property_id)||{};const d=docs.find(x=>x.id===r.document_id)||{};return '<div class="card" id="'+esc(r.id)+'"><div class="cardtop"><h3>'+esc(p.title||r.property_id)+' · '+esc(labels[r.requirement_type]||r.requirement_type)+'</h3><span class="badge '+esc(r.status)+'">'+esc(r.status.replace(/_/g,' '))+'</span></div><div class="meta">'+(r.issue_date?'Issued '+esc(r.issue_date):'No evidence date')+(r.expiry_date?' · expires '+esc(r.expiry_date):' · no expiry date')+(r.reminder_date?' · reminder '+esc(r.reminder_date):'')+(r.reminder_due?' · reminder due':'')+'</div>'+(d.id?'<div class="meta">Document: '+esc(d.title||d.file_name||d.id)+'</div>':'')+(r.notes?'<div class="details">'+esc(r.notes)+'</div>':'')+'</div>';}).join('');
- document.getElementById('view-compliance').innerHTML='<div class="move">property compliance</div><p class="fineprint">Record evidence and dates supplied by the agent. Expiry and reminder states use those recorded dates; Roger does not decide which legal requirements apply.</p>'+
+ document.getElementById('view-compliance').innerHTML='<div class="move">property compliance</div>'+renderPRSRegistration()+'<p class="fineprint">Record evidence and dates supplied by the agent. Expiry and reminder states use those recorded dates; Roger does not decide which legal requirements apply.</p>'+
  '<div class="card"><h2>Record requirement or missing evidence</h2><div class="grid2"><label class="field"><span>Property</span><select id="compliance-property">'+propOptions+'</select></label><label class="field"><span>Requirement</span><select id="compliance-type">'+typeOptions+'</select></label><label class="field"><span>Record state</span><select id="compliance-action"><option value="record">Evidence recorded</option><option value="missing">Evidence missing</option></select></label><label class="field"><span>Linked document (optional)</span><select id="compliance-document"><option value="">No linked document</option>'+docOptions+'</select></label><label class="field"><span>Issue date</span><input id="compliance-issue" type="date"></label><label class="field"><span>Expiry date (optional)</span><input id="compliance-expiry" type="date"></label><label class="field"><span>Reminder date (optional)</span><input id="compliance-reminder" type="date"></label></div><label class="field"><span>Notes</span><textarea id="compliance-notes" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="saveComplianceRecord(this)">Save compliance record</button></div>'+
  '<div class="move">record history</div>'+(rows||'<div class="empty">No compliance records yet.</div>');
 }
