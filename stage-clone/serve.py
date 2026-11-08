@@ -33,6 +33,7 @@ import repair_diagnosis
 import repair_case_dossier
 import agent_briefing
 import tenancy_2026
+import inventory_record
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -343,7 +344,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -527,6 +528,32 @@ class H(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
+        if path == "/api/inventories":
+            user = self.require({"agent", "tenant", "landlord"})
+            if not user:
+                return
+            stage = load_stage()
+            ids = self.account_party_ids(stage, user, user["role"]) if user["role"] != "agent" else set()
+            own_tenancies = {
+                t["id"] for t in stage.get("tenancies", [])
+                if user["role"] == "tenant"
+                and set(t.get("tenant_party_ids", [])).intersection(ids)
+            }
+            owned_properties = {
+                p["id"] for p in stage.get("properties", [])
+                if user["role"] == "landlord" and self.has_party_link(p, "landlord", ids)
+            }
+            results = []
+            for record in stage.get("inventories", []):
+                if user["role"] == "tenant" and record.get("tenancy_id") not in own_tenancies:
+                    continue
+                if user["role"] == "landlord" and record.get("property_id") not in owned_properties:
+                    continue
+                safe = inventory_record.scoped_inventory(
+                    record, user["role"], stage.get("documents", []))
+                if safe is not None:
+                    results.append(safe)
+            return self._json({"inventories": results})
         if path == "/api/tenancy-policy":
             user = self.require({"agent", "tenant"})
             if not user:
@@ -1097,6 +1124,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/party-action": self.handle_party_action,
             "/api/tenancy-action": self.handle_tenancy_action,
             "/api/tenancy-policy-action": self.handle_tenancy_policy_action,
+            "/api/inventory-action": self.handle_inventory_action,
             "/api/management-agreement-action": self.handle_management_agreement_action,
             "/api/case-action": self.handle_case_action,
             "/api/email-reply": self.handle_email_reply,
@@ -1896,6 +1924,78 @@ class H(SimpleHTTPRequestHandler):
                            "note": current + " -> " + target})
         save_stage(stage)
         return self._json({"success": True, "status": target, "updated_at": at})
+
+    def handle_inventory_action(self, data):
+        """Role-scoped inventory workflow: history and photographs remain attached to a tenancy."""
+        stage = load_stage()
+        user = self.user or {}
+        role = user.get("role")
+        action = str(data.get("action") or "")
+        actor = user.get("username") or role
+        at = now()
+        inventory = None
+        try:
+            if action == "create":
+                if role != "agent":
+                    return self._json({"error": "only agents can create inventories"}, 403)
+                tenancy_id = data.get("tenancy_id")
+                tenancy = next((t for t in stage.get("tenancies", [])
+                                if t.get("id") == tenancy_id), None)
+                if not tenancy:
+                    return self._json({"error": "tenancy not found"}, 404)
+                number = int(stage.get("next_inventory_id", 1))
+                inventory = inventory_record.create_inventory(data, tenancy, at, actor, number)
+                stage["next_inventory_id"] = number + 1
+                stage.setdefault("inventories", []).append(inventory)
+                result = {"success": True, "inventory": inventory}
+                event = "inventory_created"
+            else:
+                inventory = next((i for i in stage.get("inventories", [])
+                                  if i.get("id") == data.get("inventory_id")), None)
+                if not inventory:
+                    return self._json({"error": "inventory not found"}, 404)
+                if action == "acknowledge":
+                    if role != "tenant":
+                        return self._json({"error": "only a tenant can respond"}, 403)
+                    linked = self.account_party_ids(stage, user, "tenant")
+                    tenancy = next((t for t in stage.get("tenancies", [])
+                                    if t.get("id") == inventory.get("tenancy_id")), None)
+                    if not tenancy or not linked.intersection(tenancy.get("tenant_party_ids", [])):
+                        return self._json({"error": "not your tenancy"}, 403)
+                    feedback = inventory_record.tenant_respond(
+                        inventory, user.get("account_id"),
+                        data.get("comment", ""), data.get("accepted"), at)
+                    result = {"success": True, "response": {
+                        "accepted": feedback["accepted"], "comment": feedback["comment"]}}
+                    event = "inventory_tenant_response"
+                else:
+                    if role != "agent":
+                        return self._json({"error": "agent-only inventory action"}, 403)
+                    if action == "room":
+                        row = inventory_record.add_room(stage, inventory, data, at, actor)
+                        result = {"success": True, "room": row}
+                        event = "inventory_room_recorded"
+                    elif action == "meter":
+                        inventory_record.add_meter(inventory, data, at, actor)
+                        result = {"success": True}
+                        event = "inventory_meter_recorded"
+                    elif action == "keys":
+                        inventory_record.add_keys(inventory, data, at, actor)
+                        result = {"success": True}
+                        event = "inventory_keys_recorded"
+                    elif action == "issue":
+                        inventory_record.issue(inventory, at, actor)
+                        result = {"success": True, "status": "issued"}
+                        event = "inventory_issued"
+                    else:
+                        return self._json({"error": "unknown inventory action"}, 400)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        self.audit(stage, {"actor": actor, "action": event,
+                           "target": inventory["id"],
+                           "note": str(inventory["tenancy_id"])})
+        save_stage(stage)
+        return self._json(result)
 
     def tenancy_policy_view(self, stage, user):
         """No other tenant's details or private records can cross this boundary."""
