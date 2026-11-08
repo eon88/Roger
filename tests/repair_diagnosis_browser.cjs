@@ -273,7 +273,8 @@ async function run(){
       },null,{timeout:15000});
       console.log('PASS: agent created and issued a dated property condition inventory');
       // Funds are never moved; an agent merely records an unverified deposit receipt.
-      await agent.page.locator('nav a[data-view="money"]').click();
+      await agent.page.evaluate(()=>window.scrollTo(0,0));
+      await agent.page.locator('nav a[data-view="money"]').click({force:true});
       await agent.page.locator('#dep-tenancy').selectOption('tenancy-one');
       await agent.page.locator('#dep-kind').selectOption('tenancy');
       await agent.page.locator('#dep-amount').fill('900');
