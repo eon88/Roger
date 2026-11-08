@@ -31,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 import jev_client
 import repair_diagnosis
 import repair_case_dossier
+import agent_briefing
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -525,6 +526,11 @@ class H(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
+        if path == "/api/agent/briefing":
+            if not self.require({"agent"}):
+                return
+            return self._json(agent_briefing.make_briefing(
+                load_stage(), datetime.now(timezone.utc).date()))
         if path == "/api/trades-pool":
             u = self.require({"agent"})
             if not u:
