@@ -30,6 +30,7 @@ from datetime import datetime, timedelta, timezone
 
 import jev_client
 import repair_diagnosis
+import repair_case_dossier
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -2484,6 +2485,10 @@ class H(SimpleHTTPRequestHandler):
         message = str(data.get("message", "")).strip()[:3000]
         if not message:
             return self._json({"error": "describe the problem before submitting"}, 400)
+        try:
+            dossier = repair_case_dossier.normalise_dossier(data.get("diagnostic"))
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
         request_id = data.get("request_id")
         if request_id is not None and (
                 not isinstance(request_id, str)
@@ -2497,7 +2502,13 @@ class H(SimpleHTTPRequestHandler):
                              and case.get("created_by_account_id") == issuer.get("account_id")
                              and case.get("type") == "issue"), None)
             if previous:
-                if previous.get("message") != message:
+                old_dossier = previous.get("diagnostic_dossier")
+                if (previous.get("message") != message
+                        or bool(old_dossier) != bool(dossier)
+                        or (dossier and (
+                            old_dossier.get("description") != dossier["description"]
+                            or old_dossier.get("answers") != dossier["answers"]
+                        ))):
                     return self._json({"error": "request id already used for a different report"}, 409)
                 return self._json({"success": True, "case_id": previous["id"],
                                    "already_received": True, "triage": previous.get("triage"),
@@ -2505,6 +2516,19 @@ class H(SimpleHTTPRequestHandler):
         name = (issuer.get("display_name") if role == "tenant"
                 else str(data.get("name", "Tenant"))[:100])
         t = self.triage(message)
+        # Rule-based danger screening has priority over a model's guessed urgency.
+        # The text/answers are unverified tenant statements; never dispatch here.
+        flags = list(dict.fromkeys(
+            repair_diagnosis.danger_flags(message) +
+            (dossier["safety_flags"] if dossier else [])
+        ))
+        if flags:
+            t["safety_flags"] = flags
+            t["urgency"] = 2
+            try:
+                t["safety"] = max(float(t.get("safety") or 0), 0.95)
+            except (TypeError, ValueError):
+                t["safety"] = 0.95
         case = {
             "id": stage.get("next_case_id", 490),
             "type": "issue",
@@ -2520,6 +2544,8 @@ class H(SimpleHTTPRequestHandler):
             "triage": t,
             "submitted_at": now(),
         }
+        if dossier:
+            case["diagnostic_dossier"] = dossier
         self.case_next(case, "agent", "Review the repair report and decide what happens next",
                        self.internal_case_target())
         stage["next_case_id"] = case["id"] + 1
