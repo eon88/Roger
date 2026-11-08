@@ -1320,23 +1320,81 @@ function renderContractorInvoices(){
    ).join(""):"<div class=\"empty\">No contractor invoices received yet. Completed jobs with submitted invoices appear here.</div>";
  return `<div class="move">contractor invoices</div><div class="card"><div class="cardtop"><h3>Invoices from tradespeople</h3><span class="badge ${action.length?"pending":"completed"}">${action.length} need follow-up</span></div><p class="fineprint">Every entry links to its job. Invoice approval does not mean payment. Only manually verified external payments can be marked paid; Roger does not transfer money.</p>${records}</div>`;
 }
+window.bankPreviewRows=[];
+function renderBankMatching(){
+ const docs=(window._docs||[]).filter(d=>d.status==='verified' &&
+   JSON.stringify(d.access_roles||['agent'])==='["agent"]');
+ const options=docs.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.file_name||d.id)+'</option>').join('');
+ const rows=(window.bankPreviewRows||[]).slice(0,50).map((r,idx)=>{
+   const candidate=r.candidate_count===1?r.candidates?.[0]:null;
+   return '<div class="thread"><b>'+esc(r.transaction_id)+'</b> · '+esc(r.date)+' · '+money(r.amount_pence)+
+     ' · '+esc(r.status)+' · '+esc(r.candidate_count)+' possible matches'+
+     (candidate?'<div class="meta">Ledger '+esc(candidate.rent_entry_id)+'; receipt '+esc(candidate.payment_id)+'</div>'+
+       '<label class="field"><span>Private, agent-only verified bank-statement document</span>'+
+       '<select class="bank-evidence" data-bank-index="'+idx+'"><option value="">Choose evidence</option>'+options+'</select></label>'+
+       '<button class="btn" data-bank-index="'+idx+'" onclick="confirmBankMatch(this)">Record reviewed statement match</button>':
+       '<div class="fineprint">No unique candidate. Investigate manually before matching.</div>')+
+     '</div>';
+ }).join('');
+ return '<div class="card"><h2>Bank-statement matching</h2>'+
+   '<p class="fineprint">Upload a CSV of bank transactions for read-only matching. No money is moved and no statement is trusted automatically. Upload the private evidence document in Documents first.</p>'+
+   '<label class="field"><span>Bank CSV (transaction_id,date,amount_pence)</span>'+
+   '<input id="bank-statement-csv" type="file" accept=".csv,text/csv"></label>'+
+   '<button class="btn" onclick="previewBankStatement(this)">Preview matching candidates</button>'+
+   (rows?'<h3>Review candidates</h3>'+rows:'<p class="fineprint">No bank statement preview.</p>')+
+   '</div>';
+}
+async function previewBankStatement(btn){
+ const file=document.getElementById('bank-statement-csv')?.files?.[0];
+ if(!file||file.size>250000){toast('Choose a bank CSV under 250 KB.','bad');return;}
+ await busy(btn,async()=>{
+   try{
+     const result=await post('/api/bank-reconciliation-preview',{csv_text:await file.text()});
+     window.bankPreviewRows=result.rows||[];
+     toast('Preview ready; confirm matches individually.');
+     renderMoney();
+   }catch(e){window.bankPreviewRows=[];}
+ });
+}
+async function confirmBankMatch(btn){
+ const idx=Number(btn.dataset.bankIndex),row=window.bankPreviewRows?.[idx];
+ if(!row||row.candidate_count!==1)return;
+ const match=row.candidates?.[0];
+ const select=Array.from(document.querySelectorAll('.bank-evidence')).find(e=>Number(e.dataset.bankIndex)===idx);
+ const evidence=select?.value||'';
+ if(!evidence){toast('Choose a private verified bank-statement evidence document.','bad');return;}
+ if(!confirm('You independently checked the statement evidence, receipt amount and payer identity?'))return;
+ await busy(btn,async()=>{
+   try{
+     await post('/api/bank-reconciliation-action',{
+       action:'match_receipt',entry_id:match.rent_entry_id,payment_id:match.payment_id,
+       transaction_id:row.transaction_id,bank_date:row.date,
+       amount_pence:row.amount_pence,evidence_document_id:evidence
+     });
+     window.bankPreviewRows=[];
+     toast('Manual bank-statement match recorded. Not independent bank confirmation.');
+     await load();
+   }catch(e){}
+ });
+}
 function renderMoney(){
  const eligible=(stage.tenancies||[]).filter(t=>t.agreement_status==='signed'&&['move_in_scheduled','active','renewal','notice_given'].includes(t.status));
  const tenOptions=eligible.map(t=>{const p=(stage.properties||[]).find(x=>x.id===t.property_id)||{};return '<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc(p.title||t.property_id)+' · '+money(t.rent_amount_pence)+'</option>';}).join('');
  const totalOutstanding=ledgerEntries.reduce((n,x)=>n+Math.max(0,x.balance_pence||0),0);
+ const unreconciled=ledgerEntries.reduce((n,x)=>n+Math.max(0,x.unverified_receipts_pence||0),0);
  const feeTotal=ledgerEntries.reduce((n,x)=>n+(x.payments||[]).reduce((m,p)=>m+(p.agency_fee_pence||0),0),0);
  const landlords=(stage.parties||[]).filter(p=>p.status==='active'&&(p.roles||[]).includes('landlord'));
  const landlordOptions=landlords.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.display_name)+' · '+esc(p.id)+'</option>').join('');
  const overdue=ledgerEntries.filter(x=>x.status==='overdue').reduce((n,x)=>n+(x.balance_pence||0),0);
  const rows=ledgerEntries.slice().sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date))).map(x=>{
   const t=(stage.tenancies||[]).find(t=>t.id===x.tenancy_id)||{},p=(stage.properties||[]).find(p=>p.id===x.property_id)||{};
-  return '<div class="card" id="'+esc(x.id)+'"><div class="cardtop"><h3>'+esc(p.title||x.property_id)+' · '+esc(x.due_date)+'</h3><span class="badge '+esc(x.status)+'">'+esc(x.status)+'</span></div><div class="meta">Tenancy '+esc(x.tenancy_id)+' · due '+money(x.amount_due_pence)+' · received '+money(x.amount_received_pence)+' · balance '+money(x.balance_pence)+'</div>'+
-   (x.payments||[]).map(pay=>'<div class="thread">Receipt '+esc(pay.received_date)+' · '+money(pay.amount_pence)+(pay.agency_fee_pence?' · fee '+money(pay.agency_fee_pence):'')+(pay.note?' · '+esc(pay.note):'')+'</div>').join('')+
+  return '<div class="card" id="'+esc(x.id)+'"><div class="cardtop"><h3>'+esc(p.title||x.property_id)+' · '+esc(x.due_date)+'</h3><span class="badge '+esc(x.status)+'">'+esc(x.status)+'</span></div><div class="meta">Tenancy '+esc(x.tenancy_id)+' · due '+money(x.amount_due_pence)+' · received '+money(x.amount_received_pence)+' · bank-matched '+money(x.reconciled_pence||0)+' · balance '+money(x.balance_pence)+'</div>'+
+   (x.payments||[]).map(pay=>'<div class="thread">Receipt '+esc(pay.received_date)+' · '+money(pay.amount_pence)+(pay.agency_fee_pence?' · fee '+money(pay.agency_fee_pence):'')+(pay.note?' · '+esc(pay.note):'')+' · '+esc(pay.reconciliation_status||'legacy-unverified')+'</div>').join('')+
    (x.adjustments||[]).map(a=>'<div class="thread">Adjustment '+(a.amount_pence>=0?'+':'')+money(a.amount_pence)+' · '+esc(a.reason)+'</div>').join('')+
    '<div class="actions"><input class="receipt-amount" type="number" min="0.01" step="0.01" placeholder="Receipt (£)" aria-label="Receipt amount in pounds"><input class="receipt-date" type="date" value="'+new Date().toISOString().slice(0,10)+'" aria-label="Receipt date"><button class="btn primary" data-entry-id="'+esc(x.id)+'" onclick="recordRentReceipt(this)">Record receipt</button><button class="btn" data-entry-id="'+esc(x.id)+'" onclick="adjustRentEntry(this)">Adjust charge</button></div></div>';
  }).join('');
- document.getElementById('view-money').innerHTML=renderContractorInvoices()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
- '<div class="stats"><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat"><div class="value">'+money(feeTotal)+'</div><div class="label">management fees recorded</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
+ document.getElementById('view-money').innerHTML=renderContractorInvoices()+renderBankMatching()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
+ '<div class="stats"><div class="stat"><div class="value">'+money(unreconciled)+'</div><div class="label">receipts not matched to statement evidence</div></div><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat"><div class="value">'+money(feeTotal)+'</div><div class="label">management fees recorded</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
  '<div class="card"><h2>Generate rent schedule</h2><div class="grid2"><label class="field"><span>Signed tenancy</span><select id="ledger-tenancy">'+tenOptions+'</select></label><label class="field"><span>First due date</span><input id="ledger-first-due" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label class="field"><span>Periods (max 36)</span><input id="ledger-periods" type="number" min="1" max="36" value="12"></label></div><button class="btn primary" onclick="generateRentSchedule(this)">Generate schedule</button>'+(eligible.length?'':'<div class="fineprint">A signed tenancy with move-in scheduled or active status is required.</div>')+'</div>'+
  '<div class="card"><h2>Generate landlord statement</h2><div class="grid2"><label class="field"><span>Landlord</span><select id="statement-landlord">'+landlordOptions+'</select></label><label class="field"><span>Period start</span><input id="statement-start" type="date"></label><label class="field"><span>Period end</span><input id="statement-end" type="date"></label></div><button class="btn primary" onclick="createLandlordStatement(this)">Create statement snapshot</button>'+(landlords.length?'':'<div class="fineprint">Create a landlord Party and active management authority first.</div>')+'</div>'+
  '<div class="move">landlord statements</div>'+((window.landlordStatements||[]).slice().reverse().map(s=>'<div class="card"><div class="cardtop"><h3>'+esc(s.id)+' · '+esc(s.period_start)+' to '+esc(s.period_end)+'</h3><span class="badge">snapshot</span></div><div class="meta">Rent '+money(s.rent_received_pence)+' · Fees −'+money(s.agency_fee_pence)+' · Maintenance −'+money(s.maintenance_pence)+' · Net '+money(s.net_payout_pence)+'</div><div class="meta">'+esc((s.property_ids||[]).join(', '))+'</div></div>').join('')||'<div class="empty">No statements generated.</div>')+
