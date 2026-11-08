@@ -35,6 +35,7 @@ import agent_briefing
 import tenancy_2026
 import inventory_record
 import bank_reconciliation
+import prs_register
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -345,7 +346,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/property-registration-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -1135,6 +1136,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/bank-reconciliation-preview": self.handle_bank_reconciliation_preview,
             "/api/landlord-statement-action": self.handle_landlord_statement_action,
             "/api/compliance-action": self.handle_compliance_action,
+            "/api/property-registration-action": self.handle_property_registration_action,
             "/api/task-action": self.handle_task_action,
             "/api/notification-action": self.handle_notification_action,
         }
@@ -3793,6 +3795,31 @@ class H(SimpleHTTPRequestHandler):
             except ValueError:
                 pass
         return {**record, "status": status, "reminder_due": reminder_due}
+
+    def handle_property_registration_action(self, data):
+        """Agent records independently obtained PRS registration evidence."""
+        stage = load_stage()
+        prop = self.find_prop(stage, data.get("property_id"))
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        actor = (self.user or {}).get("username", "agent")
+        at = now()
+        try:
+            updated = prs_register.tracked_registration(
+                stage, prop, data, actor, at)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        previous = prop.get("prs_registration")
+        if previous:
+            prop.setdefault("prs_registration_history", []).append(previous)
+        prop["prs_registration"] = updated
+        self.audit(stage, {"actor": actor,
+                           "action": "prs_registration_evidence_recorded",
+                           "target": prop["id"],
+                           "note": updated["region"] + " / " + updated["status"]})
+        save_stage(stage)
+        return self._json({"success": True, "registration": updated,
+                           "warning": "Not submitted or verified through the government service"})
 
     def handle_compliance_action(self, data):
         """Record missing evidence or a dated compliance record and retain replaced versions."""
