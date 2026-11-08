@@ -22,6 +22,12 @@
   </section>
 
   <section class="section">
+    <div class="move">your tenancy</div>
+    <h2>Tenancy and pet requests</h2>
+    <div id="tenancy-info" aria-live="polite"><div class="fineprint">Loading tenancy information…</div></div>
+  </section>
+
+  <section class="section">
     <div class="move">report a problem</div>
     <h2>Something needs attention?</h2>
     <div class="card">
@@ -111,12 +117,12 @@ async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-
   const j=await r.json().catch(()=>({})); if(!r.ok)throw new Error(j.error||'failed'); return j;}
 function toast(msg,kind){const el=document.createElement('div');el.className='toast '+(kind||'');el.textContent=msg;
   document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
-let stage, prevStatus={};
+let stage, prevStatus={}, tenantPolicyData={tenancies:[]}, pendingPetId=null;
 async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{tenantPolicyData=await api('/api/tenancy-policy');}catch(e){tenantPolicyData={tenancies:[]};} try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh your cases. We will try again with the next update.','bad'); } }
 let appts=[], docs=[];
 async function loadExtras(){
@@ -138,7 +144,44 @@ function renderOfficeContacts(){
     '<div>Outside hours: '+(numbers[1]||'No separate emergency telephone provided')+' · '+esc(o.out_of_hours_instructions||'')+'</div>'+
     '<div class="fineprint">'+esc(o.emergency_policy||'')+' This portal is not monitored continuously.</div>';
 }
-function render(){ renderOfficeContacts();
+function renderTenancyPolicy(){
+ const box=document.getElementById('tenancy-info');
+ if(!box)return;
+ const list=(tenantPolicyData?.tenancies||[]);
+ box.innerHTML=list.length?list.map(t=>{
+   const pets=(t.pet_requests||[]).map(p=>'<div class="thread"><b>'+esc(p.description)+'</b> · '+esc(p.status)+
+     (p.reason?'<div class="fineprint">Decision reason: '+esc(p.reason)+'</div>':'')+'</div>').join('');
+   const pending=t.pending_rent_increase;
+   return '<div class="card"><h3>'+esc(t.property_id||t.id)+'</h3>'+
+     '<div class="meta">'+esc(t.tenancy_type||'Tenancy')+' · '+esc(t.status||'')+
+     ' · Rent £'+(Number(t.rent_amount_pence||0)/100).toFixed(2)+' / '+esc(t.rent_frequency||'period')+'</div>'+
+     '<div class="fineprint">For assured periodic tenancies there is no fixed term end date. Ask the office about formal rent notices or tenancy paperwork.</div>'+
+     (pending?'<div class="thread">Recorded proposed rent £'+(Number(pending.proposed_rent_pence||0)/100).toFixed(2)+
+       ' from '+esc(pending.effective_on)+'; '+esc(pending.status)+'. This is not proof a notice was legally served.</div>':'')+
+     '<h4>Pet requests</h4>'+(pets||'<div class="fineprint">No pet requests recorded.</div>')+
+     '<div class="field"><label for="pet-request-'+esc(t.id)+'">Ask to keep a pet</label>'+
+     '<textarea id="pet-request-'+esc(t.id)+'" maxlength="500" rows="2" placeholder="What kind of animal and how many?"></textarea></div>'+
+     '<button class="btn" data-tenancy-id="'+esc(t.id)+'" onclick="sendPetRequest(this)">Send pet request</button>'+
+     '<div class="fineprint">Your agent reviews requests. This portal does not approve or refuse pets automatically.</div></div>';
+ }).join(''):'<div class="empty">No active tenancy is linked to your account. Ask the office to check your account link.</div>';
+}
+async function sendPetRequest(btn){
+ const t=btn.dataset.tenancyId;
+ const answer=document.getElementById('pet-request-'+t)?.value.trim()||'';
+ if(answer.length<2){toast('Describe the pet before sending.','bad');return;}
+ pendingPetId=pendingPetId||('pet-'+(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)));
+ await (async()=>{btn.disabled=true;
+   try{
+     await post('/api/tenancy-policy-action',{
+       action:'request_pet',tenancy_id:t,request_id:pendingPetId,description:answer
+     });
+     pendingPetId=null;toast('Pet request recorded for your agent to review.');
+     await load();
+   }catch(e){toast(e.message||'Could not send the request','bad');}
+   finally{btn.disabled=false;}
+ })();
+}
+function render(){ renderOfficeContacts(); renderTenancyPolicy();
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
   // Preserve the user's own email input across rerenders.
