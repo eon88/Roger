@@ -274,7 +274,7 @@ def main(argv=None):
     backup=backup_dir/("before-agency-import-"+stamp+".json")
     with backup.open("xb") as out:
         os.chmod(backup,0o600)
-        out.write_bytes(snapshot.read_bytes())
+        out.write(snapshot.read_bytes())
         out.flush();os.fsync(out.fileno())
     atomic_write(snapshot,state)
     print("OFFLINE IMPORT APPLIED; original snapshot backed up to "+str(backup))
