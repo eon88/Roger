@@ -53,7 +53,7 @@ QUESTIONS = {
 DANGER = [
     (r"\b(?:smell|odou?r|scent)\s+(?:of\s+)?gas\b|\bgas\s+(?:leak|escaping|hissing)\b", "Possible gas leak"),
     (r"\b(?:carbon monoxide|co alarm)\b", "Possible carbon monoxide hazard"),
-    (r"\b(?:fire|flames|smoke|burning socket|sparks?\s+(?:from|at)|electric shock|live wire|exposed wire)\b", "Possible fire or electrical danger"),
+    (r"\b(?:fire|flames|smoke|burning socket|sparks?|electric shock|live wire|exposed wire)\b", "Possible fire or electrical danger"),
     (r"\b(?:flooding|flooded|ceiling collapsing|collapse of ceiling|structural collapse)\b", "Possible immediate property danger"),
 ]
 NEGATIONS = [
