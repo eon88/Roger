@@ -28,6 +28,12 @@
   </section>
 
   <section class="section">
+    <div class="move">property condition</div>
+    <h2>Inventories and inspections</h2>
+    <div id="tenant-inventories"><div class="fineprint">Loading inspection records…</div></div>
+  </section>
+
+  <section class="section">
     <div class="move">report a problem</div>
     <h2>Something needs attention?</h2>
     <div class="card">
@@ -124,8 +130,9 @@ async function boot(){
 }
 async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{tenantPolicyData=await api('/api/tenancy-policy');}catch(e){tenantPolicyData={tenancies:[]};} try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh your cases. We will try again with the next update.','bad'); } }
-let appts=[], docs=[];
+let appts=[], docs=[], inventories=[];
 async function loadExtras(){
+  try{ const i=await api('/api/inventories'); inventories=i.inventories||[]; }catch(e){ inventories=[]; }
   try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
   try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
 }
@@ -181,7 +188,40 @@ async function sendPetRequest(btn){
    finally{btn.disabled=false;}
  })();
 }
-function render(){ renderOfficeContacts(); renderTenancyPolicy();
+function renderInventories(){
+ const box=document.getElementById('tenant-inventories');
+ if(!box)return;
+ box.innerHTML=inventories.length?inventories.slice().reverse().map(i=>{
+   const rooms=(i.rooms||[]).map(r=>'<div class="thread"><b>'+esc(r.name)+'</b> · '+esc(r.condition)+
+      (r.document_ids?.length?' · Shared evidence '+r.document_ids.map(esc).join(', '):'')+'</div>').join('');
+   const responses=(i.tenant_feedback||[]).map(f=>'<div class="thread">'+(f.accepted?'Confirmed':'Disputed')+': '+esc(f.comment||'')+'</div>').join('');
+   return '<div class="card" id="tenant-inventory-'+esc(i.id)+'"><h3>'+esc(i.kind.replace(/_/g,' '))+' · '+esc(i.inspection_date)+'</h3>'+
+     '<div class="meta">Property '+esc(i.property_id)+' · '+esc(i.status)+'</div>'+
+     '<div class="fineprint">'+esc(i.summary||'')+'</div>'+rooms+responses+
+     '<div class="meta">Meter readings: '+Object.entries(i.meter_readings||{}).map(([k,v])=>esc(k)+' '+esc(v.reading)).join(', ')+'</div>'+
+     '<div class="meta">Keys: '+(i.keys||[]).map(k=>esc(k.description)+' ('+k.count+')').join(', ')+'</div>'+
+     (['issued','acknowledged','disputed'].includes(i.status)?
+      '<label class="field"><span>Comments or differences from the recorded condition</span>'+
+       '<textarea class="inspection-feedback" maxlength="1000" rows="2" placeholder="Write any disagreement, or leave blank to confirm"></textarea></label>'+
+       '<div class="actions"><button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="respondToInventory(this,true)">Confirm accurate</button>'+
+       '<button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="respondToInventory(this,false)">Dispute an item</button></div>'+
+       '<div class="fineprint">You can submit one response. Further corrections must be arranged through your agent.</div>':'')+
+    '</div>';
+ }).join(''):'<div class="empty">No issued inventories have been shared with your tenancy.</div>';
+}
+async function respondToInventory(btn,accepted){
+ const card=document.getElementById('tenant-inventory-'+btn.dataset.inventoryId);
+ const comment=card?.querySelector('.inspection-feedback')?.value||'';
+ if(!accepted&&comment.trim().length<5){toast('Describe what you disagree with.','bad');return;}
+ btn.disabled=true;
+ try{
+   await post('/api/inventory-action',{action:'acknowledge',inventory_id:btn.dataset.inventoryId,
+                                       accepted,comment});
+   toast('Your inventory response was saved.');await load();
+ }catch(e){toast(e.message||'Could not save inventory response','bad');}
+ finally{btn.disabled=false;}
+}
+function render(){ renderOfficeContacts(); renderTenancyPolicy(); renderInventories();
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
   // Preserve the user's own email input across rerenders.
