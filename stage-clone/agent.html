@@ -204,6 +204,7 @@ async function load(manual){
     try{ const o=await api('/api/office-settings'); window._office=o.office||{} }catch(e){ window._office={} }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
+    try{ window._deposits=(await api('/api/deposits')).deposits||[] }catch(e){ window._deposits=[] }
     try{ window.landlordStatements=(await api('/api/landlord-statements')).statements||[] }catch(e){ window.landlordStatements=[] }
     try{ complianceRecords=(await api('/api/compliance')).records||[]; window.complianceRecords=complianceRecords }catch(e){ complianceRecords=[]; window.complianceRecords=[] }
     lastGood=new Date().toLocaleTimeString('en-GB');
@@ -1321,6 +1322,69 @@ function renderContractorInvoices(){
  return `<div class="move">contractor invoices</div><div class="card"><div class="cardtop"><h3>Invoices from tradespeople</h3><span class="badge ${action.length?"pending":"completed"}">${action.length} need follow-up</span></div><p class="fineprint">Every entry links to its job. Invoice approval does not mean payment. Only manually verified external payments can be marked paid; Roger does not transfer money.</p>${records}</div>`;
 }
 window.bankPreviewRows=[];
+function renderDeposits(){
+ const records=window._deposits||[];
+ const tOptions=(stage.tenancies||[]).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc(t.property_id)+'</option>').join('');
+ const dOptions=(window._docs||[]).filter(d=>d.status==='verified').map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.id)+'</option>').join('');
+ const cards=records.slice().reverse().map(d=>'<div class="card" id="deposit-'+esc(d.id)+'">'+
+   '<h3>'+esc(d.id)+' · '+esc(d.kind)+' · '+money(d.amount_pence)+'</h3>'+
+   '<div class="meta">Tenancy '+esc(d.tenancy_id)+' · '+esc(d.status)+' · recorded '+esc(d.received_date)+
+   (d.protection_deadline?' · protect by '+esc(d.protection_deadline):'')+
+   (d.decision_deadline?' · holding-deposit decision by '+esc(d.decision_deadline):'')+'</div>'+
+   (d.protection_late?'<div class="banner danger">Late protection / notice evidence: human legal review required.</div>':'')+
+   (d.status==='received_unverified'?
+      '<div class="grid2"><label class="field"><span>Verified evidence</span><select class="deposit-evidence"><option value="">Choose</option>'+dOptions+'</select></label>'+
+      (d.kind==='tenancy'?'<label class="field"><span>Protection scheme</span><select class="deposit-scheme"><option>Deposit Protection Service</option><option>MyDeposits</option><option>Tenancy Deposit Scheme</option></select></label>'+
+        '<label class="field"><span>Scheme reference</span><input class="deposit-ref" maxlength="120"></label>'+
+        '<label class="field"><span>Protected date</span><input class="deposit-protected" type="date"></label>'+
+        '<label class="field"><span>Prescribed information given date</span><input class="deposit-informed" type="date"></label>':
+        '<label class="field"><span>Holding outcome</span><select class="deposit-outcome"><option value="refunded">Refunded</option><option value="applied_to_tenancy">Applied to tenancy</option><option value="forfeiture_recorded">Forfeiture recorded</option></select></label>'+
+        '<label class="field"><span>Decision reason</span><input class="deposit-reason" maxlength="1000"></label>'+
+        '<label><input class="deposit-consent" type="checkbox"> Consent to applying deposit verified</label>'+
+        '<label><input class="deposit-signed" type="checkbox"> Agreement signed</label>')+'</div>'+
+      '<button class="btn" data-deposit-id="'+esc(d.id)+'" onclick="saveDepositReview(this)">Record human-reviewed outcome</button>':
+      '<div class="fineprint">A protected or settled record cannot be silently overwritten.</div>')+
+   '</div>').join('');
+ return '<div class="move">deposit compliance and funds evidence</div>'+
+   '<p class="fineprint">Holding and tenancy deposits are separate. Roger records evidence but does not transfer money, verify bank receipts or protect funds in a scheme.</p>'+
+   '<div class="card"><h3>Record deposit receipt</h3><div class="grid2">'+
+   '<label class="field"><span>Tenancy</span><select id="dep-tenancy">'+tOptions+'</select></label>'+
+   '<label class="field"><span>Kind</span><select id="dep-kind"><option value="holding">Holding deposit</option><option value="tenancy">Tenancy deposit</option></select></label>'+
+   '<label class="field"><span>Amount (£)</span><input id="dep-amount" type="number" min="0.01" step="0.01"></label>'+
+   '<label class="field"><span>Receipt date</span><input id="dep-date" type="date"></label></div>'+
+   '<button class="btn" onclick="createDeposit(this)">Record receipt (unverified)</button></div>'+
+   (cards||'<div class="empty">No deposit records.</div>');
+}
+async function createDeposit(btn){
+ const amount=Number(document.getElementById('dep-amount')?.value);
+ if(!Number.isFinite(amount)||amount<=0){toast('Choose a deposit amount.','bad');return;}
+ const payload={action:'create',tenancy_id:document.getElementById('dep-tenancy')?.value,
+   kind:document.getElementById('dep-kind')?.value,amount_pence:Math.round(amount*100),
+   received_date:document.getElementById('dep-date')?.value};
+ await busy(btn,async()=>{try{await post('/api/deposit-action',payload);
+   toast('Unverified deposit receipt recorded.');await load();}catch(e){}});
+}
+async function saveDepositReview(btn){
+ const card=document.getElementById('deposit-'+btn.dataset.depositId);
+ const deposit=(window._deposits||[]).find(d=>d.id===btn.dataset.depositId);
+ if(!deposit)return;
+ const payload={action:deposit.kind==='tenancy'?'record_protection':'holding_outcome',
+    deposit_id:deposit.id,evidence_document_id:card?.querySelector('.deposit-evidence')?.value};
+ if(deposit.kind==='tenancy')Object.assign(payload,{
+   scheme:card?.querySelector('.deposit-scheme')?.value,
+   scheme_reference:card?.querySelector('.deposit-ref')?.value,
+   protected_on:card?.querySelector('.deposit-protected')?.value,
+   prescribed_info_provided_on:card?.querySelector('.deposit-informed')?.value
+ });else Object.assign(payload,{
+   decision:card?.querySelector('.deposit-outcome')?.value,
+   reason:card?.querySelector('.deposit-reason')?.value,
+   tenant_consented:!!card?.querySelector('.deposit-consent')?.checked,
+   agreement_signed:!!card?.querySelector('.deposit-signed')?.checked
+ });
+ if(!confirm('Confirm you checked the evidence independently? Roger will only record it, not transfer or verify funds.'))return;
+ await busy(btn,async()=>{try{await post('/api/deposit-action',payload);
+   toast('Deposit evidence recorded.');await load();}catch(e){}});
+}
 function renderBankMatching(){
  const docs=(window._docs||[]).filter(d=>d.status==='verified' &&
    JSON.stringify(d.access_roles||['agent'])==='["agent"]');
@@ -1393,7 +1457,7 @@ function renderMoney(){
    (x.adjustments||[]).map(a=>'<div class="thread">Adjustment '+(a.amount_pence>=0?'+':'')+money(a.amount_pence)+' · '+esc(a.reason)+'</div>').join('')+
    '<div class="actions"><input class="receipt-amount" type="number" min="0.01" step="0.01" placeholder="Receipt (£)" aria-label="Receipt amount in pounds"><input class="receipt-date" type="date" value="'+new Date().toISOString().slice(0,10)+'" aria-label="Receipt date"><button class="btn primary" data-entry-id="'+esc(x.id)+'" onclick="recordRentReceipt(this)">Record receipt</button><button class="btn" data-entry-id="'+esc(x.id)+'" onclick="adjustRentEntry(this)">Adjust charge</button></div></div>';
  }).join('');
- document.getElementById('view-money').innerHTML=renderContractorInvoices()+renderBankMatching()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
+ document.getElementById('view-money').innerHTML=renderContractorInvoices()+renderDeposits()+renderBankMatching()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
  '<div class="stats"><div class="stat"><div class="value">'+money(unreconciled)+'</div><div class="label">receipts not matched to statement evidence</div></div><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat"><div class="value">'+money(feeTotal)+'</div><div class="label">management fees recorded</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
  '<div class="card"><h2>Generate rent schedule</h2><div class="grid2"><label class="field"><span>Signed tenancy</span><select id="ledger-tenancy">'+tenOptions+'</select></label><label class="field"><span>First due date</span><input id="ledger-first-due" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label class="field"><span>Periods (max 36)</span><input id="ledger-periods" type="number" min="1" max="36" value="12"></label></div><button class="btn primary" onclick="generateRentSchedule(this)">Generate schedule</button>'+(eligible.length?'':'<div class="fineprint">A signed tenancy with move-in scheduled or active status is required.</div>')+'</div>'+
  '<div class="card"><h2>Generate landlord statement</h2><div class="grid2"><label class="field"><span>Landlord</span><select id="statement-landlord">'+landlordOptions+'</select></label><label class="field"><span>Period start</span><input id="statement-start" type="date"></label><label class="field"><span>Period end</span><input id="statement-end" type="date"></label></div><button class="btn primary" onclick="createLandlordStatement(this)">Create statement snapshot</button>'+(landlords.length?'':'<div class="fineprint">Create a landlord Party and active management authority first.</div>')+'</div>'+
