@@ -37,6 +37,24 @@
         <input id="issue-files" type="file" accept="image/*,application/pdf" multiple>
         <div class="hint">Attach up to four photos or PDFs, 5 MB each. These are kept with the case as maintenance evidence.</div>
       </div>
+      <div class="field" style="border-top:1px solid #ddd;padding-top:14px">
+        <button type="button" class="btn" id="diagnose-start" onclick="startRepairInterview()">Help me describe this problem (experimental)</button>
+        <div class="hint">Optional guided questions before you send the report. This does not book a repair or contact emergency services.</div>
+        <div id="repair-interview" style="display:none;margin-top:12px" aria-live="polite">
+          <div id="repair-engine" class="fineprint"></div>
+          <div id="repair-warning" class="banner emergency" style="display:none"></div>
+          <p id="repair-question" style="font-weight:600"></p>
+          <div id="repair-answer-field">
+            <label for="repair-answer">Your answer</label>
+            <textarea id="repair-answer" rows="2" maxlength="500" placeholder="Describe only what you have observed"></textarea>
+            <button type="button" class="btn" id="repair-next" onclick="repairInterviewNext()">Next question</button>
+          </div>
+          <div id="repair-summary" style="display:none">
+            <div class="hint">Review this unverified interview before sending your report. Photos remain attached separately.</div>
+            <button type="button" class="btn" onclick="useRepairReport()">Use interview in my report</button>
+          </div>
+        </div>
+      </div>
       <div class="actions">
         <button class="btn primary" id="report-btn" onclick="report()">Send report</button>
         <span class="who" id="report-note" aria-live="polite"></span>
@@ -220,6 +238,75 @@ async function reopenUnresolved(btn,id){
 async function fileAttachment(file){
   const raw=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=reject;r.readAsDataURL(file);});
   return {file_name:file.name,content_type:file.type||'application/octet-stream',content_b64:raw.split(',')[1]||''};
+}
+// Repair assistant is intentionally opt-in and stateless; no report is sent until Send report.
+let repairHistory=[], repairDescription='', repairState=null, repairImage=null;
+function repairEl(id){ return document.getElementById(id); }
+async function startRepairInterview(){
+  repairDescription=msg.value.trim();
+  if(!repairDescription){ toast('Describe the problem first, then start the interview.','bad'); msg.focus(); return; }
+  const prop=(stage.properties||[])[0];
+  if(!prop){ toast('No linked home was found.','bad'); return; }
+  repairHistory=[]; repairState=null; repairImage=null;
+  const files=Array.from(repairEl('issue-files').files||[]);
+  const photo=files.find(f=>['image/jpeg','image/png','image/webp'].includes(f.type));
+  if(photo&&photo.size<=1024*1024){
+    const attachment=await fileAttachment(photo);
+    repairImage={image_b64:attachment.content_b64,image_mime:photo.type};
+  }else if(photo){
+    toast('Photo is saved with your report but is too large for assistant analysis (1 MB limit).');
+  }
+  repairEl('repair-interview').style.display='block';
+  repairEl('repair-warning').style.display='none';
+  repairEl('repair-summary').style.display='none';
+  await repairInterviewRound();
+}
+async function repairInterviewRound(){
+  const next=repairEl('repair-next');
+  next.disabled=true;
+  repairEl('repair-question').textContent='Reviewing your description…';
+  try{
+    const prop=(stage.properties||[])[0];
+    repairState=await post('/api/repair-diagnose',{
+      property_id:prop.id,description:repairDescription,
+      history:repairHistory,...(repairImage||{})
+    });
+    repairEl('repair-engine').textContent=repairState.engine==='local-ollama'?
+      'Local AI suggestions — not verified': 'Guided rules — no AI model connected';
+    if(repairState.image_supplied){
+      repairEl('repair-engine').textContent+=repairState.photo_analyzed?
+        ' · photo analysed by local AI (unverified)': ' · photo not analysed';
+    }
+    const warning=repairEl('repair-warning');
+    warning.style.display=repairState.safety_flags.length?'block':'none';
+    warning.textContent=repairState.safety_flags.length?
+      repairState.safety_flags.join('; ')+'. '+repairState.next_step:'';
+    repairEl('repair-question').textContent=repairState.complete?
+      'Interview summary ready. The agent still needs to review this report.': repairState.question;
+    repairEl('repair-answer-field').style.display=repairState.complete?'none':'block';
+    repairEl('repair-summary').style.display='block';
+    repairEl('repair-answer').value='';
+  }catch(e){
+    repairEl('repair-question').textContent='Assistant unavailable. You can still send your original report.';
+    toast(e.message||'Interview failed','bad');
+  }finally{next.disabled=false;}
+}
+async function repairInterviewNext(){
+  if(!repairState||repairState.complete)return;
+  const answer=repairEl('repair-answer').value.trim();
+  if(!answer){ toast('Please enter an answer.','bad');return; }
+  repairHistory.push({question:repairState.question,answer:answer.slice(0,500)});
+  await repairInterviewRound();
+}
+function useRepairReport(){
+  if(!repairState)return;
+  msg.value=repairState.report;
+  if(repairState.safety_flags.length){
+    toast('Potential danger: do not wait for this form. Follow the safety advice above.','bad');
+  }else{
+    toast('Interview copied. Check it and click Send report when ready.');
+  }
+  msg.focus();
 }
 async function report(){
   const text=msg.value.trim();
