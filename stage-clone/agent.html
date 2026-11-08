@@ -214,9 +214,39 @@ async function load(manual){
   }catch(e){ document.getElementById('api-error').style.display=stage?'none':'flex'; if(!stage)return; }
   renderAll();
 }
+// Protect in-progress edits from the 15-second data refresh, globally in Agent Desk.
+// Only explicit field IDs are restored; anonymous fields are not guessed, to avoid
+// putting private data into a different record when the list order changes.
+document.addEventListener('input',e=>{
+ if(e.target?.matches?.('#main input[id],#main textarea[id],#main select[id]'))
+   e.target.dataset.rogerEdited='1';
+},true);
+document.addEventListener('change',e=>{
+ if(e.target?.matches?.('#main input[id],#main textarea[id],#main select[id]'))
+   e.target.dataset.rogerEdited='1';
+},true);
+function snapshotAgentEdits(){
+ const records=[];
+ for(const el of document.querySelectorAll('#main [data-roger-edited="1"][id]')){
+   if(!el.matches('input,textarea,select')||['file','password','hidden'].includes(el.type))continue;
+   records.push({id:el.id,type:el.type,value:el.value,checked:!!el.checked});
+ }
+ return records;
+}
+function restoreAgentEdits(records){
+ for(const entry of records){
+   const el=document.getElementById(entry.id);
+   if(!el||!el.matches('input,textarea,select')||el.type!==entry.type||el.disabled)continue;
+   if(entry.type==='checkbox'||entry.type==='radio')el.checked=entry.checked;
+   else el.value=entry.value;
+   el.dataset.rogerEdited='1';
+ }
+}
 function renderAll(){
+  const edits=snapshotAgentEdits();
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
     markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderOffice(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderInventories(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+  restoreAgentEdits(edits);
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
