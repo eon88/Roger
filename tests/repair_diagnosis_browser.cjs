@@ -223,12 +223,15 @@ async function run(){
       await agent.page.locator('nav a[data-view="cases"]').click();
       await agent.page.locator('#case-100').getByText('Tenant diagnostic interview · unverified').waitFor();
       // Human-reviewed pet response and real rent notice record on Agent Desk.
+      await agent.page.locator('details.mvp-more > summary').click();
       await agent.page.locator('nav a[data-view="people"]').click();
+      await agent.page.locator('#tenancy-one details.msgs > summary').click();
       await agent.page.locator('#tenancy-one .pet-reason').fill('Agent reviewed the request and recorded consent.');
       await agent.page.locator('#tenancy-one').getByRole('button',{name:'Approve pet'}).click();
       await agent.page.waitForFunction(()=>(
         (document.querySelector('#tenancy-one')?.innerText||'').includes('approved')
       ),null,{timeout:15000});
+      await agent.page.locator('#tenancy-one details.msgs > summary').click();
       await agent.page.locator('#tenancy-one .rent-change-amount').fill('950');
       await agent.page.locator('#tenancy-one .rent-change-notice').fill('2026-08-01');
       await agent.page.locator('#tenancy-one .rent-change-effective').fill('2026-10-01');
@@ -237,6 +240,7 @@ async function run(){
       console.log('PASS: agent can review pet request and record a Section 13 rent proposal');
 
       // Agent drafts, records room condition, then issues an immutable inspection.
+      await agent.page.locator('details.mvp-more > summary').click();
       await agent.page.locator('nav a[data-view="inventories"]').click();
       await agent.page.locator('#inventory-tenancy').selectOption('tenancy-one');
       await agent.page.locator('#inventory-kind').selectOption('check_in');
