@@ -616,6 +616,20 @@ async function sendCommunicationReply(btn,id){
  const to=['tenant'];if(document.getElementById('comm-landlord-'+id)?.checked)to.push('landlord');if(document.getElementById('comm-trades-'+id)?.checked)to.push('trades');
  await busy(btn,async()=>{try{await post('/api/case-action',{id,action:'reply',to,text:textValue});window.commQuery='';toast('Reply sent and added to the case timeline.');load();}catch(e){}});
 }
+function repairDossierLine(d){
+  if(!d||d.schema!=='roger-repair-interview-v1')return '';
+  const questions=(d.answers||[]).map((a,i)=>
+    '<div class="thread"><b>Question '+(i+1)+':</b> '+esc(a.question||'')+
+    '<div>'+esc(a.answer||'')+'</div></div>').join('');
+  const flags=(d.safety_flags||[]).map(v=>esc(v)).join(', ');
+  return '<details class="msgs"><summary>Tenant diagnostic interview · unverified</summary>'+
+    '<div class="fineprint">Tenant-provided account, not a professional diagnosis. Agent must review before work is authorised.</div>'+
+    '<div class="details">'+esc(d.description||'')+'</div>'+
+    questions+
+    '<div class="fineprint">Suggested trade (unverified): '+esc(d.suggested_trade||'general')+'</div>'+
+    (flags?'<div class="banner emergency">Possible hazard: '+flags+' — review promptly</div>':'')+
+    '</details>';
+}
 function renderCases(){
   const order={new:1,reported:1,dispatched:2,in_progress:2,awaiting_approval:3,resolved:4,declined:4,closed:5,open:1};
   const rank=c=>((c.triage?.urgency>=2)?0:10)+(order[c.status]||1);
@@ -626,6 +640,7 @@ function renderCases(){
       <div class="cardtop"><h3>#${c.id} · ${esc(c.type||'case')}</h3><span class="badge ${esc(c.status)}">${esc(c.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${when(c.submitted_at)}</div>
       <div class="details">${esc(c.message)}</div>
+      ${repairDossierLine(c.diagnostic_dossier)}
       ${c.next_actor?`<div class="triage-line"><b>Next: ${esc(c.next_actor)}</b> · ${esc(c.next_action||'Action needed')}${c.next_due_at?' · internal target '+esc(c.next_due_at):' · no date set'}</div>`:c.status!=='closed'?'<div class="triage-line hot">No next step — assign an owner and date.</div>':''}
       ${c.status!=='closed'?'<div class="actions"><button class="btn" onclick="setCaseNext(this,'+JSON.stringify(String(c.id))+')">Set next person and deadline</button></div>':''}
       ${(c.internal_notes||[]).length?'<details class="msgs"><summary>Agency-only notes · '+c.internal_notes.length+'</summary>'+c.internal_notes.map(n=>'<div class="thread">'+esc(n.text)+'</div>').join('')+'</details>':''}
