@@ -2,6 +2,8 @@
 
 **Date:** 8 November 2026 · **Work branch:** `feature/roger-v1-single-release-20261108`
 
+**Operational work breakdown:** [ROGER_V1_BUNDLED_MASTER_TODO.md](ROGER_V1_BUNDLED_MASTER_TODO.md) is the implementation checklist: 27 small ordered bundles, 181 tasks, 12 acceptance gates, tracked on this branch without intermediate deployment.
+
 ## Locked product contract — read before implementation
 
 **The definitive functional scope and end-to-end acceptance checks are in [ROGER_V1_FINAL_SCOPE_FREEZE.md](ROGER_V1_FINAL_SCOPE_FREEZE.md).** They include 2026 England tenancy reforms, landlord registration, inventory/check-in/checkout, landlord and agency compliance, tenant deposits and rent controls, client-money boundaries, agency CSV migration/export, key management, communications and operator SaaS controls. Where this earlier plan is vague, the locked scope contract takes precedence. **No sales. No intermediate deployment.**
