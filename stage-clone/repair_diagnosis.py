@@ -62,7 +62,7 @@ NEGATIONS = [
     r"\b(?:no|not|without|never)\s+(?:signs?\s+of\s+)?(?:flooding|carbon monoxide)\b",
 ]
 TRADES = [
-    ("gas", r"\\b(?:gas\\s+(?:leak|smell|supply|appliance)|smell\\s+(?:of\\s+)?gas)\\b"),
+    ("gas", r"\b(?:gas\s+(?:leak|smell|supply|appliance)|smell\s+(?:of\s+)?gas)\\b"),
     ("heating", r"\b(?:boiler|radiator|heating|hot water|no heat)\b"),
     ("electric", r"\b(?:socket|electric|light|fuse|power|wire|switch|sparking)\b"),
     ("locksmith", r"\b(?:lock|key|locked|door won't close|window won't lock)\b"),
