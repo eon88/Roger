@@ -34,6 +34,7 @@ import repair_case_dossier
 import agent_briefing
 import tenancy_2026
 import inventory_record
+import bank_reconciliation
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -344,7 +345,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -1130,6 +1131,8 @@ class H(SimpleHTTPRequestHandler):
             "/api/email-reply": self.handle_email_reply,
             "/api/email-sync": self.handle_email_sync,
             "/api/rent-ledger-action": self.handle_rent_ledger_action,
+            "/api/bank-reconciliation-action": self.handle_bank_reconciliation_action,
+            "/api/bank-reconciliation-preview": self.handle_bank_reconciliation_preview,
             "/api/landlord-statement-action": self.handle_landlord_statement_action,
             "/api/compliance-action": self.handle_compliance_action,
             "/api/task-action": self.handle_task_action,
@@ -3754,10 +3757,13 @@ class H(SimpleHTTPRequestHandler):
         due = int(entry.get("amount_due_pence", 0)) + sum(int(a.get("amount_pence", 0)) for a in entry.get("adjustments", []))
         received = sum(int(p.get("amount_pence", 0)) for p in entry.get("payments", []))
         balance = due - received
+        matched = sum(int(p.get("amount_pence",0)) for p in entry.get("payments",[])
+                      if p.get("reconciliation_status") in ("agent_matched","bank_verified"))
         status = "paid" if balance == 0 else ("partial" if received else "due")
         if balance > 0 and entry.get("due_date") and entry["due_date"] < datetime.now(timezone.utc).date().isoformat():
             status = "overdue"
         return {**entry, "amount_due_pence": due, "amount_received_pence": received,
+                "reconciled_pence": matched, "unverified_receipts_pence": received-matched,
                 "balance_pence": balance, "status": status}
 
     def safe_compliance_record(self, record):
@@ -3894,6 +3900,7 @@ class H(SimpleHTTPRequestHandler):
                         "rent_entry_id": entry.get("id"), "tenancy_id": entry.get("tenancy_id"),
                         "property_id": entry.get("property_id"), "received_date": paid_date,
                         "rent_received_pence": int(payment.get("amount_pence", 0)),
+                        "reconciliation_status": payment.get("reconciliation_status","legacy_unverified"),
                         "agency_fee_pence": int(payment.get("agency_fee_pence", 0)),
                     })
         maintenance_lines = []
@@ -3952,6 +3959,33 @@ class H(SimpleHTTPRequestHandler):
                            "note": start_iso + " to " + end_iso})
         save_stage(stage)
         return self._json({"success": True, "statement": statement})
+
+    def handle_bank_reconciliation_preview(self, data):
+        """Preview the potential matches; no transaction is reconciled here."""
+        stage = load_stage()
+        try:
+            body = bank_reconciliation.statement_preview(
+                data.get("csv_text"), stage)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        return self._json(body)
+
+    def handle_bank_reconciliation_action(self, data):
+        stage = load_stage()
+        if data.get("action") != "match_receipt":
+            return self._json({"error": "unsupported reconciliation action"}, 400)
+        actor = (self.user or {}).get("username", "agent")
+        at = now()
+        try:
+            receipt = bank_reconciliation.apply_match(stage,data,at,actor)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        self.audit(stage, {"actor": actor,
+                           "action": "rent_receipt_evidence_matched",
+                           "target": receipt["payment_id"],
+                           "note": "Bank statement matching recorded by human"})
+        save_stage(stage)
+        return self._json({"success": True, **receipt})
 
     def handle_rent_ledger_action(self, data):
         """Create rent schedules and record manual payments or adjustments."""
@@ -4034,6 +4068,8 @@ class H(SimpleHTTPRequestHandler):
             if received_date > datetime.now(timezone.utc).date():
                 return self._json({"error": "receipt date cannot be in the future"}, 400)
             payment = {
+                "id": "rentpayment-" + secrets.token_hex(9),
+                "reconciliation_status": "recorded_unverified",
                 "amount_pence": amount, "received_date": received_date.isoformat(),
                 "note": str(data.get("note", "")).strip()[:500], "recorded_at": now(),
                 "recorded_by": (self.user or {}).get("username", "agent"),
