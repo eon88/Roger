@@ -36,6 +36,7 @@ import tenancy_2026
 import inventory_record
 import bank_reconciliation
 import prs_register
+import deposit_controls
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -346,7 +347,7 @@ class H(SimpleHTTPRequestHandler):
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
     ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/property-registration-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
+                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/deposit-action": {"agent"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/property-registration-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -530,6 +531,21 @@ class H(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
+        if path == "/api/deposits":
+            user = self.require({"agent", "tenant"})
+            if not user:
+                return
+            stage = load_stage()
+            if user["role"]=="agent":
+                deposits=stage.get("deposit_records", [])
+            else:
+                ids=self.account_party_ids(stage,user,"tenant")
+                visible={t["id"] for t in stage.get("tenancies",[])
+                         if ids.intersection(t.get("tenant_party_ids",[]))}
+                deposits=[deposit_controls.tenant_view(d)
+                          for d in stage.get("deposit_records",[])
+                          if d.get("tenancy_id") in visible]
+            return self._json({"deposits": deposits})
         if path == "/api/inventories":
             user = self.require({"agent", "tenant", "landlord"})
             if not user:
@@ -1126,6 +1142,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/party-action": self.handle_party_action,
             "/api/tenancy-action": self.handle_tenancy_action,
             "/api/tenancy-policy-action": self.handle_tenancy_policy_action,
+            "/api/deposit-action": self.handle_deposit_action,
             "/api/inventory-action": self.handle_inventory_action,
             "/api/management-agreement-action": self.handle_management_agreement_action,
             "/api/case-action": self.handle_case_action,
@@ -1929,6 +1946,43 @@ class H(SimpleHTTPRequestHandler):
                            "note": current + " -> " + target})
         save_stage(stage)
         return self._json({"success": True, "status": target, "updated_at": at})
+
+    def handle_deposit_action(self, data):
+        """Record deposit events without claiming bank payment or scheme API verification."""
+        stage=load_stage()
+        actor=(self.user or {}).get("username","agent")
+        at=now()
+        action=data.get("action")
+        try:
+            if action=="create":
+                tenancy=next((t for t in stage.get("tenancies",[])
+                              if t.get("id")==data.get("tenancy_id")),None)
+                if not tenancy:
+                    return self._json({"error":"tenancy not found"},404)
+                item=deposit_controls.create_record(stage,tenancy,data,actor,at)
+                stage.setdefault("deposit_records",[]).append(item)
+                stage["next_deposit_id"]=int(stage.get("next_deposit_id",1))+1
+                event="deposit_receipt_recorded_unverified"
+            else:
+                item=next((r for r in stage.get("deposit_records",[])
+                           if r.get("id")==data.get("deposit_id")),None)
+                if not item:
+                    return self._json({"error":"deposit not found"},404)
+                if action=="record_protection":
+                    deposit_controls.protect(stage,item,data,actor,at)
+                    event="deposit_protection_evidence_recorded"
+                elif action=="holding_outcome":
+                    deposit_controls.holding_outcome(stage,item,data,actor,at)
+                    event="holding_deposit_outcome_recorded"
+                else:
+                    return self._json({"error":"unsupported deposit action"},400)
+        except ValueError as error:
+            return self._json({"error":str(error)},400)
+        self.audit(stage,{"actor":actor,"action":event,
+                          "target":item["id"],"note":str(item["tenancy_id"])})
+        save_stage(stage)
+        return self._json({"success":True,"deposit":item,
+                           "warning":"Recorded evidence is not independently bank or scheme verified"})
 
     def handle_inventory_action(self, data):
         """Role-scoped inventory workflow: history and photographs remain attached to a tenancy."""
