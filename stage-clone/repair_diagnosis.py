@@ -57,6 +57,7 @@ DANGER = [
     (r"\b(?:flooding|flooded|ceiling collapsing|collapse of ceiling|structural collapse)\b", "Possible immediate property danger"),
 ]
 NEGATIONS = [
+    r"\b(?:no|not|without|never)\s+(?:burning smell|sparks?)\s+(?:or|and)\s+(?:sparks?|burning smell)\b",
     r"\b(?:no|not|without|never)\s+(?:a\s+)?(?:smell|odou?r)\s+(?:of\s+)?gas\b",
     r"\b(?:no|not|without|never)\s+(?:visible\s+)?(?:smoke|sparks?|flames|fire|burning smell)\b",
     r"\b(?:no|not|without|never)\s+(?:signs?\s+of\s+)?(?:flooding|carbon monoxide)\b",
