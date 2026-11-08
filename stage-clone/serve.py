@@ -3831,7 +3831,10 @@ class H(SimpleHTTPRequestHandler):
         requirement = str(data.get("requirement_type", ""))
         allowed = {"gas_safety", "eicr", "epc", "smoke_co_alarms",
                    "deposit_protection", "right_to_rent", "tenancy_agreement",
-                   "inventory", "landlord_authority", "trades_credentials", "other"}
+                   "inventory", "landlord_authority", "trades_credentials",
+                   "hmo_licence", "additional_licence", "selective_licence",
+                   "prs_landlord_registration", "redress_scheme",
+                   "client_money_protection", "other"}
         if requirement not in allowed:
             return self._json({"error": "invalid compliance requirement type"}, 400)
         action = str(data.get("action", "record"))
