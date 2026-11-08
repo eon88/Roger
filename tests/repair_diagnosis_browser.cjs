@@ -290,6 +290,11 @@ async function run(){
       console.log('PASS: Agent Desk briefing and structured diagnostic evidence are visible with correct permissions');
     }finally{await agent.context.close();}
 
+    const depositBeforeInventory=await tenant.evaluate(async()=>{
+      const r=await fetch('/api/deposits');
+      return r.ok?(await r.json()).deposits:[];
+    });
+    console.log('Synthetic tenant deposit count before inventory acknowledgement:',depositBeforeInventory.length);
     await tenant.reload({waitUntil:'domcontentloaded'});
     await tenant.locator('#main[aria-busy="false"]').waitFor({timeout:15000});
     await tenant.locator('#tenant-inventory-inventory-1').getByText('Walls in good condition').waitFor({timeout:15000});
