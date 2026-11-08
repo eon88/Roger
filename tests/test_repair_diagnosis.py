@@ -95,6 +95,18 @@ class RepairDiagnosticTests(unittest.TestCase):
         self.assertTrue(seen["request"]["messages"][-1]["images"])
         self.assertEqual(seen["request"]["model"], "llava-test")
 
+    def test_ai_cannot_ask_tenant_to_fix_the_fault(self):
+        # Real Qwen smoke initially asked what actions could fix a leak.
+        with patch.object(diag, "_ollama_suggestion", return_value=(
+            {"question": "What actions can be taken to fix the leaking pipe?",
+             "likely_cause": "Possible loose connection"}, False
+        )):
+            result = diag.diagnose("Water leaking under kitchen sink")
+        self.assertTrue(result["question"].startswith("Where is the water"))
+        self.assertNotIn("fix", result["question"].lower())
+        self.assertFalse(diag.safe_interview_question("How can I repair the socket?"))
+        self.assertTrue(diag.safe_interview_question("When did you notice the issue?"))
+
     def test_ai_failures_fall_back_without_hiding_emergency(self):
         with patch.dict(os.environ, {"ROGER_REPAIR_TEXT_MODEL": "small-model",
                                      "ROGER_REPAIR_VISION_MODEL": ""}):
