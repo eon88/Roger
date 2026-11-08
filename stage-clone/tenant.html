@@ -245,7 +245,7 @@ function repairEl(id){ return document.getElementById(id); }
 async function startRepairInterview(){
   repairDescription=msg.value.trim();
   if(!repairDescription){ toast('Describe the problem first, then start the interview.','bad'); msg.focus(); return; }
-  const prop=(stage.properties||[])[0];
+  const prop=stage?.properties?.[0];
   if(!prop){ toast('No linked home was found.','bad'); return; }
   repairHistory=[]; repairState=null; repairImage=null;
   const files=Array.from(repairEl('issue-files').files||[]);
@@ -266,7 +266,7 @@ async function repairInterviewRound(){
   next.disabled=true;
   repairEl('repair-question').textContent='Reviewing your description…';
   try{
-    const prop=(stage.properties||[])[0];
+    const prop=stage?.properties?.[0];
     repairState=await post('/api/repair-diagnose',{
       property_id:prop.id,description:repairDescription,
       history:repairHistory,...(repairImage||{})
