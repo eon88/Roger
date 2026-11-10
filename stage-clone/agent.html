@@ -222,6 +222,8 @@ async function load(manual){
     document.getElementById('stamp').textContent='live · updated '+lastGood+' · every 15s';
     document.getElementById('stamp').title='Portal data last refreshed at '+lastGood;
   }catch(e){ document.getElementById('api-error').style.display=stage?'none':'flex'; if(!stage)return; }
+  // An older fetch may finish after the user starts typing: never overwrite it.
+  if(tenancyDraftInProgress())return;
   renderAll();
 }
 // Protect in-progress edits from the 15-second data refresh, globally in Agent Desk.
@@ -1158,7 +1160,7 @@ async function tenancyRentAction(btn,action){
    body.notice_served_on=card.querySelector('.rent-change-notice')?.value;
    body.effective_on=card.querySelector('.rent-change-effective')?.value;
  }else if(!confirm('Confirm this action after checking the notice and tenancy evidence?'))return;
- await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',body);toast('Tenancy record updated; check all ledger entries separately.');await load(true);}catch(e){}});
+ await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',body);toast('Tenancy record updated; check all ledger entries separately.');btn.closest('details')?.removeAttribute('data-roger-form-edited');await load(true);}catch(e){}});
 }
 async function decidePet(btn,decision){
  const t=(stage.tenancies||[]).find(x=>x.id===btn.dataset.tenancyId);
@@ -1166,7 +1168,7 @@ async function decidePet(btn,decision){
  if(!card)return;
  const reason=Array.from(card.querySelectorAll('.pet-reason')).find(el=>el.dataset.requestId===btn.dataset.requestId)?.value||'';
  if(reason.trim().length<8){toast('Record a reason (at least 8 characters).','bad');return;}
- await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',{action:'decide_pet',tenancy_id:t.id,request_id:btn.dataset.requestId,decision,reason});toast('Pet request decision recorded.');await load(true);}catch(e){}});
+ await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',{action:'decide_pet',tenancy_id:t.id,request_id:btn.dataset.requestId,decision,reason});toast('Pet request decision recorded.');btn.closest('details')?.removeAttribute('data-roger-form-edited');await load(true);}catch(e){}});
 }
 function renderInventories(){
  const list=window._inventories||[],tenancies=stage.tenancies||[];
