@@ -32,12 +32,24 @@ with serve.storage_write_lock():
         assert all(x["agency_id"]==agency_id for x in rows)
         current.extend(rows)
     serve.save_stage(stage)
+    first=serve.load_stage()
+    stale=json.loads(json.dumps(first))
+    first["b01_snapshot_guard"]="first_writer_wins"
+    serve.save_stage(first)
+    try:
+        serve.save_stage(stale)
+    except serve.StaleStageWrite:
+        pass
+    else:
+        raise AssertionError("stale PostgreSQL writer silently overwrote a newer snapshot")
     again=serve.load_stage()
+    assert again["b01_snapshot_guard"]=="first_writer_wins"
+    assert again["_stage_revision"]>=2
     assert again["agency_id"]==agency_id
     assert len(again.get("deposit_records",[])) >= 1
     assert len(again.get("documents",[])) >= 1
     assert len(again.get("rent_ledger_entries",[])) >= 1
-print("PASS: synthetic fixture persisted in separate agency store")
+print("PASS: synthetic fixture persisted and stale PostgreSQL snapshot writer refused")
 """
 
 
