@@ -16,6 +16,7 @@ import tempfile
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"stage-clone"))
 import canonical_records as model
+import legacy_reconciliation as reconciliation
 
 
 def sha(data):
@@ -86,18 +87,20 @@ def run(directory, *, apply=False, confirm="", rollback=None, offline=False,
                 "current_before_sha256":sha(content),
                 "emergency_backup":str(new_backup),"changed":True}
     upgraded,report=model.propose_upgrade(current)
+    review=reconciliation.reconciliation_report(current)
     after=json.dumps(upgraded,ensure_ascii=False,indent=2).encode("utf-8")
     result={
         "action":"upgrade_preview" if not apply else "upgrade",
         "old_sha256":sha(content),"new_sha256":sha(after),
         "original_records_preserved":True,
-        "legacy_link_warnings":report["warnings"],
+        "legacy_link_warnings":review["issues"],
+        "canonical_authorities":review["authoritative"],
         "model_version":upgraded["model_metadata"]["version"],
         "changed":False,
     }
     if apply:
-        if report["warnings"]:
-            raise ValueError("Unresolved legacy links require review before apply")
+        if review["issues"]:
+            raise ValueError("Unresolved legacy links, invoice shadows or document pointers require review before apply")
         dest=backup_before(file,content)
         atomic_replace(file,after)
         if file.read_bytes()!=after:
