@@ -201,8 +201,15 @@ def validate_for_save(snapshot):
     """
     result = inspect(snapshot)
     indexes = entity_indexes(snapshot)
-    # Historical inconsistencies remain visible to a reviewing agent; new
-    # canonical rows cannot introduce those same contradictions.
+    agency_id = snapshot.get("agency_id")
+    for collection in ENTITY_COLLECTIONS:
+        for record in snapshot.get(collection, []):
+            if not _strict_record(snapshot, record):
+                continue
+            _validate_strict_record(collection, record, indexes, agency_id)
+    _validate_ownership_allocations(snapshot)
+    # Keep established, specific domain errors (e.g. deposit/tenancy mismatch)
+    # before the cross-cutting consistency gate catches other bad new links.
     strict_issues = {
         "property_mismatch", "foreign_agency_reference",
         "job_case_mismatch", "duplicate_external_identity",
@@ -213,13 +220,6 @@ def validate_for_save(snapshot):
             raise RecordIntegrityError(
                 warning["collection"] + "." + warning["field"] +
                 " has " + warning["issue"])
-    agency_id = snapshot.get("agency_id")
-    for collection in ENTITY_COLLECTIONS:
-        for record in snapshot.get(collection, []):
-            if not _strict_record(snapshot, record):
-                continue
-            _validate_strict_record(collection, record, indexes, agency_id)
-    _validate_ownership_allocations(snapshot)
     return result
 
 
