@@ -30,7 +30,9 @@
 <p id="inviteLink" class="fineprint" style="overflow-wrap:anywhere"></p>
 <div class="field"><label for="target">Staff username to suspend</label><input id="target" autocomplete="off"></div>
 <div class="field"><label for="reason">Reason for suspension</label><input id="reason" autocomplete="off"></div>
-<div class="actions"><button id="suspend" class="btn" type="button">Suspend staff account</button></div></section>
+<div class="actions"><button id="suspend" class="btn" type="button">Suspend staff account</button>
+<button id="recover" class="btn" type="button">Create staff password reset link</button></div>
+<p id="resetLink" class="fineprint" style="overflow-wrap:anywhere"></p></section>
 <p id="feedback" role="status" class="fineprint" aria-live="polite"></p>
 </main></div>
 <script>
@@ -65,4 +67,10 @@ $('invite').onclick=async()=>{const r=await run('/api/security/staff/invite',
   {display_name:$('name').value,email:$('email').value},'Staff invitation created. Verify recipient before sharing.');
   if(r){$('inviteLink').textContent=location.origin+r.invite_url;}};
 $('suspend').onclick=()=>run('/api/security/staff/suspend',{username:$('target').value,reason:$('reason').value},'Staff account suspended and sessions revoked.');
+$('recover').onclick=async()=>{
+  const r=await run('/api/security/staff/reset',
+   {username:$('target').value,reason:$('reason').value},
+   'Password reset link issued. Verify staff identity before sharing.');
+  if(r){$('resetLink').textContent=location.origin+r.reset_url;}
+};
 </script></body></html>
