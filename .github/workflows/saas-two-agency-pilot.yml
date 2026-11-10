@@ -1,6 +1,7 @@
 name: Roger SaaS isolated agency pilot
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - "ops/saas/**"
