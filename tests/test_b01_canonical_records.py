@@ -133,6 +133,39 @@ class CanonicalTests(unittest.TestCase):
                     serve.save_stage(bad)
             self.assertEqual(json.loads(f.read_text()),before)
 
+    def test_canonical_record_must_be_archived_not_silently_deleted(self):
+        old=copy.deepcopy(self.stage)
+        old["tenancies"][0]["model_version"]=1
+        deleted=copy.deepcopy(old)
+        deleted["tenancies"]=deleted["tenancies"][1:]
+        with self.assertRaisesRegex(cr.RecordIntegrityError,"cannot hard-delete"):
+            cr.guard_no_silent_deletion(old,deleted)
+        downgraded=copy.deepcopy(old)
+        downgraded["tenancies"][0].pop("model_version")
+        with self.assertRaisesRegex(cr.RecordIntegrityError,"cannot downgrade"):
+            cr.guard_no_silent_deletion(old,downgraded)
+        archival=copy.deepcopy(old)
+        item=cr.archive_record(archival,"tenancies",
+            archival["tenancies"][0]["id"],actor="office-agent",
+            at="2026-11-10T11:00:00Z",
+            reason="Cancelled and formally archived")
+        self.assertEqual(item["archived_by"],"office-agent")
+        self.assertEqual(item["workflow_history"][-1]["event"],"archived")
+        cr.guard_no_silent_deletion(old,archival)
+        unarchive=copy.deepcopy(archival)
+        unarchive["tenancies"][0].pop("archived_at")
+        with self.assertRaisesRegex(cr.RecordIntegrityError,"archive marker"):
+            cr.guard_no_silent_deletion(archival,unarchive)
+
+    def test_archive_requires_actor_reason_and_existing_record(self):
+        self.stage["tenancies"][0]["model_version"]=1
+        with self.assertRaises(cr.RecordIntegrityError):
+            cr.archive_record(self.stage,"tenancies",self.stage["tenancies"][0]["id"],
+                              actor="",at="2026-11-10",reason="Empty actor")
+        with self.assertRaises(cr.RecordIntegrityError):
+            cr.archive_record(self.stage,"tenancies","missing-id",
+                              actor="agent",at="2026-11-10",reason="Missing record")
+
     def test_strict_record_never_imports_foreign_owner(self):
         row=cr.new_unit(self.stage,self.stage["properties"][0]["id"],
                         "unit-a","Upstairs","oaklettings")
