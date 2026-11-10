@@ -33,7 +33,7 @@
 
 `ops/migration/upgrade_canonical_v1.py` supports offline preview, stop-the-instance apply and exact-byte restore from a private backup. It refuses writes in production/staging and refuses an apply with unresolved legacy references. These controls are **not** proof that an actual live PostgreSQL migration has been rehearsed: a production-compatible DB restore and signed release plan remain B26 work.
 
-**New records covered by strict link validation on save:** tenancy, inventory, deposit and optional unit/ownership records. Legacy records and untagged job/approval/document records are still being normalised; do not claim the entire model is strict.
+**New records covered by strict link validation on save:** tenancy, inventory, deposit, optional unit/ownership records, and new agent-uploaded documents. New canonical job, appointment and approval links are checked when a record is version tagged. Legacy records remain available for review; do not claim the entire model is strict.
 
 ## 3. Concurrency and persistence
 
@@ -49,15 +49,15 @@
 
 Agent-only role access for those two HTTP actions comes from server `H.ROLE_API`, not a hidden menu or form.
 
-**Still open B01.04:** case/contractor-job/quote/variation/invoice/approval transitions currently have separate handler-specific guards. Before B01 acceptance they need a shared transition-and-audit service (or documented audited adapters) covering every action/role, including no-duplicate approvals, legitimate replays and stale requests, without breaking the four-role repair journey.
+**B01.04 progress, 10 November:** a shared action-request ledger in `workflow_engine.py` now hashes the authorised action payload, actor and request token into the same snapshot as the event. Existing agent job actions (including supplier payment/credit recording and invoice handoffs), landlord approvals and all per-case actions check an identical replay after their server-side role and object permission gates; differing payloads or actors are conflicts. Retried case replies/approval decisions do not duplicate thread messages. **Still open:** tokens remain optional for older clients; tradesperson-side job actions, every invoice/variation path and complete transition graph/replay/role acceptance still need review. No external money moves or legal decisions are automated by this helper.
 
 ## 5. Integrity and identity acceptance gaps
 
-- **B01.01 / B01.02:** reconcile shadow/duplicate business concepts; explicitly define an invoice source of truth, typed documents and eventually database-native constraints after imported-legacy repair.
+- **B01.01 / B01.02:** external source-ID collisions are reported on *both* records even if only the first is canonical-tagged. Names, phones and emails never trigger a merge. Historical duplicates still need reviewed decisions; separate authoritative invoice ledger and eventually database-native constraints remain future acceptance work.
 - **B01.03:** the optional property-unit and joint ownership model is defined and strict constructors tested; owner shares are in basis points and cannot exceed 100% for concurrent active records. Joint ownership UI and accounting allocation belong to B05/B12.
 - **B01.04:** consolidate case/job/quote/invoice/approval transitions and prove permissions/retries globally.
 - **B01.05:** stale file writes pass unit tests. Two-real-PostgreSQL-stack test has been added and must pass the same revision before signoff.
-- **B01.06:** strict newly tagged IDs/links and agency-owned collections fail closed; untagged historical links remain in compatibility mode and need human review in B04.
+- **B01.06:** legacy inspection now flags valid-ID/wrong-property job, document, deposit, rent, approval and appointment links; missing approval/appointment references and document supersession pointers; cross-agency parent links; and conflicting document job/case IDs. New agent document uploads refuse unresolved cases, mismatched property/tenancy/job/case relationships and subject-switching replacements before writing bytes. Untagged historical rows remain unchanged, so actual agency reconciliation and a production-compatible migration rehearsal are still open.
 - **B01.07:** offline dry-run/exact-backup rollback unit tests pass; production-compatible PostgreSQL migration/restore remains release-blocked.
 
 ## 6. B01 acceptance evidence to collect
@@ -69,4 +69,13 @@ Agent-only role access for those two HTTP actions comes from server `H.ROLE_API`
 - CI Docker/PostgreSQL `tests/b00_seeded_agency_integration.py` — seeded two-agency storage, foreign-cookie/record denial and real stale-write guard.
 - Entire existing Python suite, four-role Chromium browser suite and two-agency SaaS suite on the exact same head revision.
 
-**B01 status:** in progress until *all* seven acceptance tasks are demonstrated. No deployment/merge authorization is implied.
+## 7. Continued implementation (10 November 2026)
+
+- Additional regression files: `tests/test_b01_historical_link_reconciliation.py`, `tests/test_b01_document_attachment_consistency.py`, `tests/test_b01_financial_action_replay.py`. These add 23 focused tests on top of pre-existing coverage.
+- New strict link and duplicate-source diagnostics in `canonical_records.py`; no automatic merging or silent alteration of earlier records.
+- Added new-upload relationship checks, canonical document IDs/version tagging, per-case request replay, landlord approval replay and agent repair/financial action replay.
+- Existing legacy document supersession test now explicitly links its historical job to the case it references; intentionally broken links are refused.
+- Latest head under CI: `a297a5c371eb41c87650d752ef9213dcc98d8a5b`. **Do not mark B01 accepted until the same-head gate and remaining review of the three open task contracts pass.**
+- **No production, staging, B02 or PR merge actions.**
+
+**B01 status:** IN PROGRESS, 4/7 accepted tasks; B01.01/B01.04/B01.06 remain open. No deployment/merge authorization is implied.
