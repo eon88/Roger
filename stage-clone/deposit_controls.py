@@ -54,7 +54,7 @@ def create_record(stage, tenancy, data, actor, timestamp, today=None):
     status="received_unverified"
     deadline=received+timedelta(days=15 if kind=="holding" else 30)
     record={
-        "id":"deposit-"+str(number),"kind":kind,
+        "id":"deposit-"+str(number),"model_version":1,"kind":kind,
         "property_id":tenancy["property_id"],"tenancy_id":tenancy["id"],
         "amount_pence":amount,"received_date":received.isoformat(),
         "status":status,
