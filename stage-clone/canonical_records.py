@@ -171,6 +171,28 @@ def inspect(snapshot):
                 "collection": "documents", "id": str(document.get("id", "")),
                 "field": "job_id", "issue": "job_case_mismatch",
             })
+    invoice_index = {}
+    duplicate_invoices = set()
+    for job in snapshot.get("jobs", []):
+        supplier = _key(job.get("assigned_to_party_id"))
+        number = job.get("invoice_number")
+        if not supplier or not isinstance(number, str) or not number.strip():
+            continue
+        invoice_key = (supplier, number.strip().upper())
+        if invoice_key in invoice_index:
+            if invoice_key not in duplicate_invoices:
+                warnings.append({
+                    "collection": "jobs", "id": str(invoice_index[invoice_key]),
+                    "field": "invoice_number", "issue": "duplicate_supplier_invoice",
+                })
+                duplicate_invoices.add(invoice_key)
+            warnings.append({
+                "collection": "jobs", "id": str(job.get("id", "")),
+                "field": "invoice_number", "issue": "duplicate_supplier_invoice",
+            })
+        else:
+            invoice_index[invoice_key] = job.get("id")
+
     # These exact external keys are stronger evidence than matching names or
     # contact details, but even collisions still require human review.
     for collection in ENTITY_COLLECTIONS:
@@ -225,6 +247,7 @@ def validate_for_save(snapshot):
     strict_issues = {
         "property_mismatch", "foreign_agency_reference",
         "job_case_mismatch", "duplicate_external_identity",
+        "duplicate_supplier_invoice",
     }
     for warning in result["warnings"]:
         record = indexes[warning["collection"]].get(warning["id"])
@@ -312,6 +335,64 @@ def _validate_strict_record(collection, record, indexes, agency_id):
         tenure = indexes["tenancies"].get(_key(record.get("tenancy_id")))
         if not tenure or _key(tenure.get("property_id")) != property_id:
             raise RecordIntegrityError("Deposit property does not match tenancy")
+    if collection == "jobs":
+        if _key(record.get("case_id")) is None:
+            raise RecordIntegrityError("canonical job requires a linked repair case")
+        financial_statuses = {
+            "invoice_submitted", "awaiting_approval", "invoice_approved",
+            "partially_paid", "paid", "credited",
+        }
+        state = record.get("status")
+        if state in financial_statuses:
+            amount = record.get("invoice_pence")
+            if type(amount) is not int or amount <= 0:
+                raise RecordIntegrityError("financial job requires positive invoice pence")
+            payments = record.get("payments", [])
+            credits = record.get("credit_notes", [])
+            if not isinstance(payments, list) or not isinstance(credits, list):
+                raise RecordIntegrityError("job financial evidence must be a list")
+            paid = 0
+            credited = 0
+            payment_refs = set()
+            credit_refs = set()
+            for item in payments:
+                if not isinstance(item, dict) or type(item.get("amount_pence")) is not int or item["amount_pence"] <= 0:
+                    raise RecordIntegrityError("invalid external payment amount")
+                ref = item.get("reference")
+                if not isinstance(ref, str) or not ref.strip() or ref in payment_refs:
+                    raise RecordIntegrityError("missing or duplicate payment evidence")
+                payment_refs.add(ref)
+                paid += item["amount_pence"]
+            for item in credits:
+                if not isinstance(item, dict) or type(item.get("amount_pence")) is not int or item["amount_pence"] <= 0:
+                    raise RecordIntegrityError("invalid supplier credit amount")
+                ref = item.get("number")
+                if not isinstance(ref, str) or not ref.strip() or ref in credit_refs:
+                    raise RecordIntegrityError("missing or duplicate supplier credit evidence")
+                credit_refs.add(ref)
+                credited += item["amount_pence"]
+            outstanding = amount - paid - credited
+            if outstanding < 0:
+                raise RecordIntegrityError("supplier payments and credits exceed invoice")
+            if state in ("paid", "credited") and outstanding != 0:
+                raise RecordIntegrityError("job marked settled with remaining balance")
+            if state == "paid" and paid == 0:
+                raise RecordIntegrityError("job marked paid without payment evidence")
+            if state == "credited" and paid:
+                raise RecordIntegrityError("fully credited invoice has payment evidence")
+            if state == "partially_paid" and (outstanding == 0 or paid + credited == 0):
+                raise RecordIntegrityError("partially paid job has contradictory invoice balance")
+            if state in ("invoice_submitted", "awaiting_approval", "invoice_approved") and paid + credited:
+                raise RecordIntegrityError("unsettled invoice status has recorded payments")
+        if (record.get("requires_prework_quote")
+                and state in ("assigned", "in_progress")
+                and not record.get("work_authorised_at")):
+            raise RecordIntegrityError("prework job cannot start without approved work")
+    if collection == "approvals":
+        if _key(record.get("job_id")) is None:
+            raise RecordIntegrityError("canonical approval must link its job")
+        if record.get("status") in ("approved", "rejected") and not record.get("decided_at"):
+            raise RecordIntegrityError("decided approval needs a decision timestamp")
     if collection == "documents":
         for collection_name, field in (
             ("tenancies", "tenancy_id"), ("cases", "case_id"), ("jobs", "job_id")
