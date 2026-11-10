@@ -73,6 +73,34 @@ class SharedTransitionTests(unittest.TestCase):
                     at="2026-11-10T12:00:00Z",**kwargs)
             self.assertEqual(record,{"status":"application"})
 
+    def test_common_status_history_for_job_case_approval_and_invoice(self):
+        for typ, previous, target, action, role in (
+            ("case", "reported", "dispatched", "dispatch_repair", "agent"),
+            ("job", "assigned", "in_progress", "start", "trades"),
+            ("approval", "pending", "approved", "approve", "landlord"),
+            ("invoice", "invoice_submitted", "invoice_approved", "approve_invoice", "agent"),
+        ):
+            with self.subTest(typ=typ):
+                record={"status":target}
+                self.assertTrue(w.record_status_change(
+                    record,previous,action=action,actor="verified-actor",
+                    role=role,at="2026-11-10T10:00:00Z"))
+                event=record["workflow_history"][0]
+                self.assertEqual(event["from"],previous)
+                self.assertEqual(event["to"],target)
+                self.assertEqual(event["role"],role)
+                self.assertFalse(w.record_status_change(
+                    record,target,action=action,actor="verified-actor",
+                    role=role,at="2026-11-10T10:00:01Z"))
+                self.assertEqual(len(record["workflow_history"]),1)
+
+    def test_status_history_fails_closed_on_unknown_role(self):
+        rec={"status":"approved"}
+        with self.assertRaises(w.InvalidTransition):
+            w.record_status_change(rec,"pending",action="approve",
+                                   actor="user",role="visitor",at="2026-11-10")
+        self.assertNotIn("workflow_history",rec)
+
     def test_canonical_and_endpoint_transition_graphs_match(self):
         import canonical_records as cr
         self.assertEqual(set(w.PROPERTY_TRANSITIONS),cr.PROPERTY_STATES)
