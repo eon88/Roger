@@ -249,6 +249,25 @@ def save_users(data):
         return
     atomic_json_write(USERS_FILE, data)
 
+class StaleStageWrite(RuntimeError):
+    """Another writer committed a newer version of this snapshot."""
+
+
+RecordIntegrityError = canonical_records.RecordIntegrityError
+
+
+def stage_revision():
+    """Read current committed revision while the writer lock is held."""
+    try:
+        current = load_stage()
+    except FileNotFoundError:
+        current = {}
+    revision = current.get("_stage_revision", 0)
+    if type(revision) is not int or revision < 0:
+        raise RecordIntegrityError("Invalid stored stage revision")
+    return revision
+
+
 def save_stage(data):
     # An isolated SaaS instance knows its agency from its trusted environment;
     # safely tag only newly created records, never accept a foreign tag.
@@ -256,8 +275,17 @@ def save_stage(data):
     # Never persist a contaminated/mixed agency snapshot.
     require_single_agency(data)
     canonical_records.validate_for_save(data)
+    expected = data.get("_stage_revision", 0)
+    if type(expected) is not int or expected < 0:
+        raise RecordIntegrityError("Invalid stage revision")
+    actual = stage_revision()
+    if expected != actual:
+        raise StaleStageWrite("stale agency snapshot; reload before writing")
+    next_revision = actual + 1
+    prepared = {**data, "_stage_revision": next_revision}
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") != "postgres":
-        atomic_json_write(STAGE_FILE, data)
+        atomic_json_write(STAGE_FILE, prepared)
+        data["_stage_revision"] = next_revision
         return
     collection_tables = {
         "parties": ("roger_parties", ("id",)),
@@ -271,11 +299,11 @@ def save_stage(data):
         connection.execute(
             "INSERT INTO roger_stage_snapshot(singleton_id,payload) VALUES (1,%s::jsonb) "
             "ON CONFLICT(singleton_id) DO UPDATE SET payload=EXCLUDED.payload, imported_at=now()",
-            (json.dumps(data),),
+            (json.dumps(prepared),),
         )
         for collection, (table, columns) in collection_tables.items():
             connection.execute("TRUNCATE TABLE " + table)
-            for record in data.get(collection, []):
+            for record in prepared.get(collection, []):
                 values = [record.get(column) if column != "id" else str(record.get("id")) for column in columns]
                 values.append(json.dumps(record))
                 placeholders = ",".join(["%s"] * len(columns) + ["%s::jsonb"])
@@ -284,6 +312,7 @@ def save_stage(data):
                     "INSERT INTO " + table + "(" + column_sql + ") VALUES (" + placeholders + ")",
                     tuple(values),
                 )
+    data["_stage_revision"] = next_revision
 
 # Legacy compatibility only. Never ship a fake "verified" trade to production.
 # New repair work checks persistent registration, Party ownership and insurance.
@@ -1183,6 +1212,8 @@ class H(SimpleHTTPRequestHandler):
                 return handlers[path](data)
         except AgencyBoundaryError:
             return self._json({"error": "agency data isolation check failed; contact the administrator"}, 409)
+        except (StaleStageWrite, RecordIntegrityError):
+            return self._json({"error": "record integrity or concurrent edit conflict; reload and review"}, 409)
 
     # ---------- shared helpers ----------
     def _json(self, obj, code=200):
