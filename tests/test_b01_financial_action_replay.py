@@ -150,5 +150,43 @@ class HandlerReplayTests(unittest.TestCase):
         self.assertEqual(self.responses[-1][1], 403)
 
 
+    def test_replayed_case_reply_creates_exactly_one_message(self):
+        self.handler.user = {
+            "role": "agent", "username": "office",
+            "display_name": "Office manager", "account_id": "office-login"
+        }
+        request = {
+            "id": 10, "action": "reply", "text": "The repair is scheduled.",
+            "to": ["tenant"], "request_id": "case-reply-100"
+        }
+        self.handler.handle_case_action(request)
+        self.assertEqual(self.responses[-1][1], 200)
+        count = len(self.stage["cases"][0]["thread"])
+        self.handler.handle_case_action(request)
+        self.assertEqual(self.responses[-1][1], 200)
+        self.assertTrue(self.responses[-1][0]["already_processed"])
+        self.assertEqual(len(self.stage["cases"][0]["thread"]), count)
+        self.handler.handle_case_action({**request, "text": "A changed message"})
+        self.assertEqual(self.responses[-1][1], 409)
+        self.assertEqual(len(self.stage["cases"][0]["thread"]), count)
+
+    def test_unrelated_tenant_cannot_replay_case_action_to_read_it(self):
+        self.handler.user = {
+            "role": "agent", "username": "office", "display_name": "Office manager"
+        }
+        request = {
+            "id": 10, "action": "reply", "text": "Private repair message",
+            "request_id": "case-reply-101"
+        }
+        self.handler.handle_case_action(request)
+        self.assertEqual(self.responses[-1][1], 200)
+        self.handler.user = {
+            "role": "tenant", "username": "stranger",
+            "account_id": "unlinked-account", "display_name": "Stranger"
+        }
+        self.handler.handle_case_action(request)
+        self.assertEqual(self.responses[-1][1], 403)
+
+
 if __name__ == "__main__":
     unittest.main()
