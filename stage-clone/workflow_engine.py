@@ -246,7 +246,7 @@ def validate_domain_action(kind, *, action, previous, target, role,
         if previous not in start or target not in ends:
             raise InvalidTransition("invalid job action transition")
     elif kind == "approval":
-        if action not in APPROVAL_STATES or role not in {"agent", "landlord"}:
+        if action not in APPROVAL_STATES or role != "landlord":
             raise InvalidTransition("approval action is not permitted")
         start, end = APPROVAL_STATES[action]
         if previous != start or target != end:
@@ -261,7 +261,7 @@ def validate_domain_action(kind, *, action, previous, target, role,
             if not (category == "variation_quote" and action in ("approve", "reject")
                     and previous == target == "in_progress"):
                 raise InvalidTransition("approval does not match current job state")
-        if category in ("prework_quote", "variation_quote") and role != "landlord":
+        if role != "landlord":
             raise InvalidTransition("landlord approval required")
     else:
         raise InvalidTransition("unknown workflow domain")
