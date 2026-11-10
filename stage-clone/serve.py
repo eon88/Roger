@@ -4983,6 +4983,8 @@ class H(SimpleHTTPRequestHandler):
         stage = load_stage()
         case_id = data.get("case_id")
         c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
+        if case_id not in (None, "") and not c:
+            return self._json({"error": "case not found"}, 404)
         property_id = data.get("property_id")
         if not property_id and c:
             property_id = c.get("property_id")
@@ -5003,7 +5005,21 @@ class H(SimpleHTTPRequestHandler):
         party_id = str(data.get("party_id", ""))[:100] or None
         if party_id and not any(p.get("id") == party_id for p in stage.get("parties", [])):
             return self._json({"error": "party not found"}, 404)
+        # A document must not join different properties via valid-but-unrelated
+        # IDs. Enforce this for new uploads, even if all referenced records are
+        # still legacy and have no model_version tag.
+        linked = [row for row in (c, tenancy, job) if row is not None]
+        linked_property_ids = {str(row["property_id"]) for row in linked
+                               if row.get("property_id") is not None}
+        if (len(linked_property_ids) > 1
+                or (property_id is not None and linked_property_ids
+                    and str(property_id) not in linked_property_ids)):
+            return self._json({"error": "document references conflicting properties"}, 409)
+        if job and c and str(job.get("case_id")) != str(c.get("id")):
+            return self._json({"error": "document job and case are unrelated"}, 409)
         prop = self.find_prop(stage, property_id)
+        if property_id is not None and not prop:
+            return self._json({"error": "property not found"}, 404)
         if not prop and not party_id:
             return self._json({"error": "property not found (pass property_id, tenancy_id, job_id, party_id or a valid case_id)"}, 404)
         dtype = str(data.get("document_type", "other"))[:40]
@@ -5028,6 +5044,17 @@ class H(SimpleHTTPRequestHandler):
             superseded = next((d for d in stage.get("documents", []) if d.get("id") == supersedes_id), None)
             if not superseded:
                 return self._json({"error": "superseded document not found"}, 404)
+            # Never attach a replacement to a different tenancy, repair or
+            # Party. Versions of one document remain on the same subject.
+            for field, requested in (
+                    ("property_id", prop["id"] if prop else None),
+                    ("party_id", party_id), ("tenancy_id", tenancy_id),
+                    ("case_id", c["id"] if c else None),
+                    ("job_id", job_id)):
+                stored = superseded.get(field)
+                if stored is not None or requested is not None:
+                    if str(stored) != str(requested):
+                        return self._json({"error": "replacement document has different " + field}, 409)
         b64 = str(data.get("content_b64", ""))
         import base64
         try:
@@ -5039,10 +5066,15 @@ class H(SimpleHTTPRequestHandler):
         storage_key = self.store_document_body(raw)
         fname = os.path.basename(str(data.get("file_name", "document"))[:120]) or "document"
         fname = re.sub(r"[^A-Za-z0-9._ -]", "_", fname)
-        doc_id = f"doc-{len(stage.get('documents', [])) + 1}"
         flist = stage.setdefault("documents", [])
+        used_ids = {str(row.get("id")) for row in flist}
+        next_doc = len(flist) + 1
+        while f"doc-{next_doc}" in used_ids:
+            next_doc += 1
+        doc_id = f"doc-{next_doc}"
         doc = {
             "id": doc_id,
+            "model_version": canonical_records.MODEL_VERSION,
             "case_id": case_id if c else None,
             "property_id": prop["id"] if prop else None,
             "party_id": party_id,
