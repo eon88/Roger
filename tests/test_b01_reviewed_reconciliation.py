@@ -97,6 +97,22 @@ class ReviewedCanonicalTests(unittest.TestCase):
         self.assertIn("orphan_document_pointer", types)
         self.assertIn("duplicate_document_pointer", types)
 
+    def test_reviewed_document_property_repair_preserves_versions_and_audit(self):
+        doc = self.stage["documents"][0]
+        doc.update(model_version=1, property_id=self.p2,
+                   storage_key="original-evidence-sha")
+        original = copy.deepcopy(self.stage)
+        proposal, event = review.propose_reviewed_link(
+            original, collection="documents", record_id=doc["id"],
+            field="property_id", target_id=self.p1, actor="office-reviewer",
+            at=self.at, reason="Matched original tenancy document and property ID")
+        self.assertEqual(event["from"], self.p2)
+        self.assertEqual(proposal["documents"][0]["storage_key"], "original-evidence-sha")
+        self.assertEqual(proposal["documents"][0]["property_id"], self.p1)
+        self.assertTrue(review.reconciliation_report(proposal)["ready_for_canonical_linking"])
+        cr.guard_no_silent_deletion(original, proposal)
+        self.assertEqual(self.stage, original)
+
     def test_no_reconciliation_using_matching_email(self):
         self.stage["parties"][0]["email"] = self.stage["parties"][1]["email"]
         self.assertTrue(review.reconciliation_report(self.stage)["ready_for_canonical_linking"])
