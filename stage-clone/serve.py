@@ -40,6 +40,7 @@ import deposit_controls
 import canonical_records
 import workflow_engine
 import auth_security
+import agency_admin
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -441,6 +442,7 @@ class H(SimpleHTTPRequestHandler):
                 "/api/security/mfa/confirm": {"agent", "tenant", "landlord", "trades"},
                 "/api/security/mfa/disable": {"agent", "tenant", "landlord", "trades"},
                 "/api/security/sessions/revoke": {"agent", "tenant", "landlord", "trades"},
+                 "/api/agency-profile": {"agent"},
                 "/api/document": {"agent"}, "/api/document-action": {"agent"}}
     DOCUMENT_TYPES = (
         "property_document", "tenancy_agreement", "deposit_receipt", "inspection_report",
@@ -645,8 +647,36 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/agency-info":
             saas_mode = os.environ.get("ROGER_SAAS_MODE") == "1"
             name = os.environ.get("ROGER_AGENCY_NAME", "").strip() if saas_mode else "Roger Lettings"
+            brand = {}
+            if saas_mode:
+                profile = load_stage().get("agency_profile")
+                if isinstance(profile, dict):
+                    if profile.get("agency_id") != os.environ.get("ROGER_AGENCY_ID"):
+                        raise AgencyBoundaryError("profile agency ID does not match the stack")
+                    brand = agency_admin.public_brand(profile)
+                    name = brand["name"]
             return self._json({"name": name[:100] or "Roger Lettings",
-                               "saas": saas_mode, "powered_by": "Roger"})
+                               "saas": saas_mode, "powered_by": "Roger",
+                               **({"brand_colour": brand["brand_colour"]} if brand else {})})
+        if path == "/api/agency-profile":
+            u = self.require({"agent"})
+            if not u:
+                return
+            if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                    or u.get("username") != "agency-admin"):
+                return self._json({"error": "agency administrator required"}, 403)
+            profile = load_stage().get("agency_profile")
+            if not isinstance(profile, dict):
+                return self._json({"error": "agency profile is not provisioned"}, 409)
+            return self._json({"profile": profile, "billing_notice": "Manual billing only; no payment is charged by Roger."})
+        if path == "/agency-admin":
+            u = self.require({"agent"})
+            if not u:
+                return
+            if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                    or u.get("username") != "agency-admin"):
+                return self._json({"error": "agency administrator required"}, 403)
+            return self.serve_file("agency-admin.html")
         if path == "/login":
             return self.serve_file("login.html")
         if path == "/invite":
@@ -1319,6 +1349,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/appointment-action": self.handle_appointment_action,
             "/api/invitation": self.handle_invitation,
             "/api/invitation-action": self.handle_invitation_action,
+            "/api/agency-profile": self.handle_agency_profile,
             "/api/security/staff/invite": self.handle_staff_invitation,
             "/api/security/staff/suspend": self.handle_staff_suspend,
             "/api/security/staff/reset": self.handle_staff_reset_request,
@@ -5850,6 +5881,29 @@ class H(SimpleHTTPRequestHandler):
         save_stage(stage)
         return self._json({"success": True, "revoked_party_ids": [p["id"] for p in linked],
                            "sessions_closed": len(sessions)-len(users["sessions"])})
+
+    # ---------- B03 independent agency profile ----------
+    def handle_agency_profile(self, data):
+        """Agency administrator changes contact/branch details, not plan or billing."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "agency administrator reauthentication required"}, 403)
+        stage = load_stage()
+        profile = stage.get("agency_profile")
+        if not isinstance(profile, dict):
+            return self._json({"error": "agency profile is not provisioned"}, 409)
+        if profile.get("agency_id") != stage.get("agency_id"):
+            raise AgencyBoundaryError("agency profile is foreign")
+        payload = {key: value for key, value in data.items() if key != "current_password"}
+        try:
+            edited = agency_admin.update_settings(profile, payload)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 409 if "reload" in str(error) else 400)
+        stage["agency_profile"] = edited
+        self.audit(stage, {"actor": admin["username"], "action": "agency_profile_updated",
+                           "target": stage["agency_id"], "note": "version " + str(edited["version"])})
+        save_stage(stage)
+        return self._json({"success": True, "profile": edited})
 
     # ---------- office policy and real contacts ----------
     @staticmethod
