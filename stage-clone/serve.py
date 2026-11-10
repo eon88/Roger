@@ -3762,7 +3762,11 @@ class H(SimpleHTTPRequestHandler):
         workflow_engine.record_status_change(
             job, previous_job_status, action=str(action),
             actor=(self.user or {}).get("username") or "unknown",
-            role=(self.user or {}).get("role"), at=now())
+            role=(self.user or {}).get("role"), at=now(),
+            include_noop=action in {
+                "record_payment", "record_credit", "submit_variation",
+                "approve_variation", "decline_variation",
+            })
         if action in AGENT_ONLY or action in TRADES_ONLY:
             workflow_engine.remember_action_request(
                 job, request_id=data.get("request_id"), action=action,
@@ -3941,7 +3945,8 @@ class H(SimpleHTTPRequestHandler):
         if job:
             workflow_engine.record_status_change(
                 job, previous_job_status, action="landlord_"+str(action),
-                actor=user.get("username") or "unknown", role=role, at=now())
+                actor=user.get("username") or "unknown", role=role, at=now(),
+                include_noop=variation_approval)
             self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "approval": appr})
