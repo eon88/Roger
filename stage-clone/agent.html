@@ -76,6 +76,7 @@ input,textarea,select{accent-color:#2b6045}
       <span class="who" id="stamp">Connecting to Roger…</span>
       <a class="mvp-site-link" href="/">Public website ↗</a>
       <a href="/security">Account security</a>
+      <a href="/agency-admin" id="agencyAdminMenuLink" hidden>Agency administration</a>
 <form action="/logout" method="POST"><input type="hidden" name="intent" value="logout"><button class="mvp-signout" type="submit">Log out</button></form>
     </div>
     <nav class="tabs mvp-nav" aria-label="Agent workspace">
@@ -196,6 +197,7 @@ function markFlips(){ const cur={};
 const fl=k=>FL.flip[k]?'flash-once':'';
 
 async function load(manual){
+  try{const who=await api('/api/whoami');document.getElementById('agencyAdminMenuLink').hidden=!(who.authenticated&&who.username==='agency-admin')}catch(e){document.getElementById('agencyAdminMenuLink').hidden=true}
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
     try{ const i=await api('/api/inventories'); window._inventories=i.inventories||[] }catch(e){ window._inventories=[] }
