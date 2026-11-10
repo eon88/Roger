@@ -167,6 +167,7 @@ AGENCY_RECORD_COLLECTIONS = (
     "invitations", "audit_log", "newsletter_subscriptions",
     "property_units", "ownership_interests", "inventories",
     "deposit_records", "bank_reconciliation_history",
+    "staff_password_resets",
 )
 
 
@@ -377,8 +378,9 @@ class H(SimpleHTTPRequestHandler):
 
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/signin", "/invite", "/for-agents", "/register/landlord", "/register/trades",
-              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/invite.js", "/api/whoami", "/api/agency-info"}
-    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo", "/api/invite/validate", "/api/invite/accept"}
+              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/invite.js", "/staff-reset", "/api/whoami", "/api/agency-info"}
+    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo", "/api/invite/validate", "/api/invite/accept",
+                   "/api/security/staff/reset/accept"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -434,6 +436,7 @@ class H(SimpleHTTPRequestHandler):
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
                 "/api/security/staff/invite": {"agent"}, "/api/security/staff/suspend": {"agent"},
+                "/api/security/staff/reset": {"agent"},
                 "/api/security/mfa/start": {"agent", "tenant", "landlord", "trades"},
                 "/api/security/mfa/confirm": {"agent", "tenant", "landlord", "trades"},
                 "/api/security/mfa/disable": {"agent", "tenant", "landlord", "trades"},
@@ -648,6 +651,8 @@ class H(SimpleHTTPRequestHandler):
             return self.serve_file("login.html")
         if path == "/invite":
             return self.serve_file("invite.html")
+        if path == "/staff-reset":
+            return self.serve_file("staff-reset.html")
         if path == "/invite.js":
             return self.serve_file("invite.js", "application/javascript; charset=utf-8")
         if path == "/change-password":
@@ -1297,6 +1302,8 @@ class H(SimpleHTTPRequestHandler):
             "/api/invitation-action": self.handle_invitation_action,
             "/api/security/staff/invite": self.handle_staff_invitation,
             "/api/security/staff/suspend": self.handle_staff_suspend,
+            "/api/security/staff/reset": self.handle_staff_reset_request,
+            "/api/security/staff/reset/accept": self.handle_staff_reset_acceptance,
             "/api/security/mfa/start": self.handle_mfa_start,
             "/api/security/mfa/confirm": self.handle_mfa_confirm,
             "/api/security/mfa/disable": self.handle_mfa_disable,
@@ -5018,6 +5025,96 @@ class H(SimpleHTTPRequestHandler):
         self.persist_invite_registration(users, stage)
         return self._json({"success": True,
                            "sessions_revoked": len(old) - len(users["sessions"])})
+
+    # ---------- Reviewed staff password recovery: separate from staff invitations ----------
+    def handle_staff_reset_request(self, data):
+        """Administrator reauth creates a 30-minute manual, one-use reset link."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "administrator reauthentication required"}, 403)
+        target = str(data.get("username") or "")
+        reason = str(data.get("reason") or "").strip()
+        if target == "agency-admin" or not 12 <= len(reason) <= 500:
+            return self._json({"error": "staff username and a recorded recovery reason required"}, 400)
+        account = next((item for item in users.get("users", [])
+                        if item.get("username") == target
+                        and item.get("role") == "agent"
+                        and not item.get("disabled_at")), None)
+        if not account:
+            return self._json({"error": "staff account not found"}, 404)
+        stage = load_stage()
+        if any(item.get("username") == target and item.get("status") == "pending"
+               and self.invitation_active(item)
+               for item in stage.get("staff_password_resets", [])):
+            return self._json({"error": "existing active reset must expire before reissuing"}, 409)
+        token = secrets.token_urlsafe(32)
+        reset = {
+            "id": "staffreset-" + secrets.token_hex(12),
+            "agency_id": stage.get("agency_id"),
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "username": target, "status": "pending",
+            "requested_by": admin["username"], "requested_at": now(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+        }
+        stage.setdefault("staff_password_resets", []).append(reset)
+        self.audit(stage, {"actor": admin["username"],
+                           "action": "staff_reset_requested", "target": "staff",
+                           "note": reason})
+        save_stage(stage)
+        return self._json({"success": True,
+                           "reset_url": "/staff-reset#token=" + token,
+                           "expires_at": reset["expires_at"],
+                           "delivery": "verify staff recipient before manual sharing"})
+
+    def handle_staff_reset_acceptance(self, data):
+        """Token is sent in POST body, never URL, never retained in stored data."""
+        if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                or os.environ.get("ROGER_STORAGE_BACKEND") != "postgres"):
+            return self._json({"error": "reset not available on this site"}, 409)
+        token = data.get("token")
+        replacement = data.get("new_password")
+        if (not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{30,128}", token)
+                or not isinstance(replacement, str) or not 14 <= len(replacement) <= 128
+                or len(replacement.encode("utf-8")) > 512
+                or replacement.strip() != replacement):
+            return self._json({"error": "valid reset token and strong password required"}, 400)
+        stage = load_stage()
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        reset = next((item for item in stage.get("staff_password_resets", [])
+                      if isinstance(item.get("token_hash"), str)
+                      and hmac.compare_digest(item["token_hash"], digest)), None)
+        if not self.invitation_active(reset):
+            return self._json({"error": "reset token invalid, expired or used"}, 400)
+        users = load_users()
+        account = next((person for person in users.get("users", [])
+                        if person.get("username") == reset.get("username")
+                        and person.get("role") == "agent"
+                        and person.get("username") != "agency-admin"
+                        and not person.get("disabled_at")), None)
+        if not account or (account.get("agency_id")
+                           not in (None, stage.get("agency_id"))):
+            return self._json({"error": "reset no longer eligible"}, 409)
+        if (account["username"] in replacement.casefold()
+                or auth_security.password_matches(account, replacement)):
+            return self._json({"error": "choose a new unique password"}, 400)
+        salt = secrets.token_hex(16)
+        account["salt"] = salt
+        account["hash"] = hashlib.scrypt(
+            replacement.encode(), salt=bytes.fromhex(salt), n=2**14, r=8, p=1).hex()
+        account.pop("mfa_pending_secret", None)
+        # Existing MFA is deliberately NOT bypassed by a password reset.
+        reset["status"] = "used"
+        reset["used_at"] = now()
+        before = users.get("sessions", {})
+        users["sessions"] = {
+            k: v for k, v in before.items()
+            if v.get("username") != account["username"]
+        }
+        self.audit(stage, {"actor": account["username"], "action": "staff_password_reset",
+                           "target": "staff", "note": "verified token consumed; sessions revoked"})
+        self.persist_invite_registration(users, stage)
+        return self._json({"success": True, "login": "/login",
+                           "sessions_revoked": len(before) - len(users["sessions"])})
 
     # ---------- agency-bound invitation onboarding ----------
     @staticmethod
