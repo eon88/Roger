@@ -3092,6 +3092,7 @@ class H(SimpleHTTPRequestHandler):
         job = next((j for j in stage.get("jobs", []) if j["id"] == data.get("id")), None)
         if not job:
             return self._json({"error": "job not found"}, 404)
+        previous_job_status = job.get("status")
         role = (self.user or {}).get("role")
         AGENT_ONLY = {"assign", "request_quote", "approve_quote", "decline_quote",
                       "send_to_landlord", "verify_approve", "verify_decline",
@@ -3703,6 +3704,10 @@ class H(SimpleHTTPRequestHandler):
         else:
             return self._json({"error": f"invalid action {action} for status {job['status']}"}, 400)
 
+        workflow_engine.record_status_change(
+            job, previous_job_status, action=str(action),
+            actor=(self.user or {}).get("username") or "unknown",
+            role=(self.user or {}).get("role"), at=now())
         self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "job": job})
@@ -3713,6 +3718,7 @@ class H(SimpleHTTPRequestHandler):
         appr = next((a for a in stage.get("approvals", []) if a["id"] == data.get("id")), None)
         if not appr:
             return self._json({"error": "approval not found"}, 404)
+        previous_approval_status = appr.get("status")
         user = self.user or {}
         role = user.get("role")
         if role not in ("agent", "landlord"):
@@ -3738,6 +3744,7 @@ class H(SimpleHTTPRequestHandler):
         if action == "reject" and not reason:
             return self._json({"error": "a reason is required when rejecting"}, 400)
         job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
+        previous_job_status = job.get("status") if job else None
         if prework:
             if not job or not self.verified_contractor_for_new_repair(
                     stage, job.get("assigned_to_party_id"), job.get("required_trade"), job.get("property_id")):
@@ -3838,7 +3845,13 @@ class H(SimpleHTTPRequestHandler):
             "action": ("prework_quote_" if prework else "variation_" if variation_approval else "invoice_") + appr["status"],
             "target": appr["id"], "note": reason or None
         })
+        workflow_engine.record_status_change(
+            appr, previous_approval_status, action=str(action),
+            actor=user.get("username") or "unknown", role=role, at=now())
         if job:
+            workflow_engine.record_status_change(
+                job, previous_job_status, action="landlord_"+str(action),
+                actor=user.get("username") or "unknown", role=role, at=now())
             self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "approval": appr})
@@ -4378,6 +4391,7 @@ class H(SimpleHTTPRequestHandler):
         c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(data.get("id"))), None)
         if not c:
             return self._json({"error": "case not found"}, 404)
+        previous_case_status = c.get("status")
         action = data.get("action")
         u = getattr(self, "user", None) or {}
         agent_actions = {
@@ -4600,6 +4614,9 @@ class H(SimpleHTTPRequestHandler):
                                "target": c["id"], "note": reason[:120]})
         else:
             return self._json({"error": f"unknown action {action}"}, 400)
+        workflow_engine.record_status_change(
+            c, previous_case_status, action=str(action),
+            actor=u.get("username") or "unknown", role=role, at=now())
         save_stage(stage)
         self._json({"success": True})
 
