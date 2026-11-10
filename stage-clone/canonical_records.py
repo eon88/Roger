@@ -268,3 +268,52 @@ def new_ownership(stage, identifier, property_id, landlord_party_id,
     if sum(x.get("share_basis_points", 0) for x in now_active) > 10000:
         raise RecordIntegrityError("Active joint ownership shares exceed 100%")
     return row
+
+
+def guard_no_silent_deletion(previous, candidate):
+    """Persisted v1 business records cannot disappear or become unarchived.
+
+    This is deliberately limited to version-tagged records: old snapshots may
+    include unlinked or obsolete samples that require explicit reconciliation.
+    The physical file/document deletion retention policy is not decided here.
+    """
+    prior=entity_indexes(previous)
+    future=entity_indexes(candidate)
+    for collection in ENTITY_COLLECTIONS:
+        for key,record in prior[collection].items():
+            if record.get("model_version") != MODEL_VERSION:
+                continue
+            replacement=future[collection].get(key)
+            if replacement is None:
+                raise RecordIntegrityError(
+                    "cannot hard-delete canonical "+collection+" record "+key)
+            if replacement.get("model_version") != MODEL_VERSION:
+                raise RecordIntegrityError(
+                    "cannot downgrade versioned record "+collection+" "+key)
+            if record.get("archived_at") and not replacement.get("archived_at"):
+                raise RecordIntegrityError(
+                    "cannot remove historical archive marker from "+collection+" "+key)
+
+
+def archive_record(stage, collection, identifier, *, actor, at, reason):
+    """Record an explicit internal archive without deleting business history."""
+    if collection not in ENTITY_COLLECTIONS:
+        raise RecordIntegrityError("unsupported archive collection")
+    identity=_key(identifier)
+    records=entity_indexes(stage)[collection]
+    item=records.get(identity)
+    if not item or item.get("model_version") != MODEL_VERSION:
+        raise RecordIntegrityError("only existing v1 records can use this archive method")
+    if item.get("archived_at"):
+        raise RecordIntegrityError("record already archived")
+    if (not isinstance(actor,str) or not actor.strip() or
+            not isinstance(at,str) or not at or
+            not isinstance(reason,str) or not 8 <= len(reason.strip()) <= 500):
+        raise RecordIntegrityError("archive needs authenticated actor, time and written reason")
+    item["archived_at"]=at
+    item["archived_by"]=actor
+    item["archive_reason"]=reason.strip()
+    item.setdefault("workflow_history",[]).append({
+        "event":"archived","at":at,"by":actor,"reason":reason.strip()
+    })
+    return item
