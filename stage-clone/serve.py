@@ -37,6 +37,7 @@ import inventory_record
 import bank_reconciliation
 import prs_register
 import deposit_controls
+import canonical_records
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -135,6 +136,8 @@ AGENCY_RECORD_COLLECTIONS = (
     "management_agreements", "rent_ledger_entries", "landlord_statements",
     "notifications", "tasks", "compliance_records", "property_submissions",
     "invitations", "audit_log", "newsletter_subscriptions",
+    "property_units", "ownership_interests", "inventories",
+    "deposit_records", "bank_reconciliation_history",
 )
 
 
@@ -252,6 +255,7 @@ def save_stage(data):
     bind_new_agency_records(data)
     # Never persist a contaminated/mixed agency snapshot.
     require_single_agency(data)
+    canonical_records.validate_for_save(data)
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") != "postgres":
         atomic_json_write(STAGE_FILE, data)
         return
