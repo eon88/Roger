@@ -1,6 +1,7 @@
 name: Roger four-role browser smoke
 
 on:
+  workflow_call:
   push:
     branches:
       - security/roger-priority-zero-20261010
