@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roger — Agency administration</title>
+<style>
+:root{color-scheme:light;font:16px system-ui,Segoe UI,sans-serif;background:#f4f6f7;color:#14283a}
+*{box-sizing:border-box}body{margin:0}main{max-width:960px;margin:auto;padding:20px}
+header{background:#132d45;color:white;padding:20px}header div{max-width:960px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:16px}
+a{color:inherit}header a{color:#d4ecff}.card{background:white;border:1px solid #dae1e7;border-radius:14px;margin:20px 0;padding:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+label{display:block;font-size:14px;font-weight:600;min-width:0}input,textarea{font:inherit;width:100%;margin-top:6px;padding:10px;border:1px solid #aebbc6;border-radius:7px}
+textarea{min-height:92px}button{cursor:pointer;border:1px solid #1d4d6d;background:#1d4d6d;color:white;border-radius:8px;padding:10px 16px;font:inherit}
+button.secondary{background:white;color:#1d4d6d}button.danger{background:#812f39;border-color:#812f39}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #c99d28;outline-offset:2px}
+small,.muted{color:#516778}fieldset{border:1px solid #cbd6de;border-radius:9px;padding:14px;margin:14px 0}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}#notice{padding:10px 0;min-height:30px}#notice.error{color:#9d2430}
+#branches>fieldset{position:relative}@media(max-width:500px){header div{display:block}.card{padding:14px}}
+</style></head><body>
+<header><div><strong>Roger · Agency administration</strong><a href="/agent">Back to Agent Desk</a></div></header>
+<main>
+<h1>Agency settings</h1><p class="muted">Business contact details and branches. Subscription, service limits, suspension and cancellation are controlled by the verified Roger operator, never by this page.</p>
+<div id="notice" role="status" aria-live="polite">Loading agency configuration…</div>
+<div class="card"><h2>Account &amp; package</h2><div id="summary"></div></div>
+<form id="settingsForm" hidden>
+<section class="card"><h2>Agency details</h2><div class="grid" id="fields"></div></section>
+<section class="card"><h2>Office branches</h2><p class="muted">Use the main office fields above for your primary office. Branches here are descriptive until staff and property assignments are independently verified.</p>
+<div id="branches"></div><button type="button" id="addBranch" class="secondary">Add branch</button></section>
+<section class="card"><h2>Confirm this change</h2>
+<label>Current administrator password<input id="currentPassword" type="password" required autocomplete="current-password"></label>
+<p class="muted">Saving updates the agency's data only. It does not change DNS, payment state or customer permissions.</p>
+<div class="actions"><button id="saveBtn" type="submit">Save agency settings</button><button type="button" id="reloadBtn" class="secondary">Reload saved settings</button></div>
+</section></form>
+</main>
+<script>
+'use strict';
+let profile=null;
+const editable=[
+ ['display_name','Public display name','text'],
+ ['legal_name','Registered legal name','text'],
+ ['office_address','Main office address','textarea'],
+ ['office_phone','Office telephone','tel'],
+ ['office_email','Office email','email'],
+ ['opening_hours','Opening hours','textarea'],
+ ['emergency_phone','Emergency telephone','tel'],
+ ['emergency_instructions','Emergency instructions','textarea'],
+ ['brand_colour','Brand colour (hex)','text']
+];
+const branchKeys=[['id','Branch ID (lowercase slug)'],['name','Branch name'],['address','Address'],['phone','Telephone'],['email','Email']];
+const el=id=>document.getElementById(id);
+function notice(message,error=false){el('notice').textContent=message;el('notice').className=error?'error':''}
+function labelledInput(key,title,type,value){const label=document.createElement('label');label.textContent=title;
+const control=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')control.type=type;
+control.value=value||'';control.dataset.key=key;control.required=key==='display_name';label.append(control);return label}
+function addBranch(record={}){const form=document.createElement('fieldset');const legend=document.createElement('legend');legend.textContent='Branch';form.append(legend);
+const grid=document.createElement('div');grid.className='grid';for(const [key,title] of branchKeys)grid.append(labelledInput(key,title,'text',record[key]));
+form.append(grid);const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='Remove branch';remove.addEventListener('click',()=>form.remove());form.append(remove);el('branches').append(form)}
+function render(){el('settingsForm').hidden=false;
+el('summary').textContent='Agency: '+profile.agency_id+' · '+profile.hostname+' · '+profile.operational_status+' · Plan: '+profile.plan+' · Property limit: '+profile.property_limit+' · Staff limit: '+profile.staff_limit+' · Billing: '+profile.subscription_status+' (manual, not automated)';
+el('fields').replaceChildren();for(const [key,title,type] of editable){el('fields').append(labelledInput(key,title,type,profile[key]))}
+el('branches').replaceChildren();for(const branch of profile.branches||[])addBranch(branch);
+el('currentPassword').value='';
+}
+async function load(){notice('Loading…');el('settingsForm').hidden=true;try{const response=await fetch('/api/agency-profile',{credentials:'same-origin',cache:'no-store'});
+const data=await response.json();if(!response.ok)throw Error(data.error||'Unable to read agency settings');
+profile=data.profile;render();notice('Saved profile version '+profile.version)}catch(error){notice(error.message,true)}}
+el('addBranch').addEventListener('click',()=>addBranch());
+el('reloadBtn').addEventListener('click',load);
+el('settingsForm').addEventListener('submit',async event=>{event.preventDefault();if(!profile)return;
+const payload={expected_version:profile.version,current_password:el('currentPassword').value};
+for(const input of el('fields').querySelectorAll('[data-key]'))payload[input.dataset.key]=input.value.trim();
+payload.branches=[...el('branches').querySelectorAll('fieldset')].map(group=>{const branch={};
+for(const input of group.querySelectorAll('[data-key]'))branch[input.dataset.key]=input.value.trim();return branch});
+const btn=el('saveBtn');btn.disabled=true;notice('Saving…');try{const response=await fetch('/api/agency-profile',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+const data=await response.json();if(!response.ok)throw Error(data.error||'Agency update was declined');profile=data.profile;render();notice('Agency settings saved. Version '+profile.version)}
+catch(error){notice(error.message,true)}finally{el('currentPassword').value='';btn.disabled=false}});
+load();
+</script></body></html>
