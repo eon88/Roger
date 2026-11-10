@@ -62,16 +62,16 @@
 **Starting point:** Linked Party/property/tenancy entities exist; workflow model partial
 
 - [ ] **B01.01** Inventory all record types, identifiers and relationships; eliminate duplicate Person, Property, Tenancy, Case, Invoice and Document sources.
-- [ ] **B01.02** Define schema versions, migration functions, integrity constraints, relevant foreign keys, effective dates and soft-deletion/archival rules.
-- [ ] **B01.03** Design distinct units/rooms and joint ownership while keeping optional features backward compatible.
+- [x] **B01.02** Define schema versions, migration functions, integrity constraints, relevant foreign keys, effective dates and soft-deletion/archival rules.
+- [x] **B01.03** Design distinct units/rooms and joint ownership while keeping optional features backward compatible.
 - [ ] **B01.04** Centralise legal workflow transitions, actor permission, reason, history and idempotency across repairs, tenancy, invoices and approvals.
-- [ ] **B01.05** Make updates atomic and safe under competing staff requests; test concurrent writes to the current snapshot/PostgreSQL backend.
+- [x] **B01.05** Make updates atomic and safe under competing staff requests; test concurrent writes to the current snapshot/PostgreSQL backend.
 - [ ] **B01.06** Prevent cross-agency references, orphan documents, contradictory status and silent data replacement.
-- [ ] **B01.07** Test legacy data upgrades and reversible backup/restore of schema changes.
+- [x] **B01.07** Test legacy data upgrades and reversible backup/restore of schema changes.
 
 **Bundle acceptance (DONE):** Every workflow uses authoritative linked identifiers, validated transitions and durable audit records; migration and concurrency tests pass.
 
-**Evidence:** commit __ · Python tests __ · Chromium/integration run __ · acceptance __ · open blockers __
+**Evidence:** [B01 canonical data/workflow map](ROGER_V1_B01_DATA_WORKFLOW_MAP.md) · `stage-clone/canonical_records.py`, `workflow_engine.py`, `ops/migration/upgrade_canonical_v1.py` · `tests/test_b01_*.py` · [Python+Chromium+real two-agency PostgreSQL green combined run](https://github.com/eon88/Roger/actions/runs/42774717486) on `95a7bb0453894a56bf9d2119a69d8aaeb00e527e` (before last audit/archive refinements). Later B01 revisions must pass a same-SHA aggregate gate. **B01 remains IN PROGRESS (4/7)**: B01.01 reconciliation of legacy duplicate/snapshot business representations, B01.04 full repair/quote/invoice/approval transition/replay acceptance, B01.06 full historical referential consistency and cross-agency migration verification. Newly tagged records are strictly guarded; legacy records are preserved with review warnings, not silently rewritten. **Do not move to B02 or deploy until B01 fully accepted.**
 
 
 ### B02 — Authentication, roles and agency isolation
