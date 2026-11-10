@@ -1902,6 +1902,15 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "tenancy not found"}, 404)
         target = str(data.get("status", ""))
         current = tenancy.get("status")
+        try:
+            replay = workflow_engine.guard_replay(
+                tenancy, "history", data.get("request_id"), target)
+        except workflow_engine.InvalidTransition:
+            return self._json({"error": "invalid request ID"}, 400)
+        except workflow_engine.RequestReplayConflict:
+            return self._json({"error": "request ID already used for another transition"}, 409)
+        if replay:
+            return self._json({"success": True, "unchanged": True, "status": target})
         if target not in transitions:
             return self._json({"error": "invalid tenancy status"}, 400)
         if target == "renewal" and tenancy.get("tenancy_type") == "assured_periodic":
@@ -1959,7 +1968,8 @@ class H(SimpleHTTPRequestHandler):
         workflow_engine.apply_transition(
             tenancy, kind="tenancy", target=target, at=at,
             actor=(self.user or {}).get("username", "agent"),
-            effective_date=effective_date or None)
+            effective_date=effective_date or None,
+            request_id=data.get("request_id"), reason=data.get("reason"))
         tenancy["history"][-1].setdefault("effective_date", None)
         tenancy["updated_at"] = at
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
@@ -2357,6 +2367,15 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "property not found"}, 404)
         current = prop.get("lifecycle_status") or "onboarding"
         target = str(data.get("status", ""))[:40]
+        try:
+            replay = workflow_engine.guard_replay(
+                prop, "lifecycle_history", data.get("request_id"), target)
+        except workflow_engine.InvalidTransition:
+            return self._json({"error": "invalid request ID"}, 400)
+        except workflow_engine.RequestReplayConflict:
+            return self._json({"error": "request ID already used for another transition"}, 409)
+        if replay:
+            return self._json({"success": True, "unchanged": True, "status": target})
         if target not in transitions:
             return self._json({"error": "invalid property lifecycle status"}, 400)
         if target != current and target not in transitions.get(current, ()):
@@ -2387,7 +2406,9 @@ class H(SimpleHTTPRequestHandler):
                 prop, kind="property", target=target, at=at,
                 actor=(self.user or {}).get("username", "agent"),
                 state_field="lifecycle_status",
-                history_field="lifecycle_history")
+                history_field="lifecycle_history",
+                request_id=data.get("request_id"),
+                reason=data.get("reason"))
             prop["lifecycle_status_at"] = at
             action, note = "property_lifecycle_changed", current + " -> " + target
         else:
