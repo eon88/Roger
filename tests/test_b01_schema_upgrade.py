@@ -86,6 +86,31 @@ class OfflineSchemaUpgradeTests(unittest.TestCase):
                           offline=True,environment="test")
         self.assertFalse((self.directory/"backups").exists())
 
+    def test_invoice_shadow_disagreement_blocks_offline_upgrade(self):
+        damaged=json.loads(self.before)
+        job=damaged["jobs"][0]
+        job["invoice_pence"]=job["invoice"]["amount_pence"] + 100
+        self.file.write_text(json.dumps(damaged))
+        review=migration.run(self.directory)
+        self.assertTrue(any(w["issue"]=="shadow_invoice_amount_conflict"
+                            for w in review["legacy_link_warnings"]))
+        with self.assertRaisesRegex(ValueError,"invoice shadows"):
+            migration.run(self.directory,apply=True,confirm="OFFLINE-SCHEMA",
+                          offline=True,environment="security-lab")
+        self.assertFalse((self.directory/"backups").exists())
+
+    def test_orphan_historical_document_pointer_blocks_offline_upgrade(self):
+        damaged=json.loads(self.before)
+        damaged["jobs"][0]["document_ids"]=["missing-old-file"]
+        self.file.write_text(json.dumps(damaged))
+        review=migration.run(self.directory)
+        self.assertTrue(any(w["issue"]=="orphan_document_pointer"
+                            for w in review["legacy_link_warnings"]))
+        with self.assertRaisesRegex(ValueError,"document pointers"):
+            migration.run(self.directory,apply=True,confirm="OFFLINE-SCHEMA",
+                          offline=True,environment="security-lab")
+        self.assertFalse((self.directory/"backups").exists())
+
     def test_bad_record_id_prevents_even_preview(self):
         contaminated=json.loads(self.before)
         contaminated["properties"].append(contaminated["properties"][0].copy())
