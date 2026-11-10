@@ -180,6 +180,25 @@ class PreworkCostApprovalTests(unittest.TestCase):
         self.assertEqual(self.landlord_decides(), 409)
         self.assertEqual(self.stage, before)
 
+    def test_contractor_start_and_invoice_replay_do_not_repeat_workflow(self):
+        self.assertEqual(self.request_quote(), 200)
+        self.assertEqual(self.submit(12000), 200)
+        self.assertEqual(self.approve_quote(), 200)
+        start = {"request_id": "contractor-start-100"}
+        self.assertEqual(self.job_action("trade", "start", **start), 200)
+        original_count = len(self.stage["jobs"][0].get("workflow_history", []))
+        self.assertEqual(self.job_action("trade", "start", **start), 200)
+        self.assertTrue(self.responses[-1][0].get("already_processed"))
+        self.assertEqual(len(self.stage["jobs"][0]["workflow_history"]), original_count)
+        finished = {"invoice_pence": 12000, "invoice_number": "SUPPLIER-100",
+                    "request_id": "contractor-complete-100"}
+        self.assertEqual(self.job_action("trade", "complete", **finished), 200)
+        self.assertEqual(self.stage["jobs"][0]["status"], "invoice_submitted")
+        self.assertEqual(self.job_action("trade", "complete", **finished), 200)
+        self.assertTrue(self.responses[-1][0].get("already_processed"))
+        self.assertEqual(len(self.stage["jobs"][0]["workflow_requests"]), 2)
+        self.assertEqual(self.stage["jobs"][0]["invoice_number"], "SUPPLIER-100")
+
     def test_approved_small_quote_only_assigns_not_starts_work(self):
         self.assertEqual(self.request_quote(), 200)
         self.assertEqual(self.submit(12000), 200)
