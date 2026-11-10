@@ -41,7 +41,11 @@ REFS = {
     "cases": {"property_id": "properties"},
     "jobs": {"property_id": "properties", "case_id": "cases"},
     "documents": {"property_id": "properties", "tenancy_id": "tenancies",
-                  "case_id": "cases", "job_id": "jobs", "party_id": "parties"},
+                  "case_id": "cases", "job_id": "jobs", "party_id": "parties",
+                  "supersedes_id": "documents", "replaced_by_id": "documents"},
+    "approvals": {"property_id": "properties", "job_id": "jobs"},
+    "appointments": {"property_id": "properties", "case_id": "cases",
+                     "job_id": "jobs"},
     "inventories": {"property_id": "properties", "tenancy_id": "tenancies"},
     "deposit_records": {"property_id": "properties", "tenancy_id": "tenancies"},
     "rent_ledger_entries": {"property_id": "properties", "tenancy_id": "tenancies"},
@@ -130,6 +134,7 @@ def inspect(snapshot):
         "deposit_records": (("tenancy_id", "tenancies"),),
         "rent_ledger_entries": (("tenancy_id", "tenancies"),),
         "approvals": (("job_id", "jobs"),),
+        "appointments": (("case_id", "cases"), ("job_id", "jobs")),
     }
     for collection, fields in property_links.items():
         for record in snapshot.get(collection, []):
@@ -170,6 +175,7 @@ def inspect(snapshot):
     # contact details, but even collisions still require human review.
     for collection in ENTITY_COLLECTIONS:
         source_keys = {}
+        warned_keys = set()
         for record in snapshot.get(collection, []):
             system = _key(record.get("source_system"))
             identifier = _key(record.get("source_id"))
@@ -177,6 +183,12 @@ def inspect(snapshot):
                 continue
             pair = (system, identifier)
             if pair in source_keys:
+                if pair not in warned_keys:
+                    warnings.append({
+                        "collection": collection, "id": str(source_keys[pair]),
+                        "field": "source_id", "issue": "duplicate_external_identity",
+                    })
+                    warned_keys.add(pair)
                 warnings.append({
                     "collection": collection, "id": str(record.get("id", "")),
                     "field": "source_id", "issue": "duplicate_external_identity",
