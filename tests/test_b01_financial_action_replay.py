@@ -136,6 +136,20 @@ class HandlerReplayTests(unittest.TestCase):
         self.assertEqual(status, 409)
         self.assertEqual(len(self.stage["approvals"][0]["workflow_requests"]), 1)
 
+    def test_agent_cannot_impersonate_landlord_on_invoice_approval(self):
+        self.run_job()
+        before = copy.deepcopy(self.stage)
+        self.handler.user = {
+            "role": "agent", "username": "office",
+            "display_name": "Office manager", "account_id": "office-login"
+        }
+        self.handler.handle_landlord_action({
+            "id": self.stage["approvals"][0]["id"],
+            "action": "approve", "request_id": "owner-decision-123"
+        })
+        self.assertEqual(self.responses[-1][1], 403)
+        self.assertEqual(self.stage, before)
+
     def test_foreign_landlord_cannot_replay_approval(self):
         self.run_job()
         self.run_owner()
