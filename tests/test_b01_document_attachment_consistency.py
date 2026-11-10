@@ -33,7 +33,7 @@ class DocumentAttachmentConsistencyTests(unittest.TestCase):
 
     def upload(self, **kwargs):
         payload = {
-            "document_type": "inventory",
+            "document_type": "inspection_report",
             "file_name": "inventory.pdf",
             "content_b64": "U3ludGhldGlj",  # synthetic bytes; no physical file
             **kwargs,
