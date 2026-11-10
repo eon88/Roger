@@ -164,6 +164,94 @@ class StaffSecurityTests(unittest.TestCase):
         self.assertEqual(self.replies[-1][0], 400)
         self.assertEqual(self.users, original)
 
+    def enroll_staff(self):
+        token = self.token()
+        self.h.handle_invite_acceptance({
+            "token": token, "username": "newstaff",
+            "password": "staff unique passphrase-123",
+        })
+        self.assertEqual(self.replies[-1][0], 200)
+        self.users["users"][-1]["mfa_secret"] = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+        return self.users["users"][-1]
+
+    def request_reset(self, **changes):
+        payload = {
+            "current_password": self.secret, "username": "newstaff",
+            "reason": "Confirmed staff identity by direct agency owner verification",
+        }
+        payload.update(changes)
+        self.h.handle_staff_reset_request(payload)
+        return self.replies[-1]
+
+    def test_admin_issues_one_use_staff_password_reset_and_revokes_sessions(self):
+        account = self.enroll_staff()
+        self.users["sessions"] = {
+            "staff-one": {"username": "newstaff"},
+            "staff-two": {"username": "newstaff"},
+            "admin": {"username": "agency-admin"},
+        }
+        old_hash = account["hash"]
+        status, response = self.request_reset()
+        self.assertEqual(status, 200, response)
+        self.assertEqual(response["delivery"], "verify staff recipient before manual sharing")
+        self.assertTrue(response["reset_url"].startswith("/staff-reset#token="))
+        token = response["reset_url"].split("=", 1)[1]
+        self.assertNotIn(token, repr(self.stage))
+        self.assertEqual(self.stage["staff_password_resets"][0]["token_hash"],
+                         hashlib.sha256(token.encode()).hexdigest())
+        before_count = len(self.users["users"])
+        self.h.handle_staff_reset_acceptance({
+            "token": token, "new_password": "entirely different staff passphrase",
+        })
+        self.assertEqual(self.replies[-1][0], 200)
+        self.assertNotEqual(account["hash"], old_hash)
+        self.assertEqual(account["mfa_secret"], "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")
+        self.assertEqual(set(self.users["sessions"]), {"admin"})
+        self.assertEqual(self.stage["staff_password_resets"][0]["status"], "used")
+        self.assertEqual(len(self.users["users"]), before_count)
+        self.h.handle_staff_reset_acceptance({
+            "token": token, "new_password": "a third very long passphrase",
+        })
+        self.assertEqual(self.replies[-1][0], 400)
+        self.mocks[3].assert_called()
+
+    def test_staff_cannot_issue_privileged_reset_and_admin_cannot_reset_self(self):
+        self.enroll_staff()
+        self.assertEqual(self.request_reset(username="agency-admin")[0], 400)
+        self.assertEqual(self.request_reset(current_password="invalid")[0], 403)
+        self.h.user = self.users["users"][-1]
+        self.assertEqual(self.request_reset()[0], 403)
+
+    def test_suspended_staff_and_expired_reset_tokens_fail_closed(self):
+        account = self.enroll_staff()
+        status, response = self.request_reset()
+        self.assertEqual(status, 200)
+        token = response["reset_url"].split("=", 1)[1]
+        reset = self.stage["staff_password_resets"][0]
+        reset["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        self.h.handle_staff_reset_acceptance({
+            "token": token, "new_password": "brand new long passphrase",
+        })
+        self.assertEqual(self.replies[-1][0], 400)
+        reset["expires_at"] = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        account["disabled_at"] = "2026-11-10T12:00:00Z"
+        self.h.handle_staff_reset_acceptance({
+            "token": token, "new_password": "brand new long passphrase",
+        })
+        self.assertEqual(self.replies[-1][0], 409)
+
+    def test_reset_rejects_short_or_identical_password(self):
+        self.enroll_staff()
+        _, response = self.request_reset()
+        token = response["reset_url"].split("=", 1)[1]
+        for password in ("short", "staff unique passphrase-123", "newstaff-very-long-pass"):
+            with self.subTest(password=password):
+                self.h.handle_staff_reset_acceptance({
+                    "token": token, "new_password": password,
+                })
+                self.assertEqual(self.replies[-1][0], 400)
+                self.assertEqual(self.stage["staff_password_resets"][0]["status"], "pending")
+
     def test_expired_staff_invite_not_valid(self):
         token = self.token()
         self.stage["invitations"][0]["expires_at"] = (
