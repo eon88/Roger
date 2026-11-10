@@ -4495,7 +4495,7 @@ class H(SimpleHTTPRequestHandler):
             mailbox.logout()
             return self._json({"success": True, "imported": imported, "count": len(imported)})
         except (OSError, imaplib.IMAP4.error, ValueError) as exc:
-            return self._json({"error": "mailbox sync failed: " + str(exc)[:240]}, 502)
+            return self._json({"error": "mailbox sync failed; check agency mail configuration"}, 502)
 
     def handle_email_reply(self, data):
         """Send a deliberate agent-authored reply to the contact email on a case."""
@@ -4540,7 +4540,7 @@ class H(SimpleHTTPRequestHandler):
                         client.login(username, password)
                     client.send_message(message)
         except (OSError, smtplib.SMTPException) as exc:
-            return self._json({"error": "email provider could not accept this message: " + str(exc)[:240]}, 502)
+            return self._json({"error": "email provider could not accept the message"}, 502)
         at = now()
         case.setdefault("thread", []).append({
             "author": (self.user or {}).get("display_name", "Agent"),
@@ -4914,7 +4914,7 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "administrator reauthentication required"}, 403)
         email = str(data.get("email") or "").strip().lower()
         name = str(data.get("display_name") or "").strip()
-        if (not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email)
+        if (not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
                 or len(email) > 254 or not 2 <= len(name) <= 100):
             return self._json({"error": "valid staff name and email required"}, 400)
         stage = load_stage()
