@@ -69,6 +69,20 @@ class CanonicalTests(unittest.TestCase):
             cr.new_ownership(self.stage,"interest-4",p,self.stage["parties"][1]["id"],
                              1000,"2026-11-01",agency_id="oaklettings")
 
+    def test_save_rejects_overlapping_joint_owners_even_if_constructor_bypassed(self):
+        p=self.stage["properties"][0]["id"]
+        owner=self.stage["parties"][0]["id"]
+        first=cr.new_ownership(self.stage,"interest-first",p,owner,6500,
+                               "2026-01-01","2026-05-31","oaklettings")
+        self.stage["ownership_interests"].append(first)
+        second=cr.new_ownership(self.stage,"interest-second",p,owner,6500,
+                                "2026-06-01",None,"oaklettings")
+        self.stage["ownership_interests"].append(second)
+        cr.validate_for_save(self.stage)
+        self.stage["ownership_interests"][1]["effective_from"]="2026-05-01"
+        with self.assertRaisesRegex(cr.RecordIntegrityError,"exceed 100"):
+            cr.validate_for_save(self.stage)
+
     def test_v1_tenancy_rejects_wrong_roles_and_foreign_units(self):
         t=copy.deepcopy(self.stage["tenancies"][0])
         t["model_version"]=1
