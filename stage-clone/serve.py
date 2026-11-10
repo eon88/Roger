@@ -952,7 +952,22 @@ class H(SimpleHTTPRequestHandler):
         }
         if role == "landlord":
             keys |= {"invoice_pence", "paid_at", "balance_due_pence"}
-        return {k: v for k, v in job.items() if k in keys}
+        result = {k: v for k, v in job.items() if k in keys}
+        if role == "landlord":
+            # The landlord statement totals actual recorded external payments,
+            # not the supplier's gross invoice or credit notes. Keep amounts
+            # but never expose bank references, notes or recorder identities.
+            result["payments"] = [
+                {"amount_pence": p.get("amount_pence")}
+                for p in (job.get("payments") or []) if isinstance(p, dict)
+                and type(p.get("amount_pence")) is int
+            ]
+            result["credit_notes"] = [
+                {"amount_pence": note.get("amount_pence")}
+                for note in (job.get("credit_notes") or []) if isinstance(note, dict)
+                and type(note.get("amount_pence")) is int
+            ]
+        return result
 
     def serve_scoped_stage(self):
         """The audit's biggest hole closed: the SERVER decides what each role may see."""
