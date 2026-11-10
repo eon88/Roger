@@ -268,15 +268,16 @@ def validate_domain_action(kind, *, action, previous, target, role,
     return True
 
 
-def record_status_change(record, previous, *, action, actor, at, role):
-    """One shared event shape for case, job, invoice-status and approval moves.
+def record_status_change(record, previous, *, action, actor, at, role,
+                         include_noop=False):
+    """Common immutable audit shape for case, job, invoice and approval moves.
 
-    The existing domain handler is responsible for validating the requested
-    action, role, monetary authority, evidence and contractor eligibility.
-    This only records a successful state change, never authorises one.
+    Money and variation events can be significant even if their overall job
+    status is unchanged (e.g. a second part-payment). include_noop stores the
+    authorised event in the same snapshot; it never authorises the action.
     """
     current=record.get("status")
-    if current==previous:
+    if current==previous and not include_noop:
         return False
     if not isinstance(actor,str) or not actor:
         raise InvalidTransition("A named authenticated actor is needed")
