@@ -49,7 +49,7 @@ class AtomicStorageTests(unittest.TestCase):
                     "properties": [{"id": "home-1", "title": "Home"}],
                     "cases": [{"id": 490, "property_id": "home-1"}],
                     "tenancies": [{"id": "tenancy-1", "property_id": "home-1", "document_ids": []}],
-                    "jobs": [{"id": "job-1", "property_id": "home-1", "document_ids": []}],
+                    "jobs": [{"id": "job-1", "case_id": 490, "property_id": "home-1", "document_ids": []}],
                     "parties": [{"id": "party-1", "display_name": "Landlord", "roles": ["landlord"]}],
                     "documents": [{"id": "doc-old", "version": 1, "status": "verified"}],
                     "audit_log": [],
