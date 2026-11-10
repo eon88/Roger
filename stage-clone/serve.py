@@ -1840,7 +1840,8 @@ class H(SimpleHTTPRequestHandler):
             tid = "tenancy-" + str(tenancy_num)
             at = now()
             tenancy = {
-                "id": tid, "property_id": prop["id"],
+                "id": tid, "model_version": canonical_records.MODEL_VERSION,
+                "property_id": prop["id"],
                 "source_prospect_id": source_prospect_id,
                 "tenant_party_ids": tenant_ids, "landlord_party_ids": landlord_ids,
                 "start_date": start_date.isoformat(), "end_date": None,
