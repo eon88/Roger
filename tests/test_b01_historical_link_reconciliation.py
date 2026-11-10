@@ -84,5 +84,38 @@ class HistoricalLinkTests(unittest.TestCase):
         self.assertEqual(cr.inspect(self.stage)["warnings"], [])
 
 
+    def test_older_duplicate_of_canonical_external_identity_also_blocks(self):
+        first, second = self.stage["parties"][:2]
+        first["model_version"] = 1
+        first["source_system"] = second["source_system"] = "legacy-import"
+        first["source_id"] = second["source_id"] = "same-verified-source"
+        with self.assertRaisesRegex(cr.RecordIntegrityError, "duplicate_external_identity"):
+            cr.validate_for_save(self.stage)
+
+    def test_orphan_approval_and_document_supersession_are_reported(self):
+        self.stage["approvals"] = [{
+            "id": "approval-old", "property_id": self.p1,
+            "job_id": "missing-job"
+        }]
+        self.stage["documents"][0]["supersedes_id"] = "missing-original"
+        warnings = cr.inspect(self.stage)["warnings"]
+        self.assertTrue(any(w["collection"] == "approvals"
+                            and w["issue"] == "missing_related_jobs" for w in warnings))
+        self.assertTrue(any(w["collection"] == "documents"
+                            and w["issue"] == "missing_related_documents" for w in warnings))
+        self.stage["approvals"][0]["model_version"] = 1
+        with self.assertRaisesRegex(cr.RecordIntegrityError, "missing jobs"):
+            cr.validate_for_save(self.stage)
+
+    def test_appointment_with_foreign_property_case_is_blocked_when_versioned(self):
+        self.stage["appointments"] = [{
+            "id": "visit-1", "property_id": self.p2,
+            "case_id": self.stage["cases"][0]["id"],
+            "model_version": 1
+        }]
+        with self.assertRaisesRegex(cr.RecordIntegrityError, "property_mismatch"):
+            cr.validate_for_save(self.stage)
+
+
 if __name__ == "__main__":
     unittest.main()
