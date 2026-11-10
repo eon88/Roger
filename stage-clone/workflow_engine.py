@@ -108,3 +108,28 @@ def apply_transition(record, *, kind, target, actor, at,
     record[state_field]=target
     record.setdefault(history_field,[]).append(event)
     return True
+
+
+def record_status_change(record, previous, *, action, actor, at, role):
+    """One shared event shape for case, job, invoice-status and approval moves.
+
+    The existing domain handler is responsible for validating the requested
+    action, role, monetary authority, evidence and contractor eligibility.
+    This only records a successful state change, never authorises one.
+    """
+    current=record.get("status")
+    if current==previous:
+        return False
+    if not isinstance(actor,str) or not actor:
+        raise InvalidTransition("A named authenticated actor is needed")
+    if not isinstance(action,str) or not action or len(action)>100:
+        raise InvalidTransition("Unknown action for workflow history")
+    if role not in ("agent","tenant","landlord","trades","system"):
+        raise InvalidTransition("Unknown actor role for workflow history")
+    if not isinstance(at,str) or not at:
+        raise InvalidTransition("Workflow event needs a server time")
+    record.setdefault("workflow_history",[]).append({
+        "from":previous,"to":current,"action":action,"at":at,
+        "by":actor,"role":role,
+    })
+    return True
