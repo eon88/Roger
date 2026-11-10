@@ -4474,6 +4474,18 @@ class H(SimpleHTTPRequestHandler):
             participating = self.has_party_link(c, "trades", ids)
             if not (assigned or participating):
                 return self._json({"error": "not your case"}, 403)
+        # All case actions are checked after the per-case permission boundary.
+        # In particular, a retried reply cannot append the message twice.
+        try:
+            replayed = workflow_engine.check_action_replay(
+                c, request_id=data.get("request_id"), action=action,
+                actor=u.get("username") or "unknown", payload=data)
+        except workflow_engine.RequestReplayConflict as exc:
+            return self._json({"error": str(exc)}, 409)
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 400)
+        if replayed:
+            return self._json({"success": True, "already_processed": True})
         if action in ("reply", "inform"):
             to = data.get("to") or (
                 ["agent"] if role == "tenant" else ["tenant"]
@@ -4656,6 +4668,10 @@ class H(SimpleHTTPRequestHandler):
         workflow_engine.record_status_change(
             c, previous_case_status, action=str(action),
             actor=u.get("username") or "unknown", role=role, at=now())
+        workflow_engine.remember_action_request(
+            c, request_id=data.get("request_id"), action=action,
+            actor=u.get("username") or "unknown", role=role,
+            at=now(), payload=data)
         save_stage(stage)
         self._json({"success": True})
 
