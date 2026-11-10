@@ -19,7 +19,8 @@ COLLECTIONS = (
     "documents", "tenancies", "management_agreements",
     "rent_ledger_entries", "landlord_statements", "notifications",
     "tasks", "compliance_records", "property_submissions",
-    "newsletter_subscriptions",
+    "newsletter_subscriptions", "property_units", "ownership_interests",
+    "inventories", "deposit_records", "bank_reconciliation_history",
 )
 RESERVED = {"admin", "www", "api", "mail", "root", "support", "roger"}
 SLUG = re.compile(r"^[a-z][a-z0-9-]{1,28}[a-z0-9]$")
