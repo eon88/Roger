@@ -407,6 +407,61 @@ def guard_no_silent_deletion(previous, candidate):
             if record.get("archived_at") and not replacement.get("archived_at"):
                 raise RecordIntegrityError(
                     "cannot remove historical archive marker from "+collection+" "+key)
+            # Immutable audit and event sequences may grow, never shrink or
+            # rewrite earlier evidence. Business workflow data updates stay
+            # possible (e.g. status changes to a pending quote), but the
+            # history of those operations must survive unchanged.
+            for field in ("history", "workflow_history", "workflow_requests",
+                          "reconciliation_history"):
+                prior_events = record.get(field, [])
+                future_events = replacement.get(field, [])
+                if (not isinstance(prior_events, list)
+                        or not isinstance(future_events, list)
+                        or future_events[:len(prior_events)] != prior_events):
+                    raise RecordIntegrityError(
+                        "cannot rewrite "+collection+"."+field+" for "+key)
+            if collection == "jobs":
+                for field in ("payments", "credit_notes"):
+                    old_entries = record.get(field, [])
+                    new_entries = replacement.get(field, [])
+                    if (not isinstance(old_entries, list) or
+                            not isinstance(new_entries, list) or
+                            new_entries[:len(old_entries)] != old_entries):
+                        raise RecordIntegrityError(
+                            "cannot overwrite recorded job "+field+" for "+key)
+                # A submitted invoice is a financial event. A correction must
+                # be a separate credit/adjustment, not a new amount in place.
+                prior_invoice = record.get("invoice_pence")
+                if prior_invoice is not None and prior_invoice != replacement.get("invoice_pence"):
+                    raise RecordIntegrityError("cannot silently replace supplier invoice amount")
+            if collection == "documents":
+                for field in ("storage_key", "file_size", "uploaded_at"):
+                    old_value = record.get(field)
+                    if old_value is not None and replacement.get(field) != old_value:
+                        raise RecordIntegrityError(
+                            "cannot silently replace document evidence "+field)
+                for field in ("property_id", "tenancy_id", "case_id",
+                              "job_id", "party_id"):
+                    original_value = record.get(field)
+                    new_value = replacement.get(field)
+                    if original_value == new_value:
+                        continue
+                    events = replacement.get("reconciliation_history", [])
+                    corrections = events[len(record.get("reconciliation_history", [])):]
+                    authorised = any(
+                        entry.get("field") == field
+                        and entry.get("from") == original_value
+                        and entry.get("to") == new_value
+                        and entry.get("actor") and entry.get("reason")
+                        for entry in corrections if isinstance(entry, dict))
+                    if not authorised:
+                        raise RecordIntegrityError(
+                            "document relationship change requires an audited review: "+field)
+    old_audit = previous.get("audit_log", [])
+    new_audit = candidate.get("audit_log", [])
+    if (not isinstance(old_audit, list) or not isinstance(new_audit, list)
+            or new_audit[:len(old_audit)] != old_audit):
+        raise RecordIntegrityError("cannot rewrite the agency audit log")
 
 
 def archive_record(stage, collection, identifier, *, actor, at, reason):
