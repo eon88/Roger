@@ -10,9 +10,12 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = ROOT / "migrations" / "001_postgres_stage_schema.sql"
+sys.path.insert(0, str(ROOT / "stage-clone"))
+from agency_admin import initial_profile
 COLLECTIONS = (
     "properties", "parties", "cases", "registrations", "jobs",
     "approvals", "audit_log", "appointments", "invitations",
@@ -155,6 +158,8 @@ def provision(slug, name, admin_email, port, image, base_domain, output):
         raise ValueError("schema and parent directory must already exist")
     hostname = slug + "." + base_domain
     stage = empty_stage(slug)
+    stage["agency_profile"] = initial_profile(slug, name, hostname)
+    stage["agency_events"] = []
     users, password = single_admin(admin_email)
     bootstrap = (
         SCHEMA.read_text().rstrip() + "\n"
