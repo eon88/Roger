@@ -5,7 +5,7 @@ not silently rewritten; new v1-tagged records must satisfy strict relationships.
 This module makes no database writes and is safe to run on backup copies.
 """
 import copy
-from datetime import date
+from datetime import date, timedelta
 
 MODEL_VERSION = 1
 ENTITY_COLLECTIONS = (
@@ -142,7 +142,32 @@ def validate_for_save(snapshot):
             if not _strict_record(snapshot, record):
                 continue
             _validate_strict_record(collection, record, indexes, agency_id)
+    _validate_ownership_allocations(snapshot)
     return result
+
+
+def _validate_ownership_allocations(snapshot):
+    """Reject overlapping historical/current joint ownership over-allocation."""
+    by_property = {}
+    for row in snapshot.get("ownership_interests", []):
+        if row.get("model_version") != MODEL_VERSION:
+            continue
+        pid = _key(row.get("property_id"))
+        start = date.fromisoformat(row["effective_from"])
+        end = date.fromisoformat(row["effective_to"]) if row.get("effective_to") else None
+        by_property.setdefault(pid, []).append((start, end, row["share_basis_points"]))
+    for pid, rows in by_property.items():
+        checkpoints = {start for start, _, _ in rows}
+        for _, end, _ in rows:
+            if end and end < date.max:
+                checkpoints.add(end + timedelta(days=1))
+        for checkpoint in checkpoints:
+            share = sum(pct for start, end, pct in rows
+                        if start <= checkpoint and (end is None or checkpoint <= end))
+            if share > 10000:
+                raise RecordIntegrityError(
+                    "Joint ownership shares exceed 100% at " +
+                    checkpoint.isoformat() + " for " + str(pid))
 
 
 def _validate_strict_record(collection, record, indexes, agency_id):
