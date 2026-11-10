@@ -39,6 +39,7 @@ import prs_register
 import deposit_controls
 import canonical_records
 import workflow_engine
+import auth_security
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -391,16 +392,17 @@ class H(SimpleHTTPRequestHandler):
         sess = users.get("sessions", {}).get(tok)
         if not sess:
             return None
-        if datetime.fromisoformat(sess["exp"]) < datetime.now(timezone.utc):
-            # Never overwrite newer login/revocation state from a GET request;
-            # expired sessions are rejected here and pruned by locked login.
+        user = next((u for u in users.get("users", [])
+                     if u.get("username") == sess.get("username")), None)
+        if not auth_security.current_session(
+                sess, user, os.environ.get("ROGER_AGENCY_ID")
+                if os.environ.get("ROGER_SAAS_MODE") == "1" else None):
             return None
-        user = next((u for u in users["users"] if u["username"] == sess["username"]), None)
-        return user if user and not user.get("disabled_at") else None
+        return user
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
-    ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/deposit-action": {"agent"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/property-registration-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
+    ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent"},
+                "/api/landlord-action": {"landlord"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/deposit-action": {"agent"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/property-registration-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
@@ -457,22 +459,41 @@ class H(SimpleHTTPRequestHandler):
         username = str(data.get("username", ""))[:40]
         password = str(data.get("password", ""))[:200]
         users = load_users()
-        u = next((x for x in users["users"] if x["username"] == username), None)
-        if u:
-            h = hashlib.scrypt(password.encode(), salt=bytes.fromhex(u["salt"]), n=2**14, r=8, p=1).hex()
-            if not hmac.compare_digest(h, u["hash"]):
-                u = None
-        if u and u.get("disabled_at"):
-            u = None
-        if not u:
+        u = next((x for x in users.get("users", []) if x.get("username") == username), None)
+        if (not u or not auth_security.password_matches(u, password)
+                or u.get("disabled_at")
+                or (os.environ.get("ROGER_SAAS_MODE") == "1"
+                    and u.get("agency_id") not in (None, os.environ.get("ROGER_AGENCY_ID")))):
             login_note(ip, ok=False)
             return self._json({"error": "wrong username or password"}, 401)
+        mfa_step = None
+        if u.get("mfa_secret"):
+            try:
+                mfa_step = auth_security.verify_totp(
+                    u["mfa_secret"], data.get("totp"),
+                    last_step=u.get("mfa_last_step", -1))
+            except (ValueError, TypeError):
+                mfa_step = None
+            if mfa_step is None:
+                login_note(ip, ok=False)
+                return self._json({"error": "wrong username, password or verification code"}, 401)
         login_note(ip, ok=True)
         tok = secrets.token_urlsafe(32)
         nowiso = datetime.now(timezone.utc)
-        users["sessions"] = {k: v for k, v in users.get("sessions", {}).items()
-                             if datetime.fromisoformat(v["exp"]) > nowiso}
-        users["sessions"][tok] = {"username": username, "exp": (nowiso + SESSION_TTL).isoformat()}
+        # Expired or pre-B02 unbound sessions must never regain access.
+        users["sessions"] = {
+            k: v for k, v in users.get("sessions", {}).items()
+            if isinstance(v, dict) and v.get("auth_version") == auth_security.SESSION_AUTH_VERSION
+            and auth_security.current_session(
+                v, next((p for p in users["users"] if p.get("username") == v.get("username")), None),
+                os.environ.get("ROGER_AGENCY_ID") if os.environ.get("ROGER_SAAS_MODE") == "1" else None)
+        }
+        users["sessions"][tok] = {
+            "username": username, "exp": (nowiso + SESSION_TTL).isoformat(),
+            **auth_security.session_principal(u),
+        }
+        if mfa_step is not None:
+            u["mfa_last_step"] = mfa_step
         save_users(users)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
