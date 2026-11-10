@@ -257,12 +257,13 @@ class StaleStageWrite(RuntimeError):
 RecordIntegrityError = canonical_records.RecordIntegrityError
 
 
-def stage_revision():
+def stage_revision(current=None):
     """Read current committed revision while the writer lock is held."""
-    try:
-        current = load_stage()
-    except FileNotFoundError:
-        current = {}
+    if current is None:
+        try:
+            current = load_stage()
+        except FileNotFoundError:
+            current = {}
     revision = current.get("_stage_revision", 0)
     if type(revision) is not int or revision < 0:
         raise RecordIntegrityError("Invalid stored stage revision")
@@ -279,9 +280,14 @@ def save_stage(data):
     expected = data.get("_stage_revision", 0)
     if type(expected) is not int or expected < 0:
         raise RecordIntegrityError("Invalid stage revision")
-    actual = stage_revision()
+    try:
+        previous = load_stage()
+    except FileNotFoundError:
+        previous = {}
+    actual = stage_revision(previous)
     if expected != actual:
         raise StaleStageWrite("stale agency snapshot; reload before writing")
+    canonical_records.guard_no_silent_deletion(previous, data)
     next_revision = actual + 1
     prepared = {**data, "_stage_revision": next_revision}
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") != "postgres":
