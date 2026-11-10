@@ -105,6 +105,27 @@ class ScopedPrivacyTests(unittest.TestCase):
                 ):
                     self.assertNotIn(secret, str(data))
 
+    def test_landlord_can_total_payments_without_receiving_bank_references(self):
+        job = self.stage["jobs"][0]
+        job["payments"] = [
+            {"amount_pence": 10000, "reference": "SECRET-BANK-ONE",
+             "recorded_by": "SECRET-RECORDING-AGENT"},
+            {"amount_pence": 20000, "reference": "SECRET-BANK-TWO"},
+        ]
+        job["credit_notes"] = [
+            {"amount_pence": 5000, "number": "SECRET-SUPPLIER-CREDIT"}]
+        result = self.view("landlord", "owner-one")
+        visible_job = result["jobs"][0]
+        self.assertEqual(
+            sum(p["amount_pence"] for p in visible_job["payments"]), 30000)
+        self.assertEqual(visible_job["credit_notes"], [{"amount_pence": 5000}])
+        self.assertNotIn("SECRET-BANK-", repr(result))
+        self.assertNotIn("SECRET-SUPPLIER-CREDIT", repr(result))
+        self.assertNotIn("SECRET-RECORDING-AGENT", repr(result))
+        resident = self.view("tenant", "resident-one")
+        self.assertNotIn("payments", resident["jobs"][0])
+        self.assertNotIn("credit_notes", resident["jobs"][0])
+
     def test_multiple_occupants_see_home_but_only_own_cases(self):
         first = self.view("tenant", "resident-one")
         self.assertEqual([p["id"] for p in first["properties"]], ["home-one"])
