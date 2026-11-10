@@ -3110,6 +3110,20 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "agent-only move"}, 403)
         if action in TRADES_ONLY and role != "trades":
             return self._json({"error": "tradesperson-only move"}, 403)
+        if action in AGENT_ONLY:
+            # All agent job actions (especially supplier payments and credits)
+            # share one durable, payload-bound replay guard.
+            try:
+                replayed = workflow_engine.check_action_replay(
+                    job, request_id=data.get("request_id"), action=action,
+                    actor=(self.user or {}).get("username") or "unknown",
+                    payload=data)
+            except workflow_engine.RequestReplayConflict as exc:
+                return self._json({"error": str(exc)}, 409)
+            except workflow_engine.InvalidTransition as exc:
+                return self._json({"error": str(exc)}, 400)
+            if replayed:
+                return self._json({"success": True, "already_processed": True, "job": job})
         actor = (self.user or {}).get("display_name") or "Unknown"
         selected_party_id = None
 
@@ -3714,6 +3728,11 @@ class H(SimpleHTTPRequestHandler):
             job, previous_job_status, action=str(action),
             actor=(self.user or {}).get("username") or "unknown",
             role=(self.user or {}).get("role"), at=now())
+        if action in AGENT_ONLY:
+            workflow_engine.remember_action_request(
+                job, request_id=data.get("request_id"), action=action,
+                actor=(self.user or {}).get("username") or "unknown",
+                role=role, at=now(), payload=data)
         self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "job": job})
@@ -3741,11 +3760,21 @@ class H(SimpleHTTPRequestHandler):
                     or not self.has_party_link(prop, "landlord", ids)
                     or not self.has_party_link(appr, "landlord", ids)):
                 return self._json({"error": "not your approval"}, 403)
-        if appr["status"] != "pending":
-            return self._json({"error": "already decided"}, 409)
         action = data.get("action")
         if action not in ("approve", "reject"):
             return self._json({"error": "action must be approve|reject"}, 400)
+        try:
+            replayed = workflow_engine.check_action_replay(
+                appr, request_id=data.get("request_id"), action=action,
+                actor=user.get("username") or "unknown", payload=data)
+        except workflow_engine.RequestReplayConflict as exc:
+            return self._json({"error": str(exc)}, 409)
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 400)
+        if replayed:
+            return self._json({"success": True, "already_processed": True, "approval": appr})
+        if appr["status"] != "pending":
+            return self._json({"error": "already decided"}, 409)
         reason = str(data.get("reason", "")).strip()[:300]
         if action == "reject" and not reason:
             return self._json({"error": "a reason is required when rejecting"}, 400)
@@ -3854,6 +3883,10 @@ class H(SimpleHTTPRequestHandler):
         workflow_engine.record_status_change(
             appr, previous_approval_status, action=str(action),
             actor=user.get("username") or "unknown", role=role, at=now())
+        workflow_engine.remember_action_request(
+            appr, request_id=data.get("request_id"), action=action,
+            actor=user.get("username") or "unknown", role=role,
+            at=now(), payload=data)
         if job:
             workflow_engine.record_status_change(
                 job, previous_job_status, action="landlord_"+str(action),
