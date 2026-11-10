@@ -49,24 +49,24 @@
 
 Agent-only role access for those two HTTP actions comes from server `H.ROLE_API`, not a hidden menu or form.
 
-**B01.04 progress, 10 November:** a shared action-request ledger in `workflow_engine.py` now hashes the authorised action payload, actor and request token into the same snapshot as the event. Existing agent job actions (including supplier payment/credit recording and invoice handoffs), landlord approvals and all per-case actions check an identical replay after their server-side role and object permission gates; differing payloads or actors are conflicts. Retried case replies/approval decisions do not duplicate thread messages. **Still open:** tokens remain optional for older clients; tradesperson-side job actions, every invoice/variation path and complete transition graph/replay/role acceptance still need review. No external money moves or legal decisions are automated by this helper.
+**B01.04 accepted in isolated development, 10 November:** a shared action-request ledger in `workflow_engine.py` now hashes the authorised action payload, actor and request token into the same snapshot as the event. Existing agent job actions (including supplier payment/credit recording and invoice handoffs), landlord approvals and all per-case actions check an identical replay after their server-side role and object permission gates; differing payloads or actors are conflicts. Retried case replies/approval decisions do not duplicate thread messages. **Implemented and tested:** authenticated agent, tradesperson, landlord and case actions now pass shared domain transition/role checks; retried contractor start/completion, invoice handoffs, partial-payment events, variation handling and landlord decisions have durable histories and replay protection. Tokens remain optional for compatibility with older clients, while status guards and supplier reference uniqueness prevent repeated unauthorised financial effects. No actual payments or legal decisions are automated by the workflow engine.
 
-## 5. Integrity and identity acceptance gaps
+## 5. Integrity, canonical authority and future release boundaries
 
-- **B01.01 / B01.02:** external source-ID collisions are reported on *both* records even if only the first is canonical-tagged. Names, phones and emails never trigger a merge. Historical duplicates still need reviewed decisions; separate authoritative invoice ledger and eventually database-native constraints remain future acceptance work.
+- **B01.01 / B01.02 (accepted foundation):** the authoritative Person, Property, Tenancy, Case, Document and Supplier Invoice sources are explicitly enumerated in `legacy_reconciliation.AUTHORITATIVE`; supplier invoice identity remains bound to `jobs` (not rent receipts or landlord statements). External source-ID collisions flag both rows, supplier invoice numbers are uniquely checked per contractor, and shadow invoice contradictions stop offline migration. `propose_reviewed_link` produces a copy with actor, date, reason and audit events, never a guessed merge. Actual new-agency historic duplicates remain B04 supervised import decisions; creating a separate accounting ledger is B12 work.
 - **B01.03:** the optional property-unit and joint ownership model is defined and strict constructors tested; owner shares are in basis points and cannot exceed 100% for concurrent active records. Joint ownership UI and accounting allocation belong to B05/B12.
-- **B01.04:** consolidate case/job/quote/invoice/approval transitions and prove permissions/retries globally.
+- **B01.04 (accepted foundation):** `workflow_engine.validate_domain_action` blocks forbidden repair/job/quote/invoice/approval actor and status transitions. Property/tenancy transitions retain the shared graph; case handlers are audited, server-role-checked adapters. Agent and trades actions, landlord approvals, and case actions share payload-bound replay checks. Payments, supplier credits and variations preserve workflow events even when their status badge is unchanged. Legal interpretation and actual payment-provider sign-off remain later bundle/release work.
 - **B01.05:** stale file writes pass unit tests. Two-real-PostgreSQL-stack test has been added and must pass the same revision before signoff.
-- **B01.06:** legacy inspection now flags valid-ID/wrong-property job, document, deposit, rent, approval and appointment links; missing approval/appointment references and document supersession pointers; cross-agency parent links; and conflicting document job/case IDs. New agent document uploads refuse unresolved cases, mismatched property/tenancy/job/case relationships and subject-switching replacements before writing bytes. Untagged historical rows remain unchanged, so actual agency reconciliation and a production-compatible migration rehearsal are still open.
+- **B01.06 (accepted foundation):** legacy inspection flags wrong-property job/document/deposit/rent/approval/appointment links, missing attachment pointers, document supersession gaps, duplicate invoice numbers and cross-agency links. New canonical jobs/approvals/documents are version tagged; uploads refuse mismatched subjects. `guard_no_silent_deletion` prevents changing archived IDs, durable workflow/reconciliation/audit histories, prior payments, supplier credits, document bytes and links without reviewed evidence. The real two-agency PostgreSQL pilot rejects wrong-tenant documents and foreign jobs, and proves the database unchanged after denial. Historic imported issues are blocked for explicit B04 human review, never silently reassigned.
 - **B01.07:** offline dry-run/exact-backup rollback unit tests pass; production-compatible PostgreSQL migration/restore remains release-blocked.
 
-## 6. B01 acceptance evidence to collect
+## 6. B01 acceptance evidence
 
 - Unit test `tests/test_b01_canonical_records.py` — duplicates, foreign tenancy link, deposit/inventory property consistency, optional units and joint owners.
 - Unit test `tests/test_b01_snapshot_revision.py` — stale object overwrite rejection.
 - Unit test `tests/test_b01_schema_upgrade.py` — dry-run/apply/backup/rollback/foreign source rejection.
 - Unit test `tests/test_b01_workflow_engine.py` and `tests/test_b01_agent_transition_handlers.py` — permitted property/tenancy transitions, audit, request replay and malformed input rejection.
-- CI Docker/PostgreSQL `tests/b00_seeded_agency_integration.py` — seeded two-agency storage, foreign-cookie/record denial and real stale-write guard.
+- CI Docker/PostgreSQL `tests/b00_seeded_agency_integration.py` — seeded two-agency storage, foreign-cookie denial, real stale-write guard, wrong-property document refusal, foreign-agency job refusal and unchanged database after rejected writes.
 - Entire existing Python suite, four-role Chromium browser suite and two-agency SaaS suite on the exact same head revision.
 
 ## 7. Continued implementation (10 November 2026)
@@ -75,7 +75,18 @@ Agent-only role access for those two HTTP actions comes from server `H.ROLE_API`
 - New strict link and duplicate-source diagnostics in `canonical_records.py`; no automatic merging or silent alteration of earlier records.
 - Added new-upload relationship checks, canonical document IDs/version tagging, per-case request replay, landlord approval replay and agent repair/financial action replay.
 - Existing legacy document supersession test now explicitly links its historical job to the case it references; intentionally broken links are refused.
-- Latest head under CI: `a297a5c371eb41c87650d752ef9213dcc98d8a5b`. **Do not mark B01 accepted until the same-head gate and remaining review of the three open task contracts pass.**
+- **Final tested code SHA:** `3ed0a0230137a05423151d052b70c225c1930e43`. Independent unit, browser and SaaS stacks passed at this SHA; aggregate mandatory gate succeeded at [run 42784113763](https://github.com/eon88/Roger/actions/runs/42784113763).
 - **No production, staging, B02 or PR merge actions.**
 
-**B01 status:** IN PROGRESS, 4/7 accepted tasks; B01.01/B01.04/B01.06 remain open. No deployment/merge authorization is implied.
+**B01 status:** ACCEPTED for isolated development, **7/7 foundation tasks**. Historical real-agency import decisions remain in B04, production-like PostgreSQL restore and external legal/accounting release approval remain B26. No production/staging/merge authorization is implied.
+
+## 8. Final B01 evidence and bounded acceptance (10 November 2026)
+
+- **Code tested:** [`3ed0a0230137a05423151d052b70c225c1930e43`](https://github.com/eon88/Roger/commit/3ed0a0230137a05423151d052b70c225c1930e43)
+- **Python:** 593 regression tests passed — [Actions run 42784113705](https://github.com/eon88/Roger/actions/runs/42784113705).
+- **Four-role real Chromium browser:** passed — [Actions run 42784113696](https://github.com/eon88/Roger/actions/runs/42784113696).
+- **Independent two-agency real PostgreSQL:** passed, including denial of foreign agency job and conflicting document links — [Actions run 42784113516](https://github.com/eon88/Roger/actions/runs/42784113516).
+- **Mandatory one-SHA policy + Python + browser + SaaS aggregate gate:** passed — [Actions run 42784113763](https://github.com/eon88/Roger/actions/runs/42784113763).
+- **Legacy snapshot source inspection:** committed `stage-clone/stage.json` has 4 properties, 17 cases, 10 jobs, 6 approvals and 1 document; no duplicate IDs, broken direct parent links, suspicious supplier invoice collisions or orphan document pointers were found in a read-only check. This is a demo snapshot, not a check of external historic agency datasets.
+- **Negative cases:** foreign actor, stale writes, replay with changed payload, invalid transitions, unapproved work, mismatched tenancy documents, financial over-settlement and missing payments, changing recorded supplier invoice amounts, document evidence mutation and destructive audit history replacement all have regression coverage.
+- **Scope boundary:** no production migration or deployment; no real owner client-money movement; no certification of every pre-existing third-party agency dataset. Those depend on B04/B10–B12/B26 as recorded in the master checklist. B02 can now start on this same draft one-release branch.
