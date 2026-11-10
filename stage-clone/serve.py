@@ -5044,17 +5044,20 @@ class H(SimpleHTTPRequestHandler):
             superseded = next((d for d in stage.get("documents", []) if d.get("id") == supersedes_id), None)
             if not superseded:
                 return self._json({"error": "superseded document not found"}, 404)
-            # Never attach a replacement to a different tenancy, repair or
-            # Party. Versions of one document remain on the same subject.
-            for field, requested in (
-                    ("property_id", prop["id"] if prop else None),
-                    ("party_id", party_id), ("tenancy_id", tenancy_id),
-                    ("case_id", c["id"] if c else None),
-                    ("job_id", job_id)):
-                stored = superseded.get(field)
-                if stored is not None or requested is not None:
-                    if str(stored) != str(requested):
-                        return self._json({"error": "replacement document has different " + field}, 409)
+            # Preserve compatibility with unclassified historical versions.
+            # Once any subject link is present, replacement must keep them all;
+            # unclassified old documents are retained for B04 manual review.
+            subject_links = ("property_id", "party_id", "tenancy_id", "case_id", "job_id")
+            if any(superseded.get(field) is not None for field in subject_links):
+                for field, requested in (
+                        ("property_id", prop["id"] if prop else None),
+                        ("party_id", party_id), ("tenancy_id", tenancy_id),
+                        ("case_id", c["id"] if c else None),
+                        ("job_id", job_id)):
+                    stored = superseded.get(field)
+                    if stored is not None or requested is not None:
+                        if str(stored) != str(requested):
+                            return self._json({"error": "replacement document has different " + field}, 409)
         b64 = str(data.get("content_b64", ""))
         import base64
         try:
