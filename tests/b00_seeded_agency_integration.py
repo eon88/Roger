@@ -75,7 +75,11 @@ def request(base, path, payload=None, cookie=None, host=None):
 
 def login(info):
     base="http://127.0.0.1:"+str(info["port"])
-    username="agency-admin"
+    username=info.get("admin_username")
+    if not username:
+        # Read the per-agency synthetic initial-credentials manifest for the username only.
+        # Never log or reuse the initial one-time password after rotation.
+        username=info.get("slug","agency-admin")
     password="new-unique-agency-password-"+info["agency_id"]
     code, body, cookie = request(
         base, "/login", {"username": username, "password": password},
