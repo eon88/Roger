@@ -119,6 +119,71 @@ def inspect(snapshot):
                         "collection": collection, "id": str(record.get("id", "")),
                         "field": field, "issue": "missing_related_" + target,
                     })
+    # Legacy links are diagnostic, never silently rewritten. A matching ID can
+    # still refer to the wrong property or tenant; existence checks alone miss it.
+    property_links = {
+        "tenancies": (("unit_id", "property_units"),),
+        "jobs": (("case_id", "cases"),),
+        "documents": (("tenancy_id", "tenancies"), ("case_id", "cases"),
+                      ("job_id", "jobs")),
+        "inventories": (("tenancy_id", "tenancies"),),
+        "deposit_records": (("tenancy_id", "tenancies"),),
+        "rent_ledger_entries": (("tenancy_id", "tenancies"),),
+        "approvals": (("job_id", "jobs"),),
+    }
+    for collection, fields in property_links.items():
+        for record in snapshot.get(collection, []):
+            record_property = _key(record.get("property_id"))
+            for field, target in fields:
+                linked = indexes[target].get(_key(record.get(field)))
+                if not linked:
+                    continue  # A missing parent has its own warning above.
+                parent_property = _key(linked.get("property_id"))
+                if record_property and parent_property and record_property != parent_property:
+                    warnings.append({
+                        "collection": collection, "id": str(record.get("id", "")),
+                        "field": field, "issue": "property_mismatch",
+                    })
+                if (record.get("agency_id") and linked.get("agency_id")
+                        and record["agency_id"] != linked["agency_id"]):
+                    warnings.append({
+                        "collection": collection, "id": str(record.get("id", "")),
+                        "field": field, "issue": "foreign_agency_reference",
+                    })
+    for job in snapshot.get("jobs", []):
+        linked_case = indexes["cases"].get(_key(job.get("case_id")))
+        if linked_case and job.get("case_id") is not None and job.get("property_id") is None:
+            warnings.append({
+                "collection": "jobs", "id": str(job.get("id", "")),
+                "field": "property_id", "issue": "unclassified_job_property",
+            })
+    for document in snapshot.get("documents", []):
+        linked_job = indexes["jobs"].get(_key(document.get("job_id")))
+        linked_case = _key(document.get("case_id"))
+        if (linked_job and linked_case
+                and _key(linked_job.get("case_id")) != linked_case):
+            warnings.append({
+                "collection": "documents", "id": str(document.get("id", "")),
+                "field": "job_id", "issue": "job_case_mismatch",
+            })
+    # These exact external keys are stronger evidence than matching names or
+    # contact details, but even collisions still require human review.
+    for collection in ENTITY_COLLECTIONS:
+        source_keys = {}
+        for record in snapshot.get(collection, []):
+            system = _key(record.get("source_system"))
+            identifier = _key(record.get("source_id"))
+            if not (system and identifier):
+                continue
+            pair = (system, identifier)
+            if pair in source_keys:
+                warnings.append({
+                    "collection": collection, "id": str(record.get("id", "")),
+                    "field": "source_id", "issue": "duplicate_external_identity",
+                })
+            else:
+                source_keys[pair] = record.get("id")
+
     return {
         "version": snapshot.get("model_metadata", {}).get("version", 0)
             if isinstance(snapshot.get("model_metadata"), dict) else 0,
@@ -136,6 +201,18 @@ def validate_for_save(snapshot):
     """
     result = inspect(snapshot)
     indexes = entity_indexes(snapshot)
+    # Historical inconsistencies remain visible to a reviewing agent; new
+    # canonical rows cannot introduce those same contradictions.
+    strict_issues = {
+        "property_mismatch", "foreign_agency_reference",
+        "job_case_mismatch", "duplicate_external_identity",
+    }
+    for warning in result["warnings"]:
+        record = indexes[warning["collection"]].get(warning["id"])
+        if record and record.get("model_version") == MODEL_VERSION and warning["issue"] in strict_issues:
+            raise RecordIntegrityError(
+                warning["collection"] + "." + warning["field"] +
+                " has " + warning["issue"])
     agency_id = snapshot.get("agency_id")
     for collection in ENTITY_COLLECTIONS:
         for record in snapshot.get(collection, []):
