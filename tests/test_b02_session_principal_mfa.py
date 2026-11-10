@@ -120,7 +120,8 @@ class SessionPrincipalSecurityTests(unittest.TestCase):
         h.send_header = lambda header, value: h.sent.append((header, value))
         h.end_headers = lambda: None
         h._json = lambda payload, code=200: h.sent.append(("error", code, payload))
-        current = a.totp_at(secret, int(time.time()) // 30)
+        step = int(time.time()) // 30
+        current = a.totp_at(secret, step)
         with patch.object(serve, "load_users", return_value=self.users), \
              patch.object(serve, "save_users") as saved:
             h.do_POST_login({"username": "staffuser", "password": self.password,
@@ -131,7 +132,7 @@ class SessionPrincipalSecurityTests(unittest.TestCase):
                              "totp": current})
             self.assertIn(("status", 200), h.sent)
             self.assertEqual(len(self.users["sessions"]), 1)
-            self.assertEqual(self.user["mfa_last_step"], int(time.time()) // 30)
+            self.assertEqual(self.user["mfa_last_step"], step)
             h.do_POST_login({"username": "staffuser", "password": self.password,
                              "totp": current})
             self.assertEqual(h.sent[-1][1], 401)
