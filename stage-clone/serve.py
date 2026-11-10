@@ -807,9 +807,8 @@ class H(SimpleHTTPRequestHandler):
                                "mfa_setup_required": bool(u["role"] == "agent"
                                    and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"
                                    and not u.get("mfa_secret"))})
-        m = re.fullmatch(r"/api/invitation/validate/([A-Za-z0-9_\-]+)", path)
-        if m:
-            return self._json(self.validate_invitation_token(m.group(1)))
+        # Invitation tokens must never appear in request URLs or access logs.
+        # The fragment-only invite UI validates by private JSON POST instead.
         m = re.fullmatch(r"/api/documents", path)
         if m:
             u = self.require({"agent", "tenant", "landlord", "trades"})
