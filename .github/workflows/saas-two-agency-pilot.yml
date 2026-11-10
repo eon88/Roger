@@ -153,6 +153,13 @@ jobs:
           fi
           echo "PASS: wrong-agency app startup was refused."
 
+      - name: Seed and verify complete synthetic agency data in both isolated databases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tests/b00_seeded_agency_integration.py \
+            "$ROGER_SAAS_TEST_ROOT/oaklettings" "$ROGER_SAAS_TEST_ROOT/birchlettings"
+
       - name: Diagnose isolated startup failure (no passwords)
         if: failure()
         shell: bash
