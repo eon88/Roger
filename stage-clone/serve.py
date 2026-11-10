@@ -6408,7 +6408,10 @@ class H(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        # Strict referrer suppression only for secret-bearing setup pages:
+        # portal logout forms still need same-origin Referer CSRF fallback.
+        if name in ("invite.html", "security.html", "staff-reset.html"):
+            self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
         if name.endswith(".html"):
             self.send_header("Cache-Control", "no-store")
