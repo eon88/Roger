@@ -49,13 +49,40 @@ USERS_FILE = os.path.join(DATA_DIR, "users.json")
 FILES_DIR = os.environ.get("ROGER_FILES_DIR", os.path.join(DATA_DIR, "files"))
 os.makedirs(FILES_DIR, mode=0o700, exist_ok=True)
 SESSION_TTL = timedelta(days=7)
-LOGIN_TRIES = {}  # ip -> [timestamps]; in-memory, resets on restart (acceptable for demo-scale)
+LOGIN_TRIES = {}  # IP -> timestamps; bounded, per-process fallback
+LOGIN_ACCOUNT_TRIES = {}  # SHA-256(normalised account) -> timestamps; no name in key
 
 def login_throttled(ip):
     nowts = datetime.now(timezone.utc)
     tries = [t for t in LOGIN_TRIES.get(ip, []) if (nowts - t).total_seconds() < 300]
     LOGIN_TRIES[ip] = tries
     return len(tries) >= 5
+
+def account_throttled(username):
+    """Limit distributed guesses against one username without logging the name."""
+    if not isinstance(username, str) or not username:
+        return False
+    digest = hashlib.sha256(username.casefold().encode("utf-8")).hexdigest()
+    clock = datetime.now(timezone.utc)
+    recent = [t for t in LOGIN_ACCOUNT_TRIES.get(digest, [])
+              if (clock - t).total_seconds() < 900]
+    LOGIN_ACCOUNT_TRIES[digest] = recent
+    return len(recent) >= 10
+
+
+def account_login_note(username, ok):
+    if not isinstance(username, str) or not username:
+        return
+    digest = hashlib.sha256(username.casefold().encode("utf-8")).hexdigest()
+    if ok:
+        LOGIN_ACCOUNT_TRIES.pop(digest, None)
+    else:
+        clock = datetime.now(timezone.utc)
+        LOGIN_ACCOUNT_TRIES[digest] = [
+            t for t in LOGIN_ACCOUNT_TRIES.get(digest, [])
+            if (clock - t).total_seconds() < 900
+        ] + [clock]
+
 
 def login_note(ip, ok):
     if ok:
@@ -444,6 +471,21 @@ class H(SimpleHTTPRequestHandler):
                 self.send_header("Location", "/change-password")
                 self.end_headers()
             return None
+        if (u.get("role") == "agent"
+                and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"
+                and not u.get("mfa_secret")
+                and path not in (
+                    "/security", "/api/security/mfa/start",
+                    "/api/security/mfa/confirm", "/api/security/sessions/revoke",
+                )):
+            if path.startswith("/api/"):
+                self._json({"error": "staff two-factor enrolment required",
+                            "mfa_setup_required": True}, 403)
+            else:
+                self.send_response(303)
+                self.send_header("Location", "/security")
+                self.end_headers()
+            return None
         if roles and u["role"] not in roles:
             if self.path.startswith("/api/"):
                 self._json({"error": "not your portal"}, 403)
@@ -463,6 +505,8 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "too many attempts — try again in 5 minutes"}, 429)
         username = str(data.get("username", ""))[:40]
         password = str(data.get("password", ""))[:200]
+        if account_throttled(username):
+            return self._json({"error": "too many attempts — try again in 15 minutes"}, 429)
         users = load_users()
         u = next((x for x in users.get("users", []) if x.get("username") == username), None)
         if (not u or not auth_security.password_matches(u, password)
@@ -470,6 +514,7 @@ class H(SimpleHTTPRequestHandler):
                 or (os.environ.get("ROGER_SAAS_MODE") == "1"
                     and u.get("agency_id") not in (None, os.environ.get("ROGER_AGENCY_ID")))):
             login_note(ip, ok=False)
+            account_login_note(username, ok=False)
             return self._json({"error": "wrong username or password"}, 401)
         mfa_step = None
         if u.get("mfa_secret"):
@@ -481,8 +526,10 @@ class H(SimpleHTTPRequestHandler):
                 mfa_step = None
             if mfa_step is None:
                 login_note(ip, ok=False)
+                account_login_note(username, ok=False)
                 return self._json({"error": "wrong username, password or verification code"}, 401)
         login_note(ip, ok=True)
+        account_login_note(username, ok=True)
         tok = secrets.token_urlsafe(32)
         nowiso = datetime.now(timezone.utc)
         # Expired or pre-B02 unbound sessions must never regain access.
@@ -509,7 +556,10 @@ class H(SimpleHTTPRequestHandler):
         )
         self.end_headers()
         self.wfile.write(json.dumps({"ok": True, "role": u["role"],
-                                     "password_change_required": bool(u.get("password_change_required"))}).encode())
+                                     "password_change_required": bool(u.get("password_change_required")),
+                                     "mfa_setup_required": bool(u["role"] == "agent"
+                                         and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"
+                                         and not u.get("mfa_secret"))}).encode())
 
     # ---------- routes ----------
     def do_HEAD(self):
@@ -751,7 +801,12 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/whoami":
             u = self.session_user()
             return self._json({"authenticated": False} if not u else
-                              {"username": u["username"], "role": u["role"], "display_name": u["display_name"]})
+                              {"authenticated": True,
+                               "username": u["username"], "role": u["role"],
+                               "display_name": u.get("display_name", ""),
+                               "mfa_setup_required": bool(u["role"] == "agent"
+                                   and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"
+                                   and not u.get("mfa_secret"))})
         m = re.fullmatch(r"/api/invitation/validate/([A-Za-z0-9_\-]+)", path)
         if m:
             return self._json(self.validate_invitation_token(m.group(1)))
