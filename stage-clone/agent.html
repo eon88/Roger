@@ -196,7 +196,14 @@ function markFlips(){ const cur={};
   prevStatus=cur; FL={flip,res}; }
 const fl=k=>FL.flip[k]?'flash-once':'';
 
+function tenancyDraftInProgress(){
+  return [...document.querySelectorAll('#view-people details[open]')]
+    .some(d=>d.dataset.rogerFormEdited==='1');
+}
 async function load(manual){
+  // Do not replace a user's active rent/pet form during 15-second polling.
+  // Explicit successful actions call load(true) to fetch the saved state.
+  if(!manual&&tenancyDraftInProgress())return;
   try{const who=await api('/api/whoami');document.getElementById('agencyAdminMenuLink').hidden=!(who.authenticated&&who.username==='agency-admin')}catch(e){document.getElementById('agencyAdminMenuLink').hidden=true}
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
@@ -221,10 +228,14 @@ async function load(manual){
 // Only explicit field IDs are restored; anonymous fields are not guessed, to avoid
 // putting private data into a different record when the list order changes.
 document.addEventListener('input',e=>{
+ const tenancyDetails=e.target?.closest?.('#view-people details');
+ if(tenancyDetails && e.target.matches('input,textarea,select')) tenancyDetails.dataset.rogerFormEdited='1';
  if(e.target?.matches?.('#main input[id],#main textarea[id],#main select[id]'))
    e.target.dataset.rogerEdited='1';
 },true);
 document.addEventListener('change',e=>{
+ const tenancyDetails=e.target?.closest?.('#view-people details');
+ if(tenancyDetails && e.target.matches('input,textarea,select')) tenancyDetails.dataset.rogerFormEdited='1';
  if(e.target?.matches?.('#main input[id],#main textarea[id],#main select[id]'))
    e.target.dataset.rogerEdited='1';
 },true);
@@ -1147,7 +1158,7 @@ async function tenancyRentAction(btn,action){
    body.notice_served_on=card.querySelector('.rent-change-notice')?.value;
    body.effective_on=card.querySelector('.rent-change-effective')?.value;
  }else if(!confirm('Confirm this action after checking the notice and tenancy evidence?'))return;
- await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',body);toast('Tenancy record updated; check all ledger entries separately.');await load();}catch(e){}});
+ await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',body);toast('Tenancy record updated; check all ledger entries separately.');await load(true);}catch(e){}});
 }
 async function decidePet(btn,decision){
  const t=(stage.tenancies||[]).find(x=>x.id===btn.dataset.tenancyId);
@@ -1155,7 +1166,7 @@ async function decidePet(btn,decision){
  if(!card)return;
  const reason=Array.from(card.querySelectorAll('.pet-reason')).find(el=>el.dataset.requestId===btn.dataset.requestId)?.value||'';
  if(reason.trim().length<8){toast('Record a reason (at least 8 characters).','bad');return;}
- await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',{action:'decide_pet',tenancy_id:t.id,request_id:btn.dataset.requestId,decision,reason});toast('Pet request decision recorded.');await load();}catch(e){}});
+ await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',{action:'decide_pet',tenancy_id:t.id,request_id:btn.dataset.requestId,decision,reason});toast('Pet request decision recorded.');await load(true);}catch(e){}});
 }
 function renderInventories(){
  const list=window._inventories||[],tenancies=stage.tenancies||[];
