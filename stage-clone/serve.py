@@ -504,6 +504,14 @@ class H(SimpleHTTPRequestHandler):
     def is_public(self, path):
         return path in self.PUBLIC_GET or path.startswith("/_next/static/") or path == "/api/public"
 
+    @staticmethod
+    def agency_paused():
+        """A cancelled or suspended agency must not accept new portal traffic."""
+        if os.environ.get("ROGER_SAAS_MODE") != "1":
+            return False
+        profile = load_stage().get("agency_profile")
+        return isinstance(profile, dict) and profile.get("operational_status") in ("suspended", "cancelled")
+
     def do_POST_login(self, data):
         ip = self.client_address[0]
         if login_throttled(ip):
@@ -644,6 +652,8 @@ class H(SimpleHTTPRequestHandler):
         if ("%" in path or "\\" in path or "//" in path
                 or any(x in (".", "..") for x in path.split("/"))):
             return self.send_error(404)
+        if path != "/api/agency-info" and self.agency_paused():
+            return self._json({"error": "agency temporarily unavailable; contact Roger support"}, 503)
         if path == "/api/agency-info":
             saas_mode = os.environ.get("ROGER_SAAS_MODE") == "1"
             name = os.environ.get("ROGER_AGENCY_NAME", "").strip() if saas_mode else "Roger Lettings"
@@ -1255,6 +1265,10 @@ class H(SimpleHTTPRequestHandler):
             return False
 
     def do_POST(self):
+        # Never allow a suspended/cancelled tenant to mutate the agency or
+        # collect new submissions. Logout remains available to revoke sessions.
+        if self.path.split("?")[0] != "/logout" and self.agency_paused():
+            return self._json({"error": "agency temporarily unavailable; contact Roger support"}, 503)
         # Validate and fully read client input BEFORE locking; slow network
         # uploads must not block other writers. Re-authenticate under the lock.
         path = self.path.split("?")[0]
@@ -2521,6 +2535,11 @@ class H(SimpleHTTPRequestHandler):
         if not owner:
             return self._json({"error": "landlord account is no longer active"}, 409)
         if action == "approve":
+            profile = stage.get("agency_profile") or {}
+            if (profile.get("plan") != "unassigned"
+                    and type(profile.get("property_limit")) is int
+                    and len(stage.get("properties", [])) >= profile["property_limit"]):
+                return self._json({"error": "agency property plan limit reached; contact the operator"}, 409)
             num = int(stage.get("next_onboarded_property_id", 1))
             existing_ids = {str(x.get("id")) for x in stage.get("properties", [])}
             while "onboarded-" + str(num) in existing_ids:
@@ -5029,6 +5048,14 @@ class H(SimpleHTTPRequestHandler):
                 or len(email) > 254 or not 2 <= len(name) <= 100):
             return self._json({"error": "valid staff name and email required"}, 400)
         stage = load_stage()
+        profile = stage.get("agency_profile") or {}
+        if profile.get("plan") != "unassigned" and type(profile.get("staff_limit")) is int:
+            active_seats = sum(1 for account in users.get("users", [])
+                               if account.get("role") == "agent" and not account.get("disabled_at"))
+            pending_seats = sum(1 for invite in stage.get("invitations", [])
+                                if invite.get("staff_invitation") and self.invitation_active(invite))
+            if active_seats + pending_seats >= profile["staff_limit"]:
+                return self._json({"error": "agency staff plan limit reached; contact the operator"}, 409)
         if (any(x.get("email", "").casefold() == email.casefold()
                 for x in users.get("users", []))
                 or any(x.get("email") == email and x.get("status") == "pending"
