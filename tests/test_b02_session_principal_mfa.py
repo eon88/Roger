@@ -81,6 +81,63 @@ class SessionPrincipalSecurityTests(unittest.TestCase):
         self.assertIsNone(a.verify_totp(secret, "28708x", now=59))
         self.assertIsNone(a.verify_totp(secret, "000000", now=59))
 
+    def test_login_guesses_are_throttled_per_account_without_raw_names(self):
+        serve.LOGIN_ACCOUNT_TRIES.clear()
+        self.addCleanup(serve.LOGIN_ACCOUNT_TRIES.clear)
+        for _ in range(10):
+            serve.account_login_note("victim@example.test", ok=False)
+        self.assertTrue(serve.account_throttled("victim@example.test"))
+        self.assertFalse(serve.account_throttled("other@example.test"))
+        self.assertNotIn("victim@example.test", repr(serve.LOGIN_ACCOUNT_TRIES))
+        serve.account_login_note("victim@example.test", ok=True)
+        self.assertFalse(serve.account_throttled("victim@example.test"))
+
+    def test_mfa_policy_blocks_agent_business_routes_until_enrolled(self):
+        h = self.handler()
+        h.path = "/api/stage"
+        h.session_user = lambda: self.user
+        with patch.dict("os.environ", {"ROGER_REQUIRE_AGENT_MFA": "1"}):
+            self.assertIsNone(h.require({"agent"}))
+            self.assertEqual(h.sent[-1][0], 403)
+            self.assertTrue(h.sent[-1][1]["mfa_setup_required"])
+            h.path = "/security"
+            self.assertEqual(h.require({"agent"}), self.user)
+            h.path = "/api/security/mfa/start"
+            self.assertEqual(h.require({"agent"}), self.user)
+            self.user["mfa_secret"] = a.new_totp_secret(b"b" * 20)
+            h.path = "/api/stage"
+            self.assertEqual(h.require({"agent"}), self.user)
+
+    def test_totp_login_checks_one_time_code_and_denies_replayed_step(self):
+        secret = a.new_totp_secret(b"b" * 20)
+        self.user["mfa_secret"] = secret
+        h = serve.H.__new__(serve.H)
+        h.path = "/login"
+        h.client_address = ("203.0.113.10", 5555)
+        h.sent = []
+        h.wfile = io.BytesIO()
+        h.send_response = lambda code: h.sent.append(("status", code))
+        h.send_header = lambda header, value: h.sent.append((header, value))
+        h.end_headers = lambda: None
+        h._json = lambda payload, code=200: h.sent.append(("error", code, payload))
+        current = a.totp_at(secret, int(time.time()) // 30)
+        with patch.object(serve, "load_users", return_value=self.users), \
+             patch.object(serve, "save_users") as saved:
+            h.do_POST_login({"username": "staffuser", "password": self.password,
+                             "totp": "123x00"})
+            self.assertEqual(h.sent[-1][1], 401)
+            self.assertEqual(self.users["sessions"], {})
+            h.do_POST_login({"username": "staffuser", "password": self.password,
+                             "totp": current})
+            self.assertIn(("status", 200), h.sent)
+            self.assertEqual(len(self.users["sessions"]), 1)
+            self.assertEqual(self.user["mfa_last_step"], int(time.time()) // 30)
+            h.do_POST_login({"username": "staffuser", "password": self.password,
+                             "totp": current})
+            self.assertEqual(h.sent[-1][1], 401)
+            self.assertEqual(len(self.users["sessions"]), 1)
+            saved.assert_called()
+
     def test_invalid_totp_key_is_rejected(self):
         with self.assertRaises(ValueError):
             a.totp_at("too-short", 5)
