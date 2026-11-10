@@ -25,11 +25,12 @@ class DocumentAttachmentConsistencyTests(unittest.TestCase):
         loader = patch.object(serve, "load_stage", return_value=self.stage)
         writer = patch.object(serve, "save_stage")
         storer = patch.object(self.handler, "store_document_body", return_value="synthetic-file-key")
-        for p in (loader, writer, storer):
-            p.start()
-            self.addCleanup(p.stop)
-        self.writer = writer
-        self.storer = storer
+        loader.start()
+        self.addCleanup(loader.stop)
+        self.writer = writer.start()
+        self.addCleanup(writer.stop)
+        self.storer = storer.start()
+        self.addCleanup(storer.stop)
 
     def upload(self, **kwargs):
         payload = {
