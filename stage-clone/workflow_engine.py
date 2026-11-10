@@ -4,6 +4,9 @@ This engine does not decide legal notices, payments, or possession. Handler
 business checks must run BEFORE recording a state change. Client-supplied actor
 and timestamps are never accepted.
 """
+import hashlib
+import json
+
 PROPERTY_TRANSITIONS = {
     "prospect": ("onboarding", "offboarded"),
     "onboarding": ("ready_to_market", "offboarded"),
@@ -107,6 +110,62 @@ def apply_transition(record, *, kind, target, actor, at,
         event["effective_date"]=effective_date
     record[state_field]=target
     record.setdefault(history_field,[]).append(event)
+    return True
+
+
+
+def _action_fingerprint(payload):
+    """Hash the JSON request, excluding the retry token itself."""
+    if not isinstance(payload, dict):
+        raise InvalidTransition("workflow request must be an object")
+    try:
+        packed = json.dumps(
+            {key: value for key, value in payload.items() if key != "request_id"},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise InvalidTransition("workflow request must be JSON-compatible") from exc
+    return hashlib.sha256(packed.encode("utf-8")).hexdigest()
+
+
+def check_action_replay(record, *, request_id, action, actor, payload):
+    """Check idempotency for sensitive case/job/approval/financial actions.
+
+    The caller must verify the server-authenticated actor's permission to see
+    and operate this record BEFORE calling this function. Returning True means
+    this exact actor's identical request has already committed; do not repeat
+    financial adjustments, approvals, messages, or other side effects.
+    """
+    token = _request_id(request_id)
+    if token is None:
+        return False
+    fingerprint = _action_fingerprint(payload)
+    for item in record.get("workflow_requests", []):
+        if item.get("request_id") == token:
+            if (item.get("action") != action or item.get("by") != actor
+                    or item.get("payload_sha256") != fingerprint):
+                raise RequestReplayConflict("request ID already used with a different action, actor or payload")
+            return True
+    return False
+
+
+def remember_action_request(record, *, request_id, action, actor, role, at, payload):
+    """Record a successfully applied action in the same snapshot transaction."""
+    token = _request_id(request_id)
+    if token is None:
+        return False
+    if not isinstance(record, dict) or not isinstance(actor, str) or not actor:
+        raise InvalidTransition("authenticated actor and record are required")
+    if role not in ("agent", "tenant", "landlord", "trades", "system"):
+        raise InvalidTransition("invalid actor role")
+    if not isinstance(at, str) or not at:
+        raise InvalidTransition("server timestamp required")
+    if check_action_replay(record, request_id=token, action=action, actor=actor, payload=payload):
+        raise RequestReplayConflict("cannot record the same action twice")
+    record.setdefault("workflow_requests", []).append({
+        "request_id": token, "action": action, "by": actor,
+        "role": role, "at": at, "payload_sha256": _action_fingerprint(payload),
+    })
     return True
 
 
