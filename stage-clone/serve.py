@@ -5026,6 +5026,8 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "invitation not found"}, 404)
         if data.get("action") != "revoke":
             return self._json({"error": "only revoke is supported here; invitees redeem through /invite"}, 400)
+        if inv.get("staff_invitation") and (self.user or {}).get("username") != "agency-admin":
+            return self._json({"error": "staff invitations require the agency administrator"}, 403)
         if inv.get("status") != "pending":
             return self._json({"error": "invitation already closed"}, 409)
         inv["status"] = "revoked"
@@ -5040,7 +5042,20 @@ class H(SimpleHTTPRequestHandler):
             return {"valid": False}
         stage = load_stage()
         inv = self.invitation_lookup(stage, token)
-        if not self.invitation_active(inv) or not self.invitation_party(stage, inv):
+        if not self.invitation_active(inv):
+            return {"valid": False}
+        if inv.get("staff_invitation"):
+            if inv.get("role") != "agent":
+                return {"valid": False}
+            users = load_users()
+            if any(u.get("email", "").casefold() == inv.get("email", "").casefold()
+                   for u in users.get("users", [])):
+                return {"valid": False}
+            if not any(u.get("username") == inv.get("created_by")
+                       and u.get("role") == "agent" and not u.get("disabled_at")
+                       for u in users.get("users", [])):
+                return {"valid": False}
+        elif not self.invitation_party(stage, inv):
             return {"valid": False}
         return {"valid": True, "role": inv["role"],
                 "agency": os.environ.get("ROGER_AGENCY_NAME", "Roger Agency")[:100]}
@@ -5071,6 +5086,8 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "registration not available on this site"}, 409)
         stage = load_stage()
         inv = self.invitation_lookup(stage, data.get("token"))
+        if inv and inv.get("staff_invitation") and self.invitation_active(inv):
+            return self.handle_staff_invite_acceptance(stage, inv, data)
         party = self.invitation_party(stage, inv) if self.invitation_active(inv) else None
         if not party:
             return self._json({"error": "invitation is invalid, expired or revoked"}, 400)
@@ -5106,6 +5123,46 @@ class H(SimpleHTTPRequestHandler):
         inv.pop("token", None)
         self.audit(stage, {"actor": username, "action": "invitation_redeemed",
                            "target": party["id"], "note": inv["role"]})
+        self.persist_invite_registration(users, stage)
+        return self._json({"success": True, "login": "/login"})
+
+    def handle_staff_invite_acceptance(self, stage, invitation, data):
+        """Privileged onboarding is single-use, agency-scoped, never public signup."""
+        if not invitation.get("staff_invitation") or invitation.get("role") != "agent":
+            return self._json({"error": "invalid staff invitation"}, 400)
+        username = data.get("username")
+        password = data.get("password")
+        if (not isinstance(username, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_.-]{4,39}", username)
+                or username in {"admin", "agency-admin", "dev", "root", "agent"}):
+            return self._json({"error": "choose a valid unique staff username"}, 400)
+        if (not isinstance(password, str) or not 14 <= len(password) <= 128
+                or len(password.encode("utf-8")) > 512
+                or password.strip() != password
+                or username in password.casefold()):
+            return self._json({"error": "staff password must be a unique 14-128 character passphrase"}, 400)
+        users = load_users()
+        if (not any(u.get("username") == invitation.get("created_by")
+                    and u.get("role") == "agent" and not u.get("disabled_at")
+                    for u in users.get("users", []))
+                or any(u.get("username", "").casefold() == username.casefold()
+                       or u.get("email", "").casefold() == invitation["email"].casefold()
+                       for u in users.get("users", []))):
+            return self._json({"error": "staff invitation no longer eligible"}, 409)
+        salt = secrets.token_hex(16)
+        users.setdefault("users", []).append({
+            "username": username, "role": "agent",
+            "display_name": invitation["display_name"],
+            "email": invitation["email"], "agency_id": stage.get("agency_id"),
+            "account_id": "account-" + secrets.token_hex(16),
+            "salt": salt,
+            "hash": hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt),
+                                   n=2**14, r=8, p=1).hex(),
+        })
+        invitation["status"] = "used"
+        invitation["used_at"] = now()
+        self.audit(stage, {"actor": username, "action": "staff_invitation_redeemed",
+                           "target": "staff", "note": "invited agent account linked"})
         self.persist_invite_registration(users, stage)
         return self._json({"success": True, "login": "/login"})
 
