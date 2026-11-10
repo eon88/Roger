@@ -80,17 +80,18 @@
 **Depends on:** B01  
 **Starting point:** Existing four-role login, agency separation and synthetic boundary tests
 
-- [ ] **B02.01** Enumerate server-side access controls for every GET, POST, upload, attachment download, export, email and background job.
-- [ ] **B02.02** Verify agent roles versus landlord, tenant, applicant and trades: identity, property relationship, job assignment and document access.
-- [ ] **B02.03** Complete staff invitation, suspension, password-reset/recovery, session revocation and strong authentication/MFA approach.
-- [ ] **B02.04** Protect against CSRF, insecure cookies, brute force, unsafe shared links and hidden privilege escalation.
-- [ ] **B02.05** Add cross-agency, cross-property, joint owner, multiple occupant and stale-session denial tests.
-- [ ] **B02.06** Audit information leakage in logs, public error responses, analytics, statements and notification payloads.
+- [x] **B02.01** Enumerate server-side access controls for every GET, POST, upload, attachment download, export, email and background job.
+- [x] **B02.02** Verify agent roles versus landlord, tenant, applicant and trades: identity, property relationship, job assignment and document access.
+- [x] **B02.03** Complete staff invitation, suspension, password-reset/recovery, session revocation and strong authentication/MFA approach.
+- [x] **B02.04** Protect against CSRF, insecure cookies, brute force, unsafe shared links and hidden privilege escalation.
+- [x] **B02.05** Add cross-agency, cross-property, joint owner, multiple occupant and stale-session denial tests.
+- [x] **B02.06** Audit information leakage in logs, public error responses, analytics, statements and notification payloads.
 
-**Bundle acceptance (DONE):** Every endpoint denies unauthorised actors in automated tests; realistic two-agency/browser isolation passes, including documents and exports.
+**Bundle acceptance (ACCEPTED — ISOLATED DEVELOPMENT ONLY):** Every endpoint denies unauthorised actors in automated tests; realistic two-agency/browser isolation passes, including documents and exports.
 
-**Evidence:** commit __ · Python tests __ · Chromium/integration run __ · acceptance __ · open blockers __
+**Evidence (B02 ACCEPTED — 6/6):** [Security access matrix and release boundaries](ROGER_V1_B02_SECURITY_ACCESS_MATRIX.md) · [exact tested implementation `712fb489f6164a0517ed4384d9a523d3a3533dfc`](https://github.com/eon88/Roger/commit/712fb489f6164a0517ed4384d9a523d3a3533dfc) · [635 Python tests PASS](https://github.com/eon88/Roger/actions/runs/42802512821) · [four-role Chromium browser PASS](https://github.com/eon88/Roger/actions/runs/42802512931) · [independent two-agency real PostgreSQL staff/tenant isolation PASS](https://github.com/eon88/Roger/actions/runs/42802512818) · [one-commit mandatory aggregate PASS](https://github.com/eon88/Roger/actions/runs/42802512802). All GET/POST routes inventoried and protected/public policy checked by AST test. Four-role/account/Party ownership, landlord/tenant document/financial redaction, TLS-ready secure cookies, origin-CSRF checks, denied expired/role-changed/foreign sessions, staff administrator invite/suspend/reset, password confirmation, optional TOTP MFA, session revocation, public error redaction, safe attachment downloads and joint owner/occupant denial tests completed.
 
+**Boundary/handoff:** B02 accepts the local development security *foundation* against synthetic isolated data and a live two-agency **test** database, not production IAM certification. Staff-enforced MFA is configurable and OFF until staged rollout; account/IP brute-force throttle is per process, not yet distributed; TOTP secrets need deployment-grade encryption/key custody and administrator break-glass MFA recovery policy in B26. The future single release must pass its own deployment and operational review. **B03 is dependency-ready but no B03 changes, staging/production deployment, PR merge or release have been made.**
 
 ### B03 — Agency onboarding and SaaS administration
 
