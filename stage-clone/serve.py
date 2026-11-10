@@ -4767,6 +4767,167 @@ class H(SimpleHTTPRequestHandler):
         self._json({"success": True})
 
 
+    # ---------- B02 account security: explicit credentials and session controls ----------
+    def security_identity(self, data):
+        """Only the currently authenticated account can administer its security."""
+        actor = self.user or {}
+        if not actor.get("username") or not isinstance(data.get("current_password"), str):
+            return None, None
+        users = load_users()
+        account = next((item for item in users.get("users", [])
+                        if item.get("username") == actor["username"]
+                        and item.get("role") == actor.get("role")
+                        and item.get("account_id") == actor.get("account_id")
+                        and not item.get("disabled_at")), None)
+        if not account or not auth_security.password_matches(account, data["current_password"]):
+            return None, None
+        return users, account
+
+    def handle_sessions_revoke(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        choice = data.get("scope")
+        if choice not in ("other", "all"):
+            return self._json({"error": "scope must be other or all"}, 400)
+        current_token = self.parse_cookies().get("stage_session")
+        sessions = users.get("sessions", {})
+        previous = len(sessions)
+        users["sessions"] = {
+            token: session for token, session in sessions.items()
+            if session.get("username") != account["username"]
+            or (choice == "other" and token == current_token)
+        }
+        save_users(users)
+        return self._json({"success": True, "sessions_revoked": previous - len(users["sessions"]),
+                           "login_required": choice == "all"})
+
+    def handle_mfa_start(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        if account.get("mfa_secret"):
+            return self._json({"error": "two-factor authentication is already enabled"}, 409)
+        secret = auth_security.new_totp_secret(secrets.token_bytes(20))
+        account["mfa_pending_secret"] = secret
+        save_users(users)
+        # Only this password-verified response contains the enrolment secret.
+        # It is never returned by /api/stage, /api/whoami or the audit log.
+        issuer = os.environ.get("ROGER_AGENCY_NAME", "Roger")
+        uri = ("otpauth://totp/" +
+               urllib.parse.quote(issuer + ":" + account["username"], safe="") +
+               "?secret=" + secret + "&issuer=" + urllib.parse.quote(issuer, safe="") +
+               "&algorithm=SHA1&digits=6&period=30")
+        return self._json({"success": True, "secret": secret, "otpauth_uri": uri,
+                           "notice": "Verify a code to activate. Keep this secret private."})
+
+    def handle_mfa_confirm(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        pending = account.get("mfa_pending_secret")
+        if not pending or account.get("mfa_secret"):
+            return self._json({"error": "no pending two-factor enrolment"}, 409)
+        code = auth_security.verify_totp(pending, data.get("totp"))
+        if code is None:
+            return self._json({"error": "invalid verification code"}, 400)
+        account["mfa_secret"] = pending
+        account["mfa_last_step"] = code
+        account.pop("mfa_pending_secret", None)
+        users["sessions"] = {
+            token: session for token, session in users.get("sessions", {}).items()
+            if session.get("username") != account["username"]
+        }
+        save_users(users)
+        return self._json({"success": True, "mfa_enabled": True, "login_required": True})
+
+    def handle_mfa_disable(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        if (account.get("role") == "agent"
+                and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"):
+            return self._json({"error": "staff two-factor policy requires administrator recovery"}, 403)
+        secret = account.get("mfa_secret")
+        if not secret or auth_security.verify_totp(
+                secret, data.get("totp"), last_step=account.get("mfa_last_step", -1)) is None:
+            return self._json({"error": "invalid verification code"}, 400)
+        account.pop("mfa_secret", None)
+        account.pop("mfa_last_step", None)
+        account.pop("mfa_pending_secret", None)
+        users["sessions"] = {
+            token: session for token, session in users.get("sessions", {}).items()
+            if session.get("username") != account["username"]
+        }
+        save_users(users)
+        return self._json({"success": True, "mfa_enabled": False, "login_required": True})
+
+    def staff_admin(self, data):
+        actor = self.user or {}
+        if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                or os.environ.get("ROGER_STORAGE_BACKEND") != "postgres"
+                or actor.get("role") != "agent" or actor.get("username") != "agency-admin"):
+            return None, None
+        return self.security_identity(data)
+
+    def handle_staff_invitation(self, data):
+        """Only the confirmed agency administrator can issue agent privileges."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "administrator reauthentication required"}, 403)
+        email = str(data.get("email") or "").strip().lower()
+        name = str(data.get("display_name") or "").strip()
+        if (not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email)
+                or len(email) > 254 or not 2 <= len(name) <= 100):
+            return self._json({"error": "valid staff name and email required"}, 400)
+        stage = load_stage()
+        if (any(x.get("email", "").casefold() == email.casefold()
+                for x in users.get("users", []))
+                or any(x.get("email") == email and x.get("status") == "pending"
+                       and self.invitation_active(x) for x in stage.get("invitations", []))):
+            return self._json({"error": "account or pending invitation already exists"}, 409)
+        token = secrets.token_urlsafe(32)
+        record = {
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "role": "agent", "staff_invitation": True, "email": email,
+            "display_name": name, "status": "pending",
+            "created_by": admin["username"], "created_at": now(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
+        }
+        stage.setdefault("invitations", []).append(record)
+        self.audit(stage, {"actor": admin["username"], "action": "staff_invitation_created",
+                           "target": "staff", "note": "privileged onboarding approved"})
+        save_stage(stage)
+        return self._json({"success": True, "invite_url": "/invite#token=" + token,
+                           "expires_at": record["expires_at"], "delivery": "manual-verified-only"})
+
+    def handle_staff_suspend(self, data):
+        """Administrator-only suspension immediately revokes a staff login."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "administrator reauthentication required"}, 403)
+        target = str(data.get("username") or "")
+        reason = str(data.get("reason") or "").strip()
+        if target == "agency-admin" or not 12 <= len(reason) <= 500:
+            return self._json({"error": "another staff username and written reason required"}, 400)
+        staff = next((x for x in users.get("users", []) if x.get("username") == target
+                      and x.get("role") == "agent" and not x.get("disabled_at")), None)
+        if not staff:
+            return self._json({"error": "active staff account not found"}, 404)
+        stage = load_stage()
+        staff["disabled_at"] = now()
+        staff["disabled_by"] = admin["username"]
+        old = users.get("sessions", {})
+        users["sessions"] = {
+            token: session for token, session in old.items()
+            if session.get("username") != target
+        }
+        self.audit(stage, {"actor": admin["username"], "action": "staff_account_suspended",
+                           "target": "staff", "note": reason})
+        self.persist_invite_registration(users, stage)
+        return self._json({"success": True,
+                           "sessions_revoked": len(old) - len(users["sessions"])})
+
     # ---------- agency-bound invitation onboarding ----------
     @staticmethod
     def invitation_lookup(stage, token):
