@@ -406,6 +406,11 @@ class H(SimpleHTTPRequestHandler):
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
+                "/api/security/staff/invite": {"agent"}, "/api/security/staff/suspend": {"agent"},
+                "/api/security/mfa/start": {"agent", "tenant", "landlord", "trades"},
+                "/api/security/mfa/confirm": {"agent", "tenant", "landlord", "trades"},
+                "/api/security/mfa/disable": {"agent", "tenant", "landlord", "trades"},
+                "/api/security/sessions/revoke": {"agent", "tenant", "landlord", "trades"},
                 "/api/document": {"agent"}, "/api/document-action": {"agent"}}
     DOCUMENT_TYPES = (
         "property_document", "tenancy_agreement", "deposit_receipt", "inspection_report",
@@ -1199,6 +1204,12 @@ class H(SimpleHTTPRequestHandler):
             "/api/appointment-action": self.handle_appointment_action,
             "/api/invitation": self.handle_invitation,
             "/api/invitation-action": self.handle_invitation_action,
+            "/api/security/staff/invite": self.handle_staff_invitation,
+            "/api/security/staff/suspend": self.handle_staff_suspend,
+            "/api/security/mfa/start": self.handle_mfa_start,
+            "/api/security/mfa/confirm": self.handle_mfa_confirm,
+            "/api/security/mfa/disable": self.handle_mfa_disable,
+            "/api/security/sessions/revoke": self.handle_sessions_revoke,
             "/api/document": self.handle_document,
             "/api/document-action": self.handle_document_action,
             "/api/tenant/issue": self.handle_tenant_issue,
@@ -1262,6 +1273,9 @@ class H(SimpleHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        for header, value in auth_security.SECURITY_HEADERS.items():
+            self.send_header(header, value)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -5969,9 +5983,11 @@ class H(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
-        if name == "invite.html":
-            self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        if name.endswith(".html"):
             self.send_header("Cache-Control", "no-store")
+        if name == "invite.html":
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
