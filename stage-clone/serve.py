@@ -1902,6 +1902,9 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "tenancy not found"}, 404)
         target = str(data.get("status", ""))
         current = tenancy.get("status")
+        reason = data.get("reason")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 500):
+            return self._json({"error": "transition reason must be text, max 500 characters"}, 400)
         try:
             replay = workflow_engine.guard_replay(
                 tenancy, "history", data.get("request_id"), target)
@@ -2367,6 +2370,9 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "property not found"}, 404)
         current = prop.get("lifecycle_status") or "onboarding"
         target = str(data.get("status", ""))[:40]
+        reason = data.get("reason")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 500):
+            return self._json({"error": "transition reason must be text, max 500 characters"}, 400)
         try:
             replay = workflow_engine.guard_replay(
                 prop, "lifecycle_history", data.get("request_id"), target)
