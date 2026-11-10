@@ -44,16 +44,16 @@
 **Depends on:** None  
 **Starting point:** Test suites running; acceptance traceability incomplete
 
-- [ ] **B00.01** Snapshot the existing v1 development branch, CI checks, test fixtures and API/portal inventory as the immutable comparison baseline.
-- [ ] **B00.02** Turn the 12 frozen product modules into a requirements-to-tests traceability matrix, assigning one named owner and evidence link per requirement.
-- [ ] **B00.03** Classify each existing feature as absent, coded, unit-tested, browser-tested or fully accepted; avoid generic 'done' claims.
-- [ ] **B00.04** Create one reproducible isolated two-agency dataset with landlord, property, renter, trades, invoices, deposits and documents.
-- [ ] **B00.05** Define an explicit pass/fail/blocked template and a top-priority bug queue; record dependencies without expanding product scope.
-- [ ] **B00.06** Set CI branch checks so a failed test blocks bundle acceptance; ensure no workflow can deploy the development branch.
+- [x] **B00.01** Snapshot the existing v1 development branch, CI checks, test fixtures and API/portal inventory as the immutable comparison baseline.
+- [x] **B00.02** Turn the 12 frozen product modules into a requirements-to-tests traceability matrix, assigning one named owner and evidence link per requirement.
+- [x] **B00.03** Classify each existing feature as absent, coded, unit-tested, browser-tested or fully accepted; avoid generic 'done' claims.
+- [x] **B00.04** Create one reproducible isolated two-agency dataset with landlord, property, renter, trades, invoices, deposits and documents.
+- [x] **B00.05** Define an explicit pass/fail/blocked template and a top-priority bug queue; record dependencies without expanding product scope.
+- [x] **B00.06** Set CI branch checks so a failed test blocks bundle acceptance; ensure no workflow can deploy the development branch.
 
 **Bundle acceptance (DONE):** Each agreed requirement maps to an implementation location, at least one acceptance test or known gap, and a release-gate owner; the protected draft branch cannot deploy.
 
-**Evidence:** commit __ · Python tests __ · Chromium/integration run __ · acceptance __ · open blockers __
+**Evidence:** [B00 immutable baseline](ROGER_V1_B00_BASELINE.md) `14073e5ea80b1ab8629882993fdd4b407c9daa1c` · [12-module requirements/test/owner matrix](ROGER_V1_B00_TRACEABILITY_MATRIX.md) · [status, blocker register and test-report template](ROGER_V1_B00_ACCEPTANCE_AND_BLOCKERS.md) · deterministic test fixtures `tests/fixtures/v1_two_agency_data.py` · Docker/PostgreSQL seeding and cross-agency checks `tests/b00_seeded_agency_integration.py` · [one-run mandatory acceptance CI: PASS](https://github.com/eon88/Roger/actions/runs/42771971198) (policy, Python, Chromium and isolated SaaS, same SHA). **B00: accepted as development/test-map setup — NOT v1 production release approval.** **Governance limitation:** GitHub ruleset list was empty; administrator-enforced merge protection is not confirmed and remains a B26 release blocker.
 
 
 ### B01 — Canonical data model and workflow engine
