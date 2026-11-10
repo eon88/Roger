@@ -57,7 +57,7 @@ def check():
         assert "./.github/workflows/" + name in gate, \
             "Mandatory suite not present in aggregate gate: " + name
     for job in ("policy", "unit", "browser", "saas"):
-        assert re.search(r"(?m)^\s{4}" + job + r":\s*$", gate), "Missing gate job " + job
+        assert re.search(r"(?m)^\s{2}" + job + r":\s*$", gate), "Missing gate job " + job
         assert re.search(r"needs\." + job + r"\.result", gate), \
             "Failed " + job + " suite would not block aggregate gate"
     assert "if: always()" in gate
