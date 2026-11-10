@@ -239,7 +239,14 @@ async function run(){
         const t=(await r.json()).tenancies?.find(x=>x.id==='tenancy-one');
         return t?.pet_requests?.[0]?.status==='approved';
       },null,{timeout:15000});
-      await agent.page.locator('#tenancy-one details.msgs > summary').click();
+      // An async portal render can recreate this disclosure after the pet
+      // decision. Re-open only when closed; blindly clicking can close it.
+      const tenancyDetails = agent.page.locator('#tenancy-one details.msgs');
+      if (!await tenancyDetails.evaluate(el => el.open)) {
+        await tenancyDetails.locator('summary').click();
+      }
+      await agent.page.locator('#tenancy-one .rent-change-amount')
+        .waitFor({state: 'visible', timeout: 15000});
       await agent.page.locator('#tenancy-one .rent-change-amount').fill('950');
       await agent.page.locator('#tenancy-one .rent-change-notice').fill('2026-08-01');
       await agent.page.locator('#tenancy-one .rent-change-effective').fill('2026-10-01');
