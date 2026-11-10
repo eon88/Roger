@@ -3785,8 +3785,8 @@ class H(SimpleHTTPRequestHandler):
         previous_approval_status = appr.get("status")
         user = self.user or {}
         role = user.get("role")
-        if role not in ("agent", "landlord"):
-            return self._json({"error": "not authorised"}, 403)
+        if role != "landlord":
+            return self._json({"error": "landlord approval must be decided by the linked landlord"}, 403)
         prework = appr.get("approval_type") == "prework_quote"
         variation_approval = appr.get("approval_type") == "variation_quote"
         # A costly quote must be explicitly approved by the correct landlord.
