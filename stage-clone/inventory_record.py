@@ -38,6 +38,7 @@ def create_inventory(data, tenancy, created_at, actor, sequence):
     description = clean_text(data.get("summary", ""), 1000, "summary")
     return {
         "id": "inventory-" + str(sequence),
+        "model_version": 1,
         "property_id": tenancy["property_id"],
         "tenancy_id": tenancy["id"],
         "kind": kind,
