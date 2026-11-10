@@ -98,6 +98,8 @@
 **Depends on:** B01, B02  
 **Starting point:** Isolated SaaS agency pilot and provisioning scripts; billing/ops not accepted
 
+**Progress (PARTIAL — NOT ACCEPTED, 10 November 2026):** Agency profile and verified-admin edit page/API, branch/contact configuration, operator-only manual plan/status controls, runtime suspension guard, staff/property plan limits and initial B03 Python tests are committed. Existing isolated two-agency pilot passed; full same-SHA browser/aggregate acceptance is being rerun after an unrelated tenancy-form refresh issue. See [B03 exact implementation and remaining acceptance gates](ROGER_V1_B03_ONBOARDING_PROGRESS.md). **All B03 checkboxes remain open until their complete acceptance evidence is recorded; no deployment or release.**
+
 - [ ] **B03.01** Finish repeatable agency creation with verified agency ID, domain, branding, office address, operating hours and emergency contacts.
 - [ ] **B03.02** Implement office/branch settings, staff/permissions, service package and maintenance/spending authorities.
 - [ ] **B03.03** Complete subscription lifecycle and plan limits; accurately label manual payment/invoicing if no approved payment provider exists.
