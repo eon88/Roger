@@ -5519,7 +5519,15 @@ class H(SimpleHTTPRequestHandler):
         return key
 
     def safe_document(self, d):
-        out = {k: v for k, v in d.items() if k != "data_b64"}
+        """Allowlist metadata: never reveal file bytes, storage keys or notes."""
+        visible = {
+            "id", "file_name", "title", "description", "document_type",
+            "property_id", "tenancy_id", "case_id", "job_id", "party_id",
+            "access_roles", "content_type", "file_size", "created_at",
+            "uploaded_at", "verified_at", "expiry_date", "status",
+            "supersedes_id", "replaced_by_id", "version",
+        }
+        out = {k: v for k, v in d.items() if k in visible}
         out["has_file"] = bool(d.get("storage_key") or d.get("data_b64"))
         return out
 
@@ -5699,10 +5707,21 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "document file is missing"}, 404)
         except (OSError, ValueError):
             return self._json({"error": "document file could not be read"}, 404)
+        # Never serve an uploaded HTML/SVG/script as executable same-origin
+        # content. Attachment-only + safe filename protects session-bearing
+        # browsers even when the stored MIME label was supplied by a user.
+        original_name = str(doc.get("file_name") or "document")
+        filename = re.sub(r"[^A-Za-z0-9._-]", "_",
+                          os.path.basename(original_name.replace("\\\\", "/")))[:100]
+        filename = filename.strip(".") or "document"
         self.send_response(200)
-        self.send_header("Content-Type", doc.get("content_type", "application/octet-stream"))
+        self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Content-Disposition", f'inline; filename="{doc.get("file_name", "document")}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "sandbox")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)
 
