@@ -257,6 +257,19 @@ class StaleStageWrite(RuntimeError):
 RecordIntegrityError = canonical_records.RecordIntegrityError
 
 
+def next_canonical_id(stage, collection, prefix):
+    """Allocate a unique ID without reusing archived/deleted sequence slots."""
+    used = {str(row.get("id")) for row in stage.get(collection, []) if isinstance(row, dict)}
+    start = max(
+        (int(value[len(prefix):]) for value in used
+         if value.startswith(prefix) and value[len(prefix):].isdigit()),
+        default=0)
+    candidate = start + 1
+    while prefix + str(candidate) in used:
+        candidate += 1
+    return prefix + str(candidate)
+
+
 def stage_revision(current=None):
     """Read current committed revision while the writer lock is held."""
     if current is None:
@@ -3458,7 +3471,7 @@ class H(SimpleHTTPRequestHandler):
                     job["status"] = "awaiting_prework_approval"
                     stage.setdefault("approvals", [])
                     stage["approvals"].append({
-                        "id": "appr-" + str(len(stage["approvals"]) + 1),
+                        "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION,
                         "approval_type": "prework_quote",
                         "job_id": job["id"], "property_id": job["property_id"],
                         "landlord": prop.get("landlord", "Landlord"),
@@ -3586,7 +3599,7 @@ class H(SimpleHTTPRequestHandler):
                         return self._json({"error": "active linked landlord required"}, 409)
                     variation["status"] = "pending_landlord"
                     stage.setdefault("approvals", []).append({
-                        "id": f"appr-{len(stage.get('approvals', [])) + 1}",
+                        "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION,
                         "approval_type": "variation_quote",
                         "job_id": job["id"], "property_id": job["property_id"],
                         "landlord_party_id": landlord_id,
@@ -3608,7 +3621,7 @@ class H(SimpleHTTPRequestHandler):
             prop = self.find_prop(stage, job["property_id"]) or {}
             stage.setdefault("approvals", [])
             stage["approvals"].append({
-                "id": f"appr-{len(stage['approvals']) + 1}", "job_id": job["id"],
+                "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION, "job_id": job["id"],
                 "property_id": job["property_id"], "landlord": prop.get("landlord", "Landlord"),
                     "landlord_party_id": prop.get("landlord_party_id"),
                     "landlord_party_ids": prop.get("landlord_party_ids", []),
@@ -3655,7 +3668,7 @@ class H(SimpleHTTPRequestHandler):
                 prop = self.find_prop(stage, job["property_id"]) or {}
                 stage.setdefault("approvals", [])
                 appr = {
-                    "id": f"appr-{len(stage['approvals']) + 1}",
+                    "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION,
                     "job_id": job["id"],
                     "property_id": job["property_id"],
                     "landlord": prop.get("landlord", "Landlord"),
@@ -4602,7 +4615,7 @@ class H(SimpleHTTPRequestHandler):
                        if isinstance(j.get("id"), str) and re.fullmatch(r"job-\d+", j["id"])]
             jid = "job-" + str(max(job_ids, default=0) + 1)
             job = {
-                "id": jid, "case_id": c["id"], "property_id": c["property_id"],
+                "id": jid, "model_version": canonical_records.MODEL_VERSION, "case_id": c["id"], "property_id": c["property_id"],
                 "message": c.get("message", ""), "triage": triage,
                 "required_trade": trade or None, "status": "triaged",
                 "requires_prework_quote": True,
