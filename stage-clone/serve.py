@@ -3127,6 +3127,22 @@ class H(SimpleHTTPRequestHandler):
         actor = (self.user or {}).get("display_name") or "Unknown"
         selected_party_id = None
 
+        if action in TRADES_ONLY and data.get("request_id"):
+            # A contractor can replay only an action on a job assigned to
+            # their verified Party. Unassigned jobs never reveal replay data.
+            own_parties = self.account_party_ids(stage, self.user or {}, "trades")
+            if job.get("assigned_to_party_id") in own_parties:
+                try:
+                    replayed = workflow_engine.check_action_replay(
+                        job, request_id=data["request_id"], action=action,
+                        actor=(self.user or {}).get("username") or "unknown",
+                        payload=data)
+                except workflow_engine.RequestReplayConflict as exc:
+                    return self._json({"error": str(exc)}, 409)
+                except workflow_engine.InvalidTransition as exc:
+                    return self._json({"error": str(exc)}, 400)
+                if replayed:
+                    return self._json({"success": True, "already_processed": True, "job": job})
         if action in TRADES_ONLY:
             ids = self.account_party_ids(
                 stage, self.user or {}, "trades"
@@ -3724,11 +3740,17 @@ class H(SimpleHTTPRequestHandler):
         else:
             return self._json({"error": f"invalid action {action} for status {job['status']}"}, 400)
 
+        try:
+            workflow_engine.validate_domain_action(
+                "job", action=action, previous=previous_job_status,
+                target=job.get("status"), role=role)
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 409)
         workflow_engine.record_status_change(
             job, previous_job_status, action=str(action),
             actor=(self.user or {}).get("username") or "unknown",
             role=(self.user or {}).get("role"), at=now())
-        if action in AGENT_ONLY:
+        if action in AGENT_ONLY or action in TRADES_ONLY:
             workflow_engine.remember_action_request(
                 job, request_id=data.get("request_id"), action=action,
                 actor=(self.user or {}).get("username") or "unknown",
@@ -3815,6 +3837,14 @@ class H(SimpleHTTPRequestHandler):
             if not self.verified_contractor_for_new_repair(
                     stage, job.get("assigned_to_party_id"), job.get("required_trade"), job.get("property_id")):
                 return self._json({"error": "contractor no longer approved for extra work"}, 409)
+        # Audit the domain transition before any status or financial effect.
+        try:
+            workflow_engine.validate_domain_action(
+                "approval", action=action, previous=previous_approval_status,
+                target="approved" if action == "approve" else "rejected",
+                role=role, approval_type=appr.get("approval_type"))
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 409)
         appr["status"] = "approved" if action == "approve" else "rejected"
         appr["reason_given"] = reason if action == "reject" else None
         appr["decided_at"] = now()
@@ -3880,6 +3910,14 @@ class H(SimpleHTTPRequestHandler):
             "action": ("prework_quote_" if prework else "variation_" if variation_approval else "invoice_") + appr["status"],
             "target": appr["id"], "note": reason or None
         })
+        if job:
+            try:
+                workflow_engine.validate_domain_action(
+                    "landlord_job", action=action, previous=previous_job_status,
+                    target=job.get("status"), role=role,
+                    approval_type=appr.get("approval_type"))
+            except workflow_engine.InvalidTransition as exc:
+                return self._json({"error": str(exc)}, 409)
         workflow_engine.record_status_change(
             appr, previous_approval_status, action=str(action),
             actor=user.get("username") or "unknown", role=role, at=now())
