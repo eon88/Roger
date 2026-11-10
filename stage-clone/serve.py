@@ -38,6 +38,7 @@ import bank_reconciliation
 import prs_register
 import deposit_controls
 import canonical_records
+import workflow_engine
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -1796,22 +1797,7 @@ class H(SimpleHTTPRequestHandler):
 
     def handle_tenancy_action(self, data):
         """Agent creates a tenancy or advances its audited lifecycle state."""
-        transitions = {
-            "application": ("referencing", "cancelled"),
-            "referencing": ("approved", "cancelled"),
-            "approved": ("offer", "cancelled"),
-            "offer": ("agreement", "cancelled"),
-            "agreement": ("deposit", "cancelled"),
-            "deposit": ("move_in_scheduled", "cancelled"),
-            "move_in_scheduled": ("active", "cancelled"),
-            "active": ("renewal", "notice_given"),
-            "renewal": ("active", "notice_given"),
-            "notice_given": ("active", "checkout"),
-            "checkout": ("deposit_resolution", "former_tenant"),
-            "deposit_resolution": ("former_tenant",),
-            "former_tenant": (),
-            "cancelled": (),
-        }
+        transitions = workflow_engine.TENANCY_TRANSITIONS
         stage = load_stage()
         action = str(data.get("action", "create"))
         if action == "create":
@@ -1958,24 +1944,24 @@ class H(SimpleHTTPRequestHandler):
             property_status = (prop or {}).get("lifecycle_status") or "onboarding"
             if not prop or property_status != expected:
                 return self._json({"error": "advance the property to " + expected + " before this tenancy transition"}, 409)
-            prop["lifecycle_status"] = next_property
-            prop["lifecycle_status_at"] = now()
-            prop.setdefault("lifecycle_history", []).append({
-                "from": expected, "to": next_property, "at": prop["lifecycle_status_at"],
-                "by": (self.user or {}).get("username", "agent")
-            })
+            property_changed_at = now()
+            workflow_engine.apply_transition(
+                prop, kind="property", target=next_property, at=property_changed_at,
+                actor=(self.user or {}).get("username", "agent"),
+                state_field="lifecycle_status", history_field="lifecycle_history")
+            prop["lifecycle_status_at"] = property_changed_at
             self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
                                "action": "property_lifecycle_changed", "target": prop["id"],
                                "note": expected + " -> " + next_property + " (tenancy " + tid + ")"})
         if target == "active":
             tenancy["move_in_date"] = tenancy.get("start_date")
         at = now()
-        tenancy["status"] = target
+        workflow_engine.apply_transition(
+            tenancy, kind="tenancy", target=target, at=at,
+            actor=(self.user or {}).get("username", "agent"),
+            effective_date=effective_date or None)
+        tenancy["history"][-1].setdefault("effective_date", None)
         tenancy["updated_at"] = at
-        tenancy.setdefault("history", []).append({
-            "from": current, "to": target, "at": at, "effective_date": effective_date or None,
-            "by": (self.user or {}).get("username", "agent")
-        })
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
                            "action": "tenancy_status_changed", "target": tid,
                            "note": current + " -> " + target})
@@ -2363,20 +2349,7 @@ class H(SimpleHTTPRequestHandler):
 
     def handle_property_action(self, data):
         """Agent-controlled property lifecycle transition and public listing draft update."""
-        transitions = {
-            "prospect": ("onboarding", "offboarded"),
-            "onboarding": ("ready_to_market", "offboarded"),
-            "ready_to_market": ("onboarding", "advertised", "offboarded"),
-            "advertised": ("application", "void", "offboarded"),
-            "application": ("advertised", "let_agreed", "void"),
-            "let_agreed": ("occupied", "void"),
-            "occupied": ("notice_given", "offboarded"),
-            "notice_given": ("occupied", "checkout"),
-            "checkout": ("void",),
-            "void": ("remarketing", "offboarded"),
-            "remarketing": ("advertised", "onboarding", "offboarded"),
-            "offboarded": (),
-        }
+        transitions = workflow_engine.PROPERTY_TRANSITIONS
         stage = load_stage()
         pid = str(data.get("property_id", ""))[:100]
         prop = self.find_prop(stage, pid)
@@ -2410,12 +2383,12 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"success": True, "unchanged": True, "status": current})
         at = now()
         if target != current:
-            prop["lifecycle_status"] = target
+            workflow_engine.apply_transition(
+                prop, kind="property", target=target, at=at,
+                actor=(self.user or {}).get("username", "agent"),
+                state_field="lifecycle_status",
+                history_field="lifecycle_history")
             prop["lifecycle_status_at"] = at
-            prop.setdefault("lifecycle_history", []).append({
-                "from": current, "to": target, "at": at,
-                "by": (self.user or {}).get("username", "agent")
-            })
             action, note = "property_lifecycle_changed", current + " -> " + target
         else:
             action, note = "property_listing_updated", "Public description updated"
