@@ -18,9 +18,11 @@ from v1_two_agency_data import build, validate
 
 
 IN_CONTAINER = r"""
-import json, sys, serve
+import copy, json, sys, serve, canonical_records, legacy_reconciliation
 incoming=json.load(sys.stdin)
 agency_id=incoming.pop("agency_id")
+assert legacy_reconciliation.reconciliation_report(incoming)["ready_for_canonical_linking"], (
+    "synthetic B01 fixture has unresolved canonical links or invoice identities")
 with serve.storage_write_lock():
     stage=serve.load_stage()
     assert stage["agency_id"] == agency_id
@@ -49,7 +51,36 @@ with serve.storage_write_lock():
     assert len(again.get("deposit_records",[])) >= 1
     assert len(again.get("documents",[])) >= 1
     assert len(again.get("rent_ledger_entries",[])) >= 1
-print("PASS: synthetic fixture persisted and stale PostgreSQL snapshot writer refused")
+    original=json.loads(json.dumps(again))
+    # The same real PostgreSQL stage writer must reject contradictory synthetic
+    # document/tenancy links, not just report them in a standalone unit test.
+    wrong_doc=copy.deepcopy(original)
+    d=next(d for d in wrong_doc["documents"]
+           if str(d.get("id","")).startswith("ci-"+agency_id))
+    other_property=next(p["id"] for p in wrong_doc["properties"]
+                        if p["id"] != d["property_id"] and
+                        str(p["id"]).startswith("ci-"+agency_id))
+    d["property_id"]=other_property
+    d["model_version"]=1
+    try:
+        serve.save_stage(wrong_doc)
+    except canonical_records.RecordIntegrityError:
+        pass
+    else:
+        raise AssertionError("PostgreSQL accepted cross-property document/tenancy link")
+    foreign_job=copy.deepcopy(original)
+    j=next(j for j in foreign_job["jobs"]
+           if str(j.get("id","")).startswith("ci-"+agency_id))
+    j["model_version"]=1
+    j["agency_id"]="foreign-agency"
+    try:
+        serve.save_stage(foreign_job)
+    except (canonical_records.RecordIntegrityError, ValueError):
+        pass
+    else:
+        raise AssertionError("PostgreSQL accepted foreign agency job identity")
+    assert serve.load_stage()==original, "failed security writes mutated PostgreSQL"
+print("PASS: synthetic fixture, relationship denial, agency boundary and stale PostgreSQL writer guard")
 """
 
 
@@ -112,7 +143,7 @@ def main(a, b):
         if proc.returncode:
             raise AssertionError("Fixture seeding failed for "+info["agency_id"]+
                                  ": "+proc.stderr[-1200:])
-        assert "PASS: synthetic fixture persisted" in proc.stdout, proc.stdout
+        assert "PASS: synthetic fixture, relationship denial" in proc.stdout, proc.stdout
         base,cookie=login(info)
         status,stage,_=request(base,"/api/stage",cookie=cookie)
         assert status==200, (status,stage)
