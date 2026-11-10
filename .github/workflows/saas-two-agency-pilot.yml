@@ -1,6 +1,7 @@
 name: Roger SaaS isolated agency pilot
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - "ops/saas/**"
@@ -127,6 +128,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 tests/saas_invite_integration.py \
+            "$ROGER_SAAS_TEST_ROOT/oaklettings" "$ROGER_SAAS_TEST_ROOT/birchlettings"
+
+      - name: Seed and verify complete synthetic agency data in both isolated databases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tests/b00_seeded_agency_integration.py \
             "$ROGER_SAAS_TEST_ROOT/oaklettings" "$ROGER_SAAS_TEST_ROOT/birchlettings"
 
       - name: Rehearse agency-bound operator password recovery (synthetic only)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real HTTP / PostgreSQL acceptance: one-time invited tenant stays in its own agency."""
+"""Real two-agency HTTP/PostgreSQL acceptance: one-use tenant/staff access."""
 import json
 import sys
 from pathlib import Path
@@ -113,6 +113,98 @@ def main():
     }, cookie=tenant_cookie, origin=a["hostname"])
     assert code == 403, (code, forbidden)
     print("PASS: tenant account cannot use B's records or issue more invitations")
+    # B02: privileged agency staff enrolment is administrator-only.
+    code, staff_invite, _ = api(aa, "/api/security/staff/invite", {
+        "current_password": admin_secret,
+        "email": "ci-staff@example.test", "display_name": "CI Agency Staff",
+    }, cookie=admin_cookie, origin=a["hostname"])
+    assert code == 200 and staff_invite.get("success"), (code, staff_invite)
+    staff_token = staff_invite["invite_url"].split("#token=", 1)[1]
+    code, bad_staff, _ = api(bb, "/api/invite/validate", {
+        "token": staff_token,
+    }, origin=b["hostname"])
+    assert code == 200 and not bad_staff["valid"], (code, bad_staff)
+    code, denied_staff, _ = api(bb, "/api/invite/accept", {
+        "token": staff_token, "username": "cistaff",
+        "password": "verified-staff-strong-passphrase",
+    }, origin=b["hostname"])
+    assert code == 400, (code, denied_staff)
+    code, created_staff, _ = api(aa, "/api/invite/accept", {
+        "token": staff_token, "username": "cistaff",
+        "password": "verified-staff-strong-passphrase",
+    }, origin=a["hostname"])
+    assert code == 200 and created_staff.get("success"), (code, created_staff)
+    code, duplicated_staff, _ = api(aa, "/api/invite/accept", {
+        "token": staff_token, "username": "ciotherstaff",
+        "password": "a-different-safe-staff-password",
+    }, origin=a["hostname"])
+    assert code == 400, (code, duplicated_staff)
+    code, staff_login, staff_cookie_hdr = api(aa, "/login", {
+        "username": "cistaff", "password": "verified-staff-strong-passphrase",
+    }, origin=a["hostname"])
+    assert code == 200 and staff_login["role"] == "agent", (code, staff_login)
+    staff_cookie = staff_cookie_hdr.split(";", 1)[0]
+    code, denied_privilege, _ = api(aa, "/api/security/staff/invite", {
+        "current_password": "verified-staff-strong-passphrase",
+        "email": "another@example.test", "display_name": "Unauthorised Staff",
+    }, cookie=staff_cookie, origin=a["hostname"])
+    assert code == 403, (code, denied_privilege)
+    code, denied_foreign, _ = api(bb, "/api/stage", cookie=staff_cookie)
+    assert code == 401, (code, denied_foreign)
+    print("PASS: privileged staff invite, single-use redemption and cross-agency denial")
+
+    # Password recovery links are one-use and preserve separate MFA factors.
+    code, issued, _ = api(aa, "/api/security/staff/reset", {
+        "current_password": admin_secret, "username": "cistaff",
+        "reason": "Verified staff account recovery during isolated CI security test",
+    }, cookie=admin_cookie, origin=a["hostname"])
+    assert code == 200 and issued.get("success"), (code, issued)
+    reset_token = issued["reset_url"].split("#token=", 1)[1]
+    code, foreign_reset, _ = api(bb, "/api/security/staff/reset/accept", {
+        "token": reset_token, "new_password": "brand-new-staff-password-2026",
+    }, origin=b["hostname"])
+    assert code == 400, (code, foreign_reset)
+    code, reset, _ = api(aa, "/api/security/staff/reset/accept", {
+        "token": reset_token, "new_password": "brand-new-staff-password-2026",
+    }, origin=a["hostname"])
+    assert code == 200 and reset.get("success"), (code, reset)
+    code, replay_reset, _ = api(aa, "/api/security/staff/reset/accept", {
+        "token": reset_token, "new_password": "another-new-staff-password",
+    }, origin=a["hostname"])
+    assert code == 400, (code, replay_reset)
+    code, former, _ = api(aa, "/api/stage", cookie=staff_cookie)
+    assert code == 401, (code, former)
+    code, former_password, _ = api(aa, "/login", {
+        "username": "cistaff", "password": "verified-staff-strong-passphrase",
+    }, origin=a["hostname"])
+    assert code == 401, (code, former_password)
+    code, updated, staff_cookie_hdr = api(aa, "/login", {
+        "username": "cistaff", "password": "brand-new-staff-password-2026",
+    }, origin=a["hostname"])
+    assert code == 200 and updated["role"] == "agent", (code, updated)
+    staff_cookie = staff_cookie_hdr.split(";", 1)[0]
+    print("PASS: staff reset one-use, invalidated sessions and new password")
+
+    # A non-admin must never suspend another staff account.
+    code, denied_suspend, _ = api(aa, "/api/security/staff/suspend", {
+        "current_password": "brand-new-staff-password-2026",
+        "username": "agency-admin", "reason": "Attempt to remove agency owner privileges",
+    }, cookie=staff_cookie, origin=a["hostname"])
+    assert code == 403, (code, denied_suspend)
+    code, suspended, _ = api(aa, "/api/security/staff/suspend", {
+        "current_password": admin_secret, "username": "cistaff",
+        "reason": "Isolated CI account test complete; revoke staff access",
+    }, cookie=admin_cookie, origin=a["hostname"])
+    assert code == 200 and suspended["sessions_revoked"] >= 1, (code, suspended)
+    code, dead_cookie, _ = api(aa, "/api/stage", cookie=staff_cookie)
+    assert code == 401, (code, dead_cookie)
+    code, dead_login, _ = api(aa, "/login", {
+        "username": "cistaff", "password": "brand-new-staff-password-2026",
+    }, origin=a["hostname"])
+    assert code == 401, (code, dead_login)
+    code, tenant_still_active, _ = api(aa, "/api/stage", cookie=tenant_cookie)
+    assert code == 200 and tenant_still_active["role"] == "tenant", (code, tenant_still_active)
+    print("PASS: admin suspension kills staff sessions without affecting tenant access")
     print("TWO-AGENCY INVITATION ACCEPTANCE PASSED")
 
 

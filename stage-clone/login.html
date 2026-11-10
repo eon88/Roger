@@ -15,6 +15,7 @@
     <div class="move">sign in</div>
     <div class="field"><label for="u">Username</label><input id="u" autocomplete="username" autofocus></div>
     <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="totp">Authenticator code (if enabled)</label><input id="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6 digits"></div>
     <div class="actions"><button class="btn primary" id="go" onclick="login()">Sign in</button>
       <span class="who" id="err" role="alert" style="color:var(--danger)"></span></div>
     <p class="fineprint">Need access for a developer or a new landlord? Ask the agency desk — accounts are created by hand.</p>
@@ -40,14 +41,15 @@ async function login(){
   document.getElementById('err').textContent='';
   try{
     const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value})});
+      body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value,totp:document.getElementById('totp').value})});
     const j=await r.json();
     if(!r.ok){document.getElementById('err').textContent=j.error||'Login failed';return;}
-    location.href=j.password_change_required?'/change-password':(LANDING[j.role]||'/agent');
+    location.href=j.password_change_required?'/change-password':(j.mfa_setup_required?'/security':(LANDING[j.role]||'/agent'));
   }catch(e){document.getElementById('err').textContent='Could not reach the portal.';}
   finally{b.disabled=false;b.textContent='Sign in';}
 }
 document.getElementById('p').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+document.getElementById('totp').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 document.getElementById('u').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('p').focus();});
 const q=new URLSearchParams(location.search); if(q.get('u'))document.getElementById('u').value=q.get('u');
 if(q.get('changed')==='1')document.getElementById('changed').textContent='Password changed. Please sign in again.';

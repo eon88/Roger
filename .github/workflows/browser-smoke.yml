@@ -1,6 +1,7 @@
 name: Roger four-role browser smoke
 
 on:
+  workflow_call:
   push:
     branches:
       - security/roger-priority-zero-20261010
@@ -232,6 +233,8 @@ jobs:
             console.log('FOUR-ROLE BROWSER SMOKE PASSED');
           })().catch(err => { console.error(err.stack || err); process.exitCode = 1; });
           JS
+      - name: Exercise new tenant repair interview in Chromium
+        run: node tests/repair_diagnosis_browser.cjs
       - name: Exercise full role-based repair journey with Chromium
         run: node tests/full_repair_browser.cjs
       - name: Verify redesigned public homepage, lead forms and mobile layout

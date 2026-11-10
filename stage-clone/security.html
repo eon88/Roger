@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Account security | Roger</title><link rel="stylesheet" href="/dash.css"></head>
+<body><div class="shell" style="max-width:680px;padding-top:4vh">
+<header class="header"><div class="brand"><h1>Account security</h1><span class="who">Private agency portal</span></div>
+<nav class="tabs"><a id="back" href="/login">Back to portal</a></nav></header>
+<main>
+<section class="card"><h2>Two-factor authentication</h2>
+<p class="fineprint">Use an authenticator app to protect your login. The setup key is shown only during enrolment. Do not share it.</p>
+<div class="field"><label for="password">Current account password</label><input id="password" type="password" autocomplete="current-password"></div>
+<div class="actions"><button id="start" class="btn primary" type="button">Set up authenticator</button></div>
+<div id="setup" hidden>
+<p class="fineprint">Add this key to your authenticator app and confirm the six-digit code it produces.</p>
+<p id="secret" style="overflow-wrap:anywhere;font-family:monospace" aria-live="polite"></p></div>
+<div class="field"><label for="totp">Six-digit authenticator code</label><input id="totp" autocomplete="one-time-code" inputmode="numeric" maxlength="6"></div>
+<div class="actions"><button id="confirm" class="btn primary" type="button">Enable two-factor</button>
+<button id="disable" class="btn" type="button">Disable two-factor</button></div>
+</section>
+<section class="card"><h2>Active sessions</h2>
+<p class="fineprint">Signing out other devices keeps this one active. Signing out everywhere requires you to log in again.</p>
+<div class="actions"><button id="others" class="btn" type="button">Sign out other devices</button>
+<button id="all" class="btn" type="button">Sign out everywhere</button></div></section>
+<section id="staff" class="card" hidden><h2>Staff account management</h2>
+<p class="fineprint">Available only to the agency administrator. Invites grant full agency agent access. Verify the recipient before sharing a link.</p>
+<div class="field"><label for="name">Staff member name</label><input id="name" autocomplete="off"></div>
+<div class="field"><label for="email">Staff email</label><input id="email" type="email" autocomplete="off"></div>
+<div class="actions"><button id="invite" class="btn primary" type="button">Create staff invitation</button></div>
+<p id="inviteLink" class="fineprint" style="overflow-wrap:anywhere"></p>
+<div class="field"><label for="target">Staff username to suspend</label><input id="target" autocomplete="off"></div>
+<div class="field"><label for="reason">Reason for suspension</label><input id="reason" autocomplete="off"></div>
+<div class="actions"><button id="suspend" class="btn" type="button">Suspend staff account</button>
+<button id="recover" class="btn" type="button">Create staff password reset link</button></div>
+<p id="resetLink" class="fineprint" style="overflow-wrap:anywhere"></p></section>
+<p id="feedback" role="status" class="fineprint" aria-live="polite"></p>
+</main></div>
+<script>
+const $=id=>document.getElementById(id);
+const pwd=()=>({current_password:$('password').value});
+async function post(route,data){
+  $('feedback').textContent='';
+  const response=await fetch(route,{method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({...pwd(),...data})});
+  const result=await response.json();
+  if(!response.ok)throw new Error(result.error||'Request could not be completed');
+  return result;
+}
+async function run(route,data,success){
+  try{const result=await post(route,data);$('feedback').textContent=success;
+    if(result.login_required)location.replace('/login');
+    return result;
+  }catch(error){$('feedback').textContent=error.message;return null;}
+}
+(async()=>{try{const r=await fetch('/api/whoami',{cache:'no-store'});const who=await r.json();
+  if(!r.ok||!who.authenticated&&!(who.role))return location.replace('/login');
+  $('back').href='/'+who.role;
+  $('staff').hidden=!(who.role==='agent'&&who.username==='agency-admin');
+}catch(error){$('feedback').textContent='Could not load account details';}})();
+$('start').onclick=async()=>{const r=await run('/api/security/mfa/start',{},'Enter this secret into your authenticator, then confirm a code.');
+  if(r){$('setup').hidden=false;$('secret').textContent=r.secret;}};
+$('confirm').onclick=()=>run('/api/security/mfa/confirm',{totp:$('totp').value},'Two-factor enabled. Log in again.');
+$('disable').onclick=()=>run('/api/security/mfa/disable',{totp:$('totp').value},'Two-factor disabled. Log in again.');
+$('others').onclick=()=>run('/api/security/sessions/revoke',{scope:'other'},'Other sessions signed out.');
+$('all').onclick=()=>run('/api/security/sessions/revoke',{scope:'all'},'All sessions signed out.');
+$('invite').onclick=async()=>{const r=await run('/api/security/staff/invite',
+  {display_name:$('name').value,email:$('email').value},'Staff invitation created. Verify recipient before sharing.');
+  if(r){$('inviteLink').textContent=location.origin+r.invite_url;}};
+$('suspend').onclick=()=>run('/api/security/staff/suspend',{username:$('target').value,reason:$('reason').value},'Staff account suspended and sessions revoked.');
+$('recover').onclick=async()=>{
+  const r=await run('/api/security/staff/reset',
+   {username:$('target').value,reason:$('reason').value},
+   'Password reset link issued. Verify staff identity before sharing.');
+  if(r){$('resetLink').textContent=location.origin+r.reset_url;}
+};
+</script></body></html>

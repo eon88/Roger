@@ -29,6 +29,18 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 import jev_client
+import repair_diagnosis
+import repair_case_dossier
+import agent_briefing
+import tenancy_2026
+import inventory_record
+import bank_reconciliation
+import prs_register
+import deposit_controls
+import canonical_records
+import workflow_engine
+import auth_security
+import agency_admin
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR", ROOT)
@@ -38,13 +50,40 @@ USERS_FILE = os.path.join(DATA_DIR, "users.json")
 FILES_DIR = os.environ.get("ROGER_FILES_DIR", os.path.join(DATA_DIR, "files"))
 os.makedirs(FILES_DIR, mode=0o700, exist_ok=True)
 SESSION_TTL = timedelta(days=7)
-LOGIN_TRIES = {}  # ip -> [timestamps]; in-memory, resets on restart (acceptable for demo-scale)
+LOGIN_TRIES = {}  # IP -> timestamps; bounded, per-process fallback
+LOGIN_ACCOUNT_TRIES = {}  # SHA-256(normalised account) -> timestamps; no name in key
 
 def login_throttled(ip):
     nowts = datetime.now(timezone.utc)
     tries = [t for t in LOGIN_TRIES.get(ip, []) if (nowts - t).total_seconds() < 300]
     LOGIN_TRIES[ip] = tries
     return len(tries) >= 5
+
+def account_throttled(username):
+    """Limit distributed guesses against one username without logging the name."""
+    if not isinstance(username, str) or not username:
+        return False
+    digest = hashlib.sha256(username.casefold().encode("utf-8")).hexdigest()
+    clock = datetime.now(timezone.utc)
+    recent = [t for t in LOGIN_ACCOUNT_TRIES.get(digest, [])
+              if (clock - t).total_seconds() < 900]
+    LOGIN_ACCOUNT_TRIES[digest] = recent
+    return len(recent) >= 10
+
+
+def account_login_note(username, ok):
+    if not isinstance(username, str) or not username:
+        return
+    digest = hashlib.sha256(username.casefold().encode("utf-8")).hexdigest()
+    if ok:
+        LOGIN_ACCOUNT_TRIES.pop(digest, None)
+    else:
+        clock = datetime.now(timezone.utc)
+        LOGIN_ACCOUNT_TRIES[digest] = [
+            t for t in LOGIN_ACCOUNT_TRIES.get(digest, [])
+            if (clock - t).total_seconds() < 900
+        ] + [clock]
+
 
 def login_note(ip, ok):
     if ok:
@@ -127,6 +166,9 @@ AGENCY_RECORD_COLLECTIONS = (
     "management_agreements", "rent_ledger_entries", "landlord_statements",
     "notifications", "tasks", "compliance_records", "property_submissions",
     "invitations", "audit_log", "newsletter_subscriptions",
+    "property_units", "ownership_interests", "inventories",
+    "deposit_records", "bank_reconciliation_history",
+    "staff_password_resets",
 )
 
 
@@ -238,14 +280,62 @@ def save_users(data):
         return
     atomic_json_write(USERS_FILE, data)
 
+class StaleStageWrite(RuntimeError):
+    """Another writer committed a newer version of this snapshot."""
+
+
+RecordIntegrityError = canonical_records.RecordIntegrityError
+
+
+def next_canonical_id(stage, collection, prefix):
+    """Allocate a unique ID without reusing archived/deleted sequence slots."""
+    used = {str(row.get("id")) for row in stage.get(collection, []) if isinstance(row, dict)}
+    start = max(
+        (int(value[len(prefix):]) for value in used
+         if value.startswith(prefix) and value[len(prefix):].isdigit()),
+        default=0)
+    candidate = start + 1
+    while prefix + str(candidate) in used:
+        candidate += 1
+    return prefix + str(candidate)
+
+
+def stage_revision(current=None):
+    """Read current committed revision while the writer lock is held."""
+    if current is None:
+        try:
+            current = load_stage()
+        except FileNotFoundError:
+            current = {}
+    revision = current.get("_stage_revision", 0)
+    if type(revision) is not int or revision < 0:
+        raise RecordIntegrityError("Invalid stored stage revision")
+    return revision
+
+
 def save_stage(data):
     # An isolated SaaS instance knows its agency from its trusted environment;
     # safely tag only newly created records, never accept a foreign tag.
     bind_new_agency_records(data)
     # Never persist a contaminated/mixed agency snapshot.
     require_single_agency(data)
+    canonical_records.validate_for_save(data)
+    expected = data.get("_stage_revision", 0)
+    if type(expected) is not int or expected < 0:
+        raise RecordIntegrityError("Invalid stage revision")
+    try:
+        previous = load_stage()
+    except FileNotFoundError:
+        previous = {}
+    actual = stage_revision(previous)
+    if expected != actual:
+        raise StaleStageWrite("stale agency snapshot; reload before writing")
+    canonical_records.guard_no_silent_deletion(previous, data)
+    next_revision = actual + 1
+    prepared = {**data, "_stage_revision": next_revision}
     if os.environ.get("ROGER_STORAGE_BACKEND", "file") != "postgres":
-        atomic_json_write(STAGE_FILE, data)
+        atomic_json_write(STAGE_FILE, prepared)
+        data["_stage_revision"] = next_revision
         return
     collection_tables = {
         "parties": ("roger_parties", ("id",)),
@@ -259,11 +349,11 @@ def save_stage(data):
         connection.execute(
             "INSERT INTO roger_stage_snapshot(singleton_id,payload) VALUES (1,%s::jsonb) "
             "ON CONFLICT(singleton_id) DO UPDATE SET payload=EXCLUDED.payload, imported_at=now()",
-            (json.dumps(data),),
+            (json.dumps(prepared),),
         )
         for collection, (table, columns) in collection_tables.items():
             connection.execute("TRUNCATE TABLE " + table)
-            for record in data.get(collection, []):
+            for record in prepared.get(collection, []):
                 values = [record.get(column) if column != "id" else str(record.get("id")) for column in columns]
                 values.append(json.dumps(record))
                 placeholders = ",".join(["%s"] * len(columns) + ["%s::jsonb"])
@@ -272,6 +362,7 @@ def save_stage(data):
                     "INSERT INTO " + table + "(" + column_sql + ") VALUES (" + placeholders + ")",
                     tuple(values),
                 )
+    data["_stage_revision"] = next_revision
 
 # Legacy compatibility only. Never ship a fake "verified" trade to production.
 # New repair work checks persistent registration, Party ownership and insurance.
@@ -288,8 +379,9 @@ class H(SimpleHTTPRequestHandler):
 
     # ---------- auth plumbing ----------
     PUBLIC_GET = {"/", "/login", "/signin", "/invite", "/for-agents", "/register/landlord", "/register/trades",
-              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/invite.js", "/api/whoami", "/api/agency-info"}
-    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo", "/api/invite/validate", "/api/invite/accept"}
+              "/dash.css", "/favicon.svg", "/sample-home.jpg", "/invite.js", "/staff-reset", "/api/whoami", "/api/agency-info"}
+    PUBLIC_POST = {"/login", "/logout", "/api/public", "/register/landlord", "/register/trades", "/api/enquiry", "/api/prospect-intake", "/api/newsletter", "/api/agent-demo", "/api/invite/validate", "/api/invite/accept",
+                   "/api/security/staff/reset/accept"}
 
     def parse_cookies(self):
         raw = self.headers.get("Cookie") or ""
@@ -330,19 +422,27 @@ class H(SimpleHTTPRequestHandler):
         sess = users.get("sessions", {}).get(tok)
         if not sess:
             return None
-        if datetime.fromisoformat(sess["exp"]) < datetime.now(timezone.utc):
-            # Never overwrite newer login/revocation state from a GET request;
-            # expired sessions are rejected here and pruned by locked login.
+        user = next((u for u in users.get("users", [])
+                     if u.get("username") == sess.get("username")), None)
+        if not auth_security.current_session(
+                sess, user, os.environ.get("ROGER_AGENCY_ID")
+                if os.environ.get("ROGER_SAAS_MODE") == "1" else None):
             return None
-        user = next((u for u in users["users"] if u["username"] == sess["username"]), None)
-        return user if user and not user.get("disabled_at") else None
+        return user
 
     ROLE_PAGES = {"/agent": {"agent"}, "/tenant": {"tenant"}, "/landlord": {"landlord"}, "/trades": {"trades"}}
-    ROLE_API = {"/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent", "landlord"},
-                "/api/landlord-action": {"landlord", "agent"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
+    ROLE_API = {"/api/repair-diagnose": {"tenant", "agent"}, "/api/tenant/issue": {"tenant", "agent"}, "/api/job-action": {"trades", "agent"},
+                "/api/landlord-action": {"landlord"}, "/api/landlord/property-submission": {"landlord"}, "/api/agent/property-submission": {"agent"}, "/api/registration-action": {"agent"}, "/api/contractor-verification": {"agent"}, "/api/office-settings": {"agent"}, "/api/access-revoke": {"agent"}, "/api/prospect-action": {"agent"}, "/api/newsletter-action": {"agent"}, "/api/property-action": {"agent"}, "/api/party-action": {"agent"}, "/api/tenancy-action": {"agent"}, "/api/tenancy-policy-action": {"agent", "tenant"}, "/api/deposit-action": {"agent"}, "/api/inventory-action": {"agent", "tenant"}, "/api/management-agreement-action": {"agent"}, "/api/email-reply": {"agent"}, "/api/rent-ledger-action": {"agent"}, "/api/bank-reconciliation-action": {"agent"}, "/api/bank-reconciliation-preview": {"agent"}, "/api/landlord-statement-action": {"agent"}, "/api/compliance-action": {"agent"}, "/api/property-registration-action": {"agent"}, "/api/task-action": {"agent"}, "/api/notification-action": {"agent", "tenant", "landlord", "trades"}, "/api/email-sync": {"agent"}, "/api/change-password": {"agent", "tenant", "landlord", "trades"},
                 "/api/case-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/appointment": {"agent", "trades"}, "/api/appointment-action": {"agent", "tenant", "landlord", "trades"},
                 "/api/invitation": {"agent"}, "/api/invitation-action": {"agent"},
+                "/api/security/staff/invite": {"agent"}, "/api/security/staff/suspend": {"agent"},
+                "/api/security/staff/reset": {"agent"},
+                "/api/security/mfa/start": {"agent", "tenant", "landlord", "trades"},
+                "/api/security/mfa/confirm": {"agent", "tenant", "landlord", "trades"},
+                "/api/security/mfa/disable": {"agent", "tenant", "landlord", "trades"},
+                "/api/security/sessions/revoke": {"agent", "tenant", "landlord", "trades"},
+                 "/api/agency-profile": {"agent"},
                 "/api/document": {"agent"}, "/api/document-action": {"agent"}}
     DOCUMENT_TYPES = (
         "property_document", "tenancy_agreement", "deposit_receipt", "inspection_report",
@@ -376,6 +476,21 @@ class H(SimpleHTTPRequestHandler):
                 self.send_header("Location", "/change-password")
                 self.end_headers()
             return None
+        if (u.get("role") == "agent"
+                and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"
+                and not u.get("mfa_secret")
+                and path not in (
+                    "/security", "/api/security/mfa/start",
+                    "/api/security/mfa/confirm", "/api/security/sessions/revoke",
+                )):
+            if path.startswith("/api/"):
+                self._json({"error": "staff two-factor enrolment required",
+                            "mfa_setup_required": True}, 403)
+            else:
+                self.send_response(303)
+                self.send_header("Location", "/security")
+                self.end_headers()
+            return None
         if roles and u["role"] not in roles:
             if self.path.startswith("/api/"):
                 self._json({"error": "not your portal"}, 403)
@@ -389,29 +504,61 @@ class H(SimpleHTTPRequestHandler):
     def is_public(self, path):
         return path in self.PUBLIC_GET or path.startswith("/_next/static/") or path == "/api/public"
 
+    @staticmethod
+    def agency_paused():
+        """A cancelled or suspended agency must not accept new portal traffic."""
+        if os.environ.get("ROGER_SAAS_MODE") != "1":
+            return False
+        profile = load_stage().get("agency_profile")
+        return isinstance(profile, dict) and profile.get("operational_status") in ("suspended", "cancelled")
+
     def do_POST_login(self, data):
         ip = self.client_address[0]
         if login_throttled(ip):
             return self._json({"error": "too many attempts — try again in 5 minutes"}, 429)
         username = str(data.get("username", ""))[:40]
         password = str(data.get("password", ""))[:200]
+        if account_throttled(username):
+            return self._json({"error": "too many attempts — try again in 15 minutes"}, 429)
         users = load_users()
-        u = next((x for x in users["users"] if x["username"] == username), None)
-        if u:
-            h = hashlib.scrypt(password.encode(), salt=bytes.fromhex(u["salt"]), n=2**14, r=8, p=1).hex()
-            if not hmac.compare_digest(h, u["hash"]):
-                u = None
-        if u and u.get("disabled_at"):
-            u = None
-        if not u:
+        u = next((x for x in users.get("users", []) if x.get("username") == username), None)
+        if (not u or not auth_security.password_matches(u, password)
+                or u.get("disabled_at")
+                or (os.environ.get("ROGER_SAAS_MODE") == "1"
+                    and u.get("agency_id") not in (None, os.environ.get("ROGER_AGENCY_ID")))):
             login_note(ip, ok=False)
+            account_login_note(username, ok=False)
             return self._json({"error": "wrong username or password"}, 401)
+        mfa_step = None
+        if u.get("mfa_secret"):
+            try:
+                mfa_step = auth_security.verify_totp(
+                    u["mfa_secret"], data.get("totp"),
+                    last_step=u.get("mfa_last_step", -1))
+            except (ValueError, TypeError):
+                mfa_step = None
+            if mfa_step is None:
+                login_note(ip, ok=False)
+                account_login_note(username, ok=False)
+                return self._json({"error": "wrong username, password or verification code"}, 401)
         login_note(ip, ok=True)
+        account_login_note(username, ok=True)
         tok = secrets.token_urlsafe(32)
         nowiso = datetime.now(timezone.utc)
-        users["sessions"] = {k: v for k, v in users.get("sessions", {}).items()
-                             if datetime.fromisoformat(v["exp"]) > nowiso}
-        users["sessions"][tok] = {"username": username, "exp": (nowiso + SESSION_TTL).isoformat()}
+        # Expired or pre-B02 unbound sessions must never regain access.
+        users["sessions"] = {
+            k: v for k, v in users.get("sessions", {}).items()
+            if isinstance(v, dict) and v.get("auth_version") == auth_security.SESSION_AUTH_VERSION
+            and auth_security.current_session(
+                v, next((p for p in users["users"] if p.get("username") == v.get("username")), None),
+                os.environ.get("ROGER_AGENCY_ID") if os.environ.get("ROGER_SAAS_MODE") == "1" else None)
+        }
+        users["sessions"][tok] = {
+            "username": username, "exp": (nowiso + SESSION_TTL).isoformat(),
+            **auth_security.session_principal(u),
+        }
+        if mfa_step is not None:
+            u["mfa_last_step"] = mfa_step
         save_users(users)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -422,7 +569,10 @@ class H(SimpleHTTPRequestHandler):
         )
         self.end_headers()
         self.wfile.write(json.dumps({"ok": True, "role": u["role"],
-                                     "password_change_required": bool(u.get("password_change_required"))}).encode())
+                                     "password_change_required": bool(u.get("password_change_required")),
+                                     "mfa_setup_required": bool(u["role"] == "agent"
+                                         and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"
+                                         and not u.get("mfa_secret"))}).encode())
 
     # ---------- routes ----------
     def do_HEAD(self):
@@ -502,27 +652,114 @@ class H(SimpleHTTPRequestHandler):
         if ("%" in path or "\\" in path or "//" in path
                 or any(x in (".", "..") for x in path.split("/"))):
             return self.send_error(404)
+        if path != "/api/agency-info" and self.agency_paused():
+            return self._json({"error": "agency temporarily unavailable; contact Roger support"}, 503)
         if path == "/api/agency-info":
             saas_mode = os.environ.get("ROGER_SAAS_MODE") == "1"
             name = os.environ.get("ROGER_AGENCY_NAME", "").strip() if saas_mode else "Roger Lettings"
+            brand = {}
+            if saas_mode:
+                profile = load_stage().get("agency_profile")
+                if isinstance(profile, dict):
+                    if profile.get("agency_id") != os.environ.get("ROGER_AGENCY_ID"):
+                        raise AgencyBoundaryError("profile agency ID does not match the stack")
+                    brand = agency_admin.public_brand(profile)
+                    name = brand["name"]
             return self._json({"name": name[:100] or "Roger Lettings",
-                               "saas": saas_mode, "powered_by": "Roger"})
+                               "saas": saas_mode, "powered_by": "Roger",
+                               **({"brand_colour": brand["brand_colour"]} if brand else {})})
+        if path == "/api/agency-profile":
+            u = self.require({"agent"})
+            if not u:
+                return
+            if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                    or u.get("username") != "agency-admin"):
+                return self._json({"error": "agency administrator required"}, 403)
+            profile = load_stage().get("agency_profile")
+            if not isinstance(profile, dict):
+                return self._json({"error": "agency profile is not provisioned"}, 409)
+            return self._json({"profile": profile, "billing_notice": "Manual billing only; no payment is charged by Roger."})
+        if path == "/agency-admin":
+            u = self.require({"agent"})
+            if not u:
+                return
+            if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                    or u.get("username") != "agency-admin"):
+                return self._json({"error": "agency administrator required"}, 403)
+            return self.serve_file("agency-admin.html")
         if path == "/login":
             return self.serve_file("login.html")
         if path == "/invite":
             return self.serve_file("invite.html")
+        if path == "/staff-reset":
+            return self.serve_file("staff-reset.html")
         if path == "/invite.js":
             return self.serve_file("invite.js", "application/javascript; charset=utf-8")
         if path == "/change-password":
             if not self.require():
                 return
             return self.serve_file("change-password.html")
+        if path == "/security":
+            if not self.require({"agent", "tenant", "landlord", "trades"}):
+                return
+            return self.serve_file("security.html")
         if path == "/logout":
             self.send_response(405)
             self.send_header("Allow", "POST")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
+        if path == "/api/deposits":
+            user = self.require({"agent", "tenant"})
+            if not user:
+                return
+            stage = load_stage()
+            if user["role"]=="agent":
+                deposits=stage.get("deposit_records", [])
+            else:
+                ids=self.account_party_ids(stage,user,"tenant")
+                visible={t["id"] for t in stage.get("tenancies",[])
+                         if ids.intersection(t.get("tenant_party_ids",[]))}
+                deposits=[deposit_controls.tenant_view(d)
+                          for d in stage.get("deposit_records",[])
+                          if d.get("tenancy_id") in visible]
+            return self._json({"deposits": deposits})
+        if path == "/api/inventories":
+            user = self.require({"agent", "tenant", "landlord"})
+            if not user:
+                return
+            stage = load_stage()
+            ids = self.account_party_ids(stage, user, user["role"]) if user["role"] != "agent" else set()
+            own_tenancies = {
+                t["id"] for t in stage.get("tenancies", [])
+                if user["role"] == "tenant"
+                and set(t.get("tenant_party_ids", [])).intersection(ids)
+            }
+            owned_properties = {
+                p["id"] for p in stage.get("properties", [])
+                if user["role"] == "landlord" and self.has_party_link(p, "landlord", ids)
+            }
+            results = []
+            for record in stage.get("inventories", []):
+                if user["role"] == "tenant" and record.get("tenancy_id") not in own_tenancies:
+                    continue
+                if user["role"] == "landlord" and record.get("property_id") not in owned_properties:
+                    continue
+                safe = inventory_record.scoped_inventory(
+                    record, user["role"], stage.get("documents", []))
+                if safe is not None:
+                    results.append(safe)
+            return self._json({"inventories": results})
+        if path == "/api/tenancy-policy":
+            user = self.require({"agent", "tenant"})
+            if not user:
+                return
+            return self._json(self.tenancy_policy_view(load_stage(), user))
+        if path == "/api/agent/briefing":
+            if not self.require({"agent"}):
+                return
+            return self._json(agent_briefing.make_briefing(
+                load_stage(), datetime.now(timezone.utc).date()))
         if path == "/api/trades-pool":
             u = self.require({"agent"})
             if not u:
@@ -609,10 +846,14 @@ class H(SimpleHTTPRequestHandler):
         if path == "/api/whoami":
             u = self.session_user()
             return self._json({"authenticated": False} if not u else
-                              {"username": u["username"], "role": u["role"], "display_name": u["display_name"]})
-        m = re.fullmatch(r"/api/invitation/validate/([A-Za-z0-9_\-]+)", path)
-        if m:
-            return self._json(self.validate_invitation_token(m.group(1)))
+                              {"authenticated": True,
+                               "username": u["username"], "role": u["role"],
+                               "display_name": u.get("display_name", ""),
+                               "mfa_setup_required": bool(u["role"] == "agent"
+                                   and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"
+                                   and not u.get("mfa_secret"))})
+        # Invitation tokens must never appear in request URLs or access logs.
+        # The fragment-only invite UI validates by private JSON POST instead.
         m = re.fullmatch(r"/api/documents", path)
         if m:
             u = self.require({"agent", "tenant", "landlord", "trades"})
@@ -719,6 +960,55 @@ class H(SimpleHTTPRequestHandler):
                 and any(isinstance(x, str) and x in party_ids
                         for x in many))
 
+    @staticmethod
+    def public_property_for_role(prop, role):
+        """Exact keys for role portals; no bank, personal contact or office notes."""
+        keys = {"id", "title", "area", "beds", "rent", "status"}
+        if role == "landlord":
+            keys |= {"tenant"}
+        return {k: v for k, v in prop.items() if k in keys}
+
+    @staticmethod
+    def public_case_for_role(case, role):
+        """Keep repair progress, not email addresses, access codes or office data."""
+        keys = {
+            "id", "type", "property_id", "status", "message", "triage",
+            "submitted_at", "status_at", "thread", "next_action", "next_due_at",
+            "resolved_at", "confirmed_at", "appointment_ids",
+        }
+        if role == "tenant":
+            # A tenant may review the diagnostic interview they personally
+            # submitted, but that raw detail is not shared to landlords.
+            keys.add("diagnostic_dossier")
+        return {k: v for k, v in case.items() if k in keys}
+
+    @staticmethod
+    def public_job_for_role(job, role):
+        """Supplier settlement and private contractor details are not tenant data."""
+        keys = {
+            "id", "case_id", "property_id", "status", "assigned_to",
+            "required_trade", "created_at", "completed_at",
+            "approved_quote_pence", "approved_quote_version",
+        }
+        if role == "landlord":
+            keys |= {"invoice_pence", "paid_at", "balance_due_pence"}
+        result = {k: v for k, v in job.items() if k in keys}
+        if role == "landlord":
+            # The landlord statement totals actual recorded external payments,
+            # not the supplier's gross invoice or credit notes. Keep amounts
+            # but never expose bank references, notes or recorder identities.
+            result["payments"] = [
+                {"amount_pence": p.get("amount_pence")}
+                for p in (job.get("payments") or []) if isinstance(p, dict)
+                and type(p.get("amount_pence")) is int
+            ]
+            result["credit_notes"] = [
+                {"amount_pence": note.get("amount_pence")}
+                for note in (job.get("credit_notes") or []) if isinstance(note, dict)
+                and type(note.get("amount_pence")) is int
+            ]
+        return result
+
     def serve_scoped_stage(self):
         """The audit's biggest hole closed: the SERVER decides what each role may see."""
         u = self.session_user()
@@ -730,16 +1020,17 @@ class H(SimpleHTTPRequestHandler):
         props = d.get("properties", [])
         if u["role"] == "tenant":
             party_ids = self.account_party_ids(stage, u, "tenant")
-            myprops = [p for p in props
+            myprops = [self.public_property_for_role(p, "tenant") for p in props
                        if self.has_party_link(p, "tenant", party_ids)]
             property_ids = {p["id"] for p in myprops}
-            mycases = [c for c in d.get("cases", [])
+            mycases = [self.public_case_for_role(c, "tenant") for c in d.get("cases", [])
                        if self.has_party_link(c, "tenant", party_ids)
                        and (not c.get("property_id")
                             or c.get("property_id") in property_ids)]
             cids = {c["id"] for c in mycases}
-            myjobs = [{k: v for k, v in j.items() if k != "email"}
-                      for j in d.get("jobs", []) if j.get("case_id") in cids]
+            myjobs = [self.public_job_for_role(j, "tenant")
+                      for j in d.get("jobs", [])
+                      if j.get("case_id") in cids and j.get("property_id") in property_ids]
             for c in mycases:
                 c.pop("internal_notes", None)
                 c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or [])
@@ -748,10 +1039,11 @@ class H(SimpleHTTPRequestHandler):
                  "authority": d.get("authority"), "role": "tenant"}
         elif u["role"] == "landlord":
             party_ids = self.account_party_ids(stage, u, "landlord")
-            myprops = [p for p in props
+            myprops = [self.public_property_for_role(p, "landlord") for p in props
                        if self.has_party_link(p, "landlord", party_ids)]
             pids = {p["id"] for p in myprops}
-            mycases = [c for c in d.get("cases", []) if c.get("property_id") in pids]
+            mycases = [self.public_case_for_role(c, "landlord") for c in d.get("cases", [])
+                       if c.get("property_id") in pids]
             for c in mycases:
                 c.pop("internal_notes", None)
                 c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or [])
@@ -763,7 +1055,8 @@ class H(SimpleHTTPRequestHandler):
                      and s.get("created_by_account_id") == u.get("account_id")
                  ],
                  "cases": mycases,
-                 "jobs": [j for j in d.get("jobs", []) if j.get("property_id") in pids],
+                 "jobs": [self.public_job_for_role(j, "landlord")
+                          for j in d.get("jobs", []) if j.get("property_id") in pids],
                  "approvals": [a for a in d.get("approvals", []) if (self.has_party_link(a, "landlord", party_ids)
                                    and a.get("property_id") in pids)],
                  "repair_authority": {p["id"]: self.repair_authority(stage, p["id"]) for p in myprops},
@@ -972,6 +1265,10 @@ class H(SimpleHTTPRequestHandler):
             return False
 
     def do_POST(self):
+        # Never allow a suspended/cancelled tenant to mutate the agency or
+        # collect new submissions. Logout remains available to revoke sessions.
+        if self.path.split("?")[0] != "/logout" and self.agency_paused():
+            return self._json({"error": "agency temporarily unavailable; contact Roger support"}, 503)
         # Validate and fully read client input BEFORE locking; slow network
         # uploads must not block other writers. Re-authenticate under the lock.
         path = self.path.split("?")[0]
@@ -992,6 +1289,7 @@ class H(SimpleHTTPRequestHandler):
             "/api/change-password": 8 * 1024,
             "/api/document": 8 * 1024 * 1024,
             "/api/tenant/issue": 32 * 1024 * 1024,
+            "/api/repair-diagnose": 2 * 1024 * 1024,
         }
         max_length = limits.get(path, 256 * 1024)
 
@@ -1065,9 +1363,19 @@ class H(SimpleHTTPRequestHandler):
             "/api/appointment-action": self.handle_appointment_action,
             "/api/invitation": self.handle_invitation,
             "/api/invitation-action": self.handle_invitation_action,
+            "/api/agency-profile": self.handle_agency_profile,
+            "/api/security/staff/invite": self.handle_staff_invitation,
+            "/api/security/staff/suspend": self.handle_staff_suspend,
+            "/api/security/staff/reset": self.handle_staff_reset_request,
+            "/api/security/staff/reset/accept": self.handle_staff_reset_acceptance,
+            "/api/security/mfa/start": self.handle_mfa_start,
+            "/api/security/mfa/confirm": self.handle_mfa_confirm,
+            "/api/security/mfa/disable": self.handle_mfa_disable,
+            "/api/security/sessions/revoke": self.handle_sessions_revoke,
             "/api/document": self.handle_document,
             "/api/document-action": self.handle_document_action,
             "/api/tenant/issue": self.handle_tenant_issue,
+            "/api/repair-diagnose": self.handle_repair_diagnosis,
             "/api/job-action": self.handle_job_action,
             "/api/landlord-action": self.handle_landlord_action,
             "/api/registration-action": self.handle_registration_action,
@@ -1080,18 +1388,32 @@ class H(SimpleHTTPRequestHandler):
             "/api/agent/property-submission": self.handle_agent_property_submission,
             "/api/party-action": self.handle_party_action,
             "/api/tenancy-action": self.handle_tenancy_action,
+            "/api/tenancy-policy-action": self.handle_tenancy_policy_action,
+            "/api/deposit-action": self.handle_deposit_action,
+            "/api/inventory-action": self.handle_inventory_action,
             "/api/management-agreement-action": self.handle_management_agreement_action,
             "/api/case-action": self.handle_case_action,
             "/api/email-reply": self.handle_email_reply,
             "/api/email-sync": self.handle_email_sync,
             "/api/rent-ledger-action": self.handle_rent_ledger_action,
+            "/api/bank-reconciliation-action": self.handle_bank_reconciliation_action,
+            "/api/bank-reconciliation-preview": self.handle_bank_reconciliation_preview,
             "/api/landlord-statement-action": self.handle_landlord_statement_action,
             "/api/compliance-action": self.handle_compliance_action,
+            "/api/property-registration-action": self.handle_property_registration_action,
             "/api/task-action": self.handle_task_action,
             "/api/notification-action": self.handle_notification_action,
         }
         if path not in handlers:
             return self._json({"error": "unknown endpoint"}, 404)
+        # Diagnosis only reads a role-scoped property and makes an optional
+        # slow local-model call. Never hold the write lock during AI inference.
+        if path == "/api/repair-diagnose":
+            fresh = self.require(self.ROLE_API[path])
+            if not fresh:
+                return
+            self.user = fresh
+            return self.handle_repair_diagnosis(data)
         try:
             with storage_write_lock():
                 # A revoked session must not finish an in-flight modification
@@ -1104,6 +1426,8 @@ class H(SimpleHTTPRequestHandler):
                 return handlers[path](data)
         except AgencyBoundaryError:
             return self._json({"error": "agency data isolation check failed; contact the administrator"}, 409)
+        except (StaleStageWrite, RecordIntegrityError):
+            return self._json({"error": "record integrity or concurrent edit conflict; reload and review"}, 409)
 
     # ---------- shared helpers ----------
     def _json(self, obj, code=200):
@@ -1111,6 +1435,9 @@ class H(SimpleHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        for header, value in auth_security.SECURITY_HEADERS.items():
+            self.send_header(header, value)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -1686,22 +2013,7 @@ class H(SimpleHTTPRequestHandler):
 
     def handle_tenancy_action(self, data):
         """Agent creates a tenancy or advances its audited lifecycle state."""
-        transitions = {
-            "application": ("referencing", "cancelled"),
-            "referencing": ("approved", "cancelled"),
-            "approved": ("offer", "cancelled"),
-            "offer": ("agreement", "cancelled"),
-            "agreement": ("deposit", "cancelled"),
-            "deposit": ("move_in_scheduled", "cancelled"),
-            "move_in_scheduled": ("active", "cancelled"),
-            "active": ("renewal", "notice_given"),
-            "renewal": ("active", "notice_given"),
-            "notice_given": ("active", "checkout"),
-            "checkout": ("deposit_resolution", "former_tenant"),
-            "deposit_resolution": ("former_tenant",),
-            "former_tenant": (),
-            "cancelled": (),
-        }
+        transitions = workflow_engine.TENANCY_TRANSITIONS
         stage = load_stage()
         action = str(data.get("action", "create"))
         if action == "create":
@@ -1735,17 +2047,22 @@ class H(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 return self._json({"error": "valid start_date and integer pence amounts are required"}, 400)
             frequency = str(data.get("rent_frequency", "monthly"))
-            if rent <= 0 or deposit < 0 or frequency not in ("weekly", "fortnightly", "monthly", "quarterly", "annually"):
-                return self._json({"error": "invalid rent, deposit or rent frequency"}, 400)
+            try:
+                periodic_terms = tenancy_2026.assured_periodic_terms(
+                    start_date.isoformat(), frequency, rent, deposit)
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
             tenancy_num = int(stage.get("next_tenancy_id", 1))
             tid = "tenancy-" + str(tenancy_num)
             at = now()
             tenancy = {
-                "id": tid, "property_id": prop["id"],
+                "id": tid, "model_version": canonical_records.MODEL_VERSION,
+                "property_id": prop["id"],
                 "source_prospect_id": source_prospect_id,
                 "tenant_party_ids": tenant_ids, "landlord_party_ids": landlord_ids,
                 "start_date": start_date.isoformat(), "end_date": None,
                 "rent_amount_pence": rent, "rent_frequency": frequency,
+                **periodic_terms,
                 "deposit_amount_pence": deposit, "deposit_scheme": None,
                 "deposit_reference": None, "agreement_status": "draft",
                 "status": "application", "move_in_date": None, "notice_date": None,
@@ -1802,8 +2119,22 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "tenancy not found"}, 404)
         target = str(data.get("status", ""))
         current = tenancy.get("status")
+        reason = data.get("reason")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 500):
+            return self._json({"error": "transition reason must be text, max 500 characters"}, 400)
+        try:
+            replay = workflow_engine.guard_replay(
+                tenancy, "history", data.get("request_id"), target)
+        except workflow_engine.InvalidTransition:
+            return self._json({"error": "invalid request ID"}, 400)
+        except workflow_engine.RequestReplayConflict:
+            return self._json({"error": "request ID already used for another transition"}, 409)
+        if replay:
+            return self._json({"success": True, "unchanged": True, "status": target})
         if target not in transitions:
             return self._json({"error": "invalid tenancy status"}, 400)
+        if target == "renewal" and tenancy.get("tenancy_type") == "assured_periodic":
+            return self._json({"error": "assured periodic tenancies have no fixed term to renew; use the rent notice workflow"}, 409)
         if target == current:
             return self._json({"success": True, "unchanged": True, "status": current})
         if target not in transitions.get(current, ()):
@@ -1842,29 +2173,265 @@ class H(SimpleHTTPRequestHandler):
             property_status = (prop or {}).get("lifecycle_status") or "onboarding"
             if not prop or property_status != expected:
                 return self._json({"error": "advance the property to " + expected + " before this tenancy transition"}, 409)
-            prop["lifecycle_status"] = next_property
-            prop["lifecycle_status_at"] = now()
-            prop.setdefault("lifecycle_history", []).append({
-                "from": expected, "to": next_property, "at": prop["lifecycle_status_at"],
-                "by": (self.user or {}).get("username", "agent")
-            })
+            property_changed_at = now()
+            workflow_engine.apply_transition(
+                prop, kind="property", target=next_property, at=property_changed_at,
+                actor=(self.user or {}).get("username", "agent"),
+                state_field="lifecycle_status", history_field="lifecycle_history")
+            prop["lifecycle_status_at"] = property_changed_at
             self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
                                "action": "property_lifecycle_changed", "target": prop["id"],
                                "note": expected + " -> " + next_property + " (tenancy " + tid + ")"})
         if target == "active":
             tenancy["move_in_date"] = tenancy.get("start_date")
         at = now()
-        tenancy["status"] = target
+        workflow_engine.apply_transition(
+            tenancy, kind="tenancy", target=target, at=at,
+            actor=(self.user or {}).get("username", "agent"),
+            effective_date=effective_date or None,
+            request_id=data.get("request_id"), reason=data.get("reason"))
+        tenancy["history"][-1].setdefault("effective_date", None)
         tenancy["updated_at"] = at
-        tenancy.setdefault("history", []).append({
-            "from": current, "to": target, "at": at, "effective_date": effective_date or None,
-            "by": (self.user or {}).get("username", "agent")
-        })
         self.audit(stage, {"actor": (self.user or {}).get("display_name", "agent"),
                            "action": "tenancy_status_changed", "target": tid,
                            "note": current + " -> " + target})
         save_stage(stage)
         return self._json({"success": True, "status": target, "updated_at": at})
+
+    def handle_deposit_action(self, data):
+        """Record deposit events without claiming bank payment or scheme API verification."""
+        stage=load_stage()
+        actor=(self.user or {}).get("username","agent")
+        at=now()
+        action=data.get("action")
+        try:
+            if action=="create":
+                tenancy=next((t for t in stage.get("tenancies",[])
+                              if t.get("id")==data.get("tenancy_id")),None)
+                if not tenancy:
+                    return self._json({"error":"tenancy not found"},404)
+                item=deposit_controls.create_record(stage,tenancy,data,actor,at)
+                stage.setdefault("deposit_records",[]).append(item)
+                stage["next_deposit_id"]=int(stage.get("next_deposit_id",1))+1
+                event="deposit_receipt_recorded_unverified"
+            else:
+                item=next((r for r in stage.get("deposit_records",[])
+                           if r.get("id")==data.get("deposit_id")),None)
+                if not item:
+                    return self._json({"error":"deposit not found"},404)
+                if action=="record_protection":
+                    deposit_controls.protect(stage,item,data,actor,at)
+                    event="deposit_protection_evidence_recorded"
+                elif action=="holding_outcome":
+                    deposit_controls.holding_outcome(stage,item,data,actor,at)
+                    event="holding_deposit_outcome_recorded"
+                else:
+                    return self._json({"error":"unsupported deposit action"},400)
+        except ValueError as error:
+            return self._json({"error":str(error)},400)
+        self.audit(stage,{"actor":actor,"action":event,
+                          "target":item["id"],"note":str(item["tenancy_id"])})
+        save_stage(stage)
+        return self._json({"success":True,"deposit":item,
+                           "warning":"Recorded evidence is not independently bank or scheme verified"})
+
+    def handle_inventory_action(self, data):
+        """Role-scoped inventory workflow: history and photographs remain attached to a tenancy."""
+        stage = load_stage()
+        user = self.user or {}
+        role = user.get("role")
+        action = str(data.get("action") or "")
+        actor = user.get("username") or role
+        at = now()
+        inventory = None
+        try:
+            if action == "create":
+                if role != "agent":
+                    return self._json({"error": "only agents can create inventories"}, 403)
+                tenancy_id = data.get("tenancy_id")
+                tenancy = next((t for t in stage.get("tenancies", [])
+                                if t.get("id") == tenancy_id), None)
+                if not tenancy:
+                    return self._json({"error": "tenancy not found"}, 404)
+                number = int(stage.get("next_inventory_id", 1))
+                inventory = inventory_record.create_inventory(data, tenancy, at, actor, number)
+                stage["next_inventory_id"] = number + 1
+                stage.setdefault("inventories", []).append(inventory)
+                result = {"success": True, "inventory": inventory}
+                event = "inventory_created"
+            else:
+                inventory = next((i for i in stage.get("inventories", [])
+                                  if i.get("id") == data.get("inventory_id")), None)
+                if not inventory:
+                    return self._json({"error": "inventory not found"}, 404)
+                if action == "acknowledge":
+                    if role != "tenant":
+                        return self._json({"error": "only a tenant can respond"}, 403)
+                    linked = self.account_party_ids(stage, user, "tenant")
+                    tenancy = next((t for t in stage.get("tenancies", [])
+                                    if t.get("id") == inventory.get("tenancy_id")), None)
+                    if not tenancy or not linked.intersection(tenancy.get("tenant_party_ids", [])):
+                        return self._json({"error": "not your tenancy"}, 403)
+                    feedback = inventory_record.tenant_respond(
+                        inventory, user.get("account_id"),
+                        data.get("comment", ""), data.get("accepted"), at)
+                    result = {"success": True, "response": {
+                        "accepted": feedback["accepted"], "comment": feedback["comment"]}}
+                    event = "inventory_tenant_response"
+                else:
+                    if role != "agent":
+                        return self._json({"error": "agent-only inventory action"}, 403)
+                    if action == "room":
+                        row = inventory_record.add_room(stage, inventory, data, at, actor)
+                        result = {"success": True, "room": row}
+                        event = "inventory_room_recorded"
+                    elif action == "meter":
+                        inventory_record.add_meter(inventory, data, at, actor)
+                        result = {"success": True}
+                        event = "inventory_meter_recorded"
+                    elif action == "keys":
+                        inventory_record.add_keys(inventory, data, at, actor)
+                        result = {"success": True}
+                        event = "inventory_keys_recorded"
+                    elif action == "issue":
+                        inventory_record.issue(inventory, at, actor)
+                        result = {"success": True, "status": "issued"}
+                        event = "inventory_issued"
+                    else:
+                        return self._json({"error": "unknown inventory action"}, 400)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+        self.audit(stage, {"actor": actor, "action": event,
+                           "target": inventory["id"],
+                           "note": str(inventory["tenancy_id"])})
+        save_stage(stage)
+        return self._json(result)
+
+    def tenancy_policy_view(self, stage, user):
+        """No other tenant's details or private records can cross this boundary."""
+        if user.get("role") == "agent":
+            tenancies = stage.get("tenancies", [])
+        else:
+            party_ids = self.account_party_ids(stage, user, "tenant")
+            tenancies = [t for t in stage.get("tenancies", [])
+                         if any(p in party_ids for p in t.get("tenant_party_ids", []))]
+        # Explicit output schema. Do not return Party, verification, or private document data.
+        allowed = ("id", "property_id", "tenancy_type", "start_date", "status",
+                   "rent_amount_pence", "rent_frequency", "pending_rent_increase",
+                   "last_rent_increase_effective_at", "pet_requests")
+        return {"tenancies": [{k: t.get(k) for k in allowed} for t in tenancies]}
+
+    def handle_tenancy_policy_action(self, data):
+        """Capture tenant/agent requests; only agents can record formal rent actions."""
+        stage = load_stage()
+        tenancy = next((t for t in stage.get("tenancies", [])
+                        if t.get("id") == data.get("tenancy_id")), None)
+        if not tenancy:
+            return self._json({"error": "tenancy not found"}, 404)
+        actor = self.user or {}
+        role = actor.get("role")
+        action = data.get("action")
+        if role == "tenant":
+            party_ids = self.account_party_ids(stage, actor, "tenant")
+            if not party_ids.intersection(tenancy.get("tenant_party_ids", [])):
+                return self._json({"error": "not your tenancy"}, 403)
+            if action != "request_pet":
+                return self._json({"error": "tenant may only request a pet"}, 403)
+        elif role != "agent":
+            return self._json({"error": "agent or tenant access required"}, 403)
+        elif action == "request_pet":
+            return self._json({"error": "tenant must request a pet from their own account"}, 403)
+
+        at = now()
+        try:
+            if action == "request_pet":
+                record = tenancy_2026.pet_request(data.get("description"), at)
+                key = str(data.get("request_id") or "")
+                if not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", key):
+                    raise ValueError("A request id is required")
+                existing = next((p for p in tenancy.get("pet_requests", [])
+                                 if p.get("request_id") == key), None)
+                if existing:
+                    if existing.get("description") != record["description"]:
+                        return self._json({"error": "duplicate request id with different content"}, 409)
+                    return self._json({"success": True, "unchanged": True, "request": existing})
+                record["request_id"] = key
+                record["id"] = "pet-" + secrets.token_hex(8)
+                record["requested_by_account_id"] = actor.get("account_id")
+                tenancy.setdefault("pet_requests", []).append(record)
+                change = "pet_request_created"
+                reply = {"success": True, "request": record}
+            elif action == "decide_pet":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                record = next((p for p in tenancy.get("pet_requests", [])
+                               if p.get("id") == data.get("request_id")), None)
+                if not record:
+                    return self._json({"error": "pet request not found"}, 404)
+                record.update(tenancy_2026.pet_decision(
+                    record, data.get("decision"), data.get("reason"), at))
+                record["decided_by"] = actor.get("username")
+                change = "pet_request_decided"
+                reply = {"success": True, "request": record}
+            elif action == "propose_rent_increase":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                proposed = tenancy_2026.rent_increase_proposal(
+                    tenancy, data.get("amount_pence"),
+                    data.get("notice_served_on"), data.get("effective_on"))
+                proposed["created_by"] = actor.get("username")
+                proposed["created_at"] = at
+                tenancy["pending_rent_increase"] = proposed
+                change = "rent_increase_draft_recorded"
+                reply = {"success": True, "proposal": proposed,
+                         "warning": "Roger has not verified service of Form 4A or any tribunal dispute"}
+            elif action == "mark_rent_increase_disputed":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                pending = tenancy.get("pending_rent_increase")
+                if not pending:
+                    return self._json({"error": "no pending rent increase"}, 409)
+                pending["tenant_objection_status"] = "disputed"
+                change = "rent_increase_dispute_recorded"
+                reply = {"success": True, "proposal": pending}
+            elif action == "withdraw_rent_increase":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                pending = tenancy.pop("pending_rent_increase", None)
+                if not pending:
+                    return self._json({"error": "no pending rent increase"}, 409)
+                tenancy.setdefault("rent_increase_history", []).append(
+                    {**pending, "status": "withdrawn", "recorded_at": at})
+                change = "rent_increase_withdrawn"
+                reply = {"success": True}
+            elif action == "apply_rent_increase":
+                if role != "agent":
+                    return self._json({"error": "agent only"}, 403)
+                amount, effective = tenancy_2026.confirm_rent_increase(tenancy)
+                pending = tenancy.pop("pending_rent_increase")
+                tenancy.setdefault("rent_increase_history", []).append(
+                    {**pending, "status": "recorded_effective", "recorded_at": at})
+                previous = tenancy.get("rent_amount_pence")
+                tenancy["rent_amount_pence"] = amount
+                tenancy["last_rent_increase_effective_at"] = effective
+                # Future charges must be recalculated explicitly and reviewed;
+                # never silently rewrite historic ledger or existing receipts.
+                change = "rent_increase_recorded_effective"
+                reply = {"success": True, "previous_rent_pence": previous,
+                         "rent_amount_pence": amount,
+                         "warning": "Existing scheduled ledger entries are unchanged; agent must reconcile future charges"}
+            else:
+                return self._json({"error": "unknown tenancy policy action"}, 400)
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
+
+        tenancy["updated_at"] = at
+        tenancy.setdefault("history", []).append({
+            "event": change, "at": at, "by": actor.get("username", role)})
+        self.audit(stage, {"actor": actor.get("username", role),
+                           "action": change, "target": tenancy["id"]})
+        save_stage(stage)
+        return self._json(reply)
 
     # ---------- authenticated landlord property onboarding ----------
     def handle_landlord_property_submission(self, data):
@@ -1968,6 +2535,11 @@ class H(SimpleHTTPRequestHandler):
         if not owner:
             return self._json({"error": "landlord account is no longer active"}, 409)
         if action == "approve":
+            profile = stage.get("agency_profile") or {}
+            if (profile.get("plan") != "unassigned"
+                    and type(profile.get("property_limit")) is int
+                    and len(stage.get("properties", [])) >= profile["property_limit"]):
+                return self._json({"error": "agency property plan limit reached; contact the operator"}, 409)
             num = int(stage.get("next_onboarded_property_id", 1))
             existing_ids = {str(x.get("id")) for x in stage.get("properties", [])}
             while "onboarded-" + str(num) in existing_ids:
@@ -2012,20 +2584,7 @@ class H(SimpleHTTPRequestHandler):
 
     def handle_property_action(self, data):
         """Agent-controlled property lifecycle transition and public listing draft update."""
-        transitions = {
-            "prospect": ("onboarding", "offboarded"),
-            "onboarding": ("ready_to_market", "offboarded"),
-            "ready_to_market": ("onboarding", "advertised", "offboarded"),
-            "advertised": ("application", "void", "offboarded"),
-            "application": ("advertised", "let_agreed", "void"),
-            "let_agreed": ("occupied", "void"),
-            "occupied": ("notice_given", "offboarded"),
-            "notice_given": ("occupied", "checkout"),
-            "checkout": ("void",),
-            "void": ("remarketing", "offboarded"),
-            "remarketing": ("advertised", "onboarding", "offboarded"),
-            "offboarded": (),
-        }
+        transitions = workflow_engine.PROPERTY_TRANSITIONS
         stage = load_stage()
         pid = str(data.get("property_id", ""))[:100]
         prop = self.find_prop(stage, pid)
@@ -2033,6 +2592,18 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "property not found"}, 404)
         current = prop.get("lifecycle_status") or "onboarding"
         target = str(data.get("status", ""))[:40]
+        reason = data.get("reason")
+        if reason is not None and (not isinstance(reason, str) or len(reason) > 500):
+            return self._json({"error": "transition reason must be text, max 500 characters"}, 400)
+        try:
+            replay = workflow_engine.guard_replay(
+                prop, "lifecycle_history", data.get("request_id"), target)
+        except workflow_engine.InvalidTransition:
+            return self._json({"error": "invalid request ID"}, 400)
+        except workflow_engine.RequestReplayConflict:
+            return self._json({"error": "request ID already used for another transition"}, 409)
+        if replay:
+            return self._json({"success": True, "unchanged": True, "status": target})
         if target not in transitions:
             return self._json({"error": "invalid property lifecycle status"}, 400)
         if target != current and target not in transitions.get(current, ()):
@@ -2059,12 +2630,14 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"success": True, "unchanged": True, "status": current})
         at = now()
         if target != current:
-            prop["lifecycle_status"] = target
+            workflow_engine.apply_transition(
+                prop, kind="property", target=target, at=at,
+                actor=(self.user or {}).get("username", "agent"),
+                state_field="lifecycle_status",
+                history_field="lifecycle_history",
+                request_id=data.get("request_id"),
+                reason=data.get("reason"))
             prop["lifecycle_status_at"] = at
-            prop.setdefault("lifecycle_history", []).append({
-                "from": current, "to": target, "at": at,
-                "by": (self.user or {}).get("username", "agent")
-            })
             action, note = "property_lifecycle_changed", current + " -> " + target
         else:
             action, note = "property_listing_updated", "Public description updated"
@@ -2400,6 +2973,31 @@ class H(SimpleHTTPRequestHandler):
         case["next_action_updated_at"] = now()
         case["next_action_by"] = changed_by
 
+    def handle_repair_diagnosis(self, data):
+        """Stateless guided interview; verify the logged-in party/property link."""
+        stage = load_stage()
+        prop = self.find_prop(stage, data.get("property_id"))
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        user = getattr(self, "user", None) or {}
+        role = user.get("role")
+        if role not in ("tenant", "agent"):
+            return self._json({"error": "not authorised"}, 403)
+        if role == "tenant":
+            party_ids = self.account_party_ids(stage, user, "tenant")
+            if not self.has_party_link(prop, "tenant", party_ids):
+                return self._json({"error": "not your property"}, 403)
+        try:
+            result = repair_diagnosis.diagnose(
+                data.get("description"),
+                history=data.get("history"),
+                image_b64=data.get("image_b64"),
+                mime=data.get("image_mime"),
+            )
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        return self._json(result)
+
     def handle_tenant_issue(self, data):
         stage = load_stage()
         prop = self.find_prop(stage, data.get("property_id"))
@@ -2448,6 +3046,10 @@ class H(SimpleHTTPRequestHandler):
         message = str(data.get("message", "")).strip()[:3000]
         if not message:
             return self._json({"error": "describe the problem before submitting"}, 400)
+        try:
+            dossier = repair_case_dossier.normalise_dossier(data.get("diagnostic"))
+        except ValueError as exc:
+            return self._json({"error": str(exc)}, 400)
         request_id = data.get("request_id")
         if request_id is not None and (
                 not isinstance(request_id, str)
@@ -2461,7 +3063,13 @@ class H(SimpleHTTPRequestHandler):
                              and case.get("created_by_account_id") == issuer.get("account_id")
                              and case.get("type") == "issue"), None)
             if previous:
-                if previous.get("message") != message:
+                old_dossier = previous.get("diagnostic_dossier")
+                if (previous.get("message") != message
+                        or bool(old_dossier) != bool(dossier)
+                        or (dossier and (
+                            old_dossier.get("description") != dossier["description"]
+                            or old_dossier.get("answers") != dossier["answers"]
+                        ))):
                     return self._json({"error": "request id already used for a different report"}, 409)
                 return self._json({"success": True, "case_id": previous["id"],
                                    "already_received": True, "triage": previous.get("triage"),
@@ -2469,6 +3077,19 @@ class H(SimpleHTTPRequestHandler):
         name = (issuer.get("display_name") if role == "tenant"
                 else str(data.get("name", "Tenant"))[:100])
         t = self.triage(message)
+        # Rule-based danger screening has priority over a model's guessed urgency.
+        # The text/answers are unverified tenant statements; never dispatch here.
+        flags = list(dict.fromkeys(
+            repair_diagnosis.danger_flags(message) +
+            (dossier["safety_flags"] if dossier else [])
+        ))
+        if flags:
+            t["safety_flags"] = flags
+            t["urgency"] = 2
+            try:
+                t["safety"] = max(float(t.get("safety") or 0), 0.95)
+            except (TypeError, ValueError):
+                t["safety"] = 0.95
         case = {
             "id": stage.get("next_case_id", 490),
             "type": "issue",
@@ -2484,6 +3105,8 @@ class H(SimpleHTTPRequestHandler):
             "triage": t,
             "submitted_at": now(),
         }
+        if dossier:
+            case["diagnostic_dossier"] = dossier
         self.case_next(case, "agent", "Review the repair report and decide what happens next",
                        self.internal_case_target())
         stage["next_case_id"] = case["id"] + 1
@@ -2690,6 +3313,7 @@ class H(SimpleHTTPRequestHandler):
         job = next((j for j in stage.get("jobs", []) if j["id"] == data.get("id")), None)
         if not job:
             return self._json({"error": "job not found"}, 404)
+        previous_job_status = job.get("status")
         role = (self.user or {}).get("role")
         AGENT_ONLY = {"assign", "request_quote", "approve_quote", "decline_quote",
                       "send_to_landlord", "verify_approve", "verify_decline",
@@ -2701,9 +3325,39 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "agent-only move"}, 403)
         if action in TRADES_ONLY and role != "trades":
             return self._json({"error": "tradesperson-only move"}, 403)
+        if action in AGENT_ONLY:
+            # All agent job actions (especially supplier payments and credits)
+            # share one durable, payload-bound replay guard.
+            try:
+                replayed = workflow_engine.check_action_replay(
+                    job, request_id=data.get("request_id"), action=action,
+                    actor=(self.user or {}).get("username") or "unknown",
+                    payload=data)
+            except workflow_engine.RequestReplayConflict as exc:
+                return self._json({"error": str(exc)}, 409)
+            except workflow_engine.InvalidTransition as exc:
+                return self._json({"error": str(exc)}, 400)
+            if replayed:
+                return self._json({"success": True, "already_processed": True, "job": job})
         actor = (self.user or {}).get("display_name") or "Unknown"
         selected_party_id = None
 
+        if action in TRADES_ONLY and data.get("request_id"):
+            # A contractor can replay only an action on a job assigned to
+            # their verified Party. Unassigned jobs never reveal replay data.
+            own_parties = self.account_party_ids(stage, self.user or {}, "trades")
+            if job.get("assigned_to_party_id") in own_parties:
+                try:
+                    replayed = workflow_engine.check_action_replay(
+                        job, request_id=data["request_id"], action=action,
+                        actor=(self.user or {}).get("username") or "unknown",
+                        payload=data)
+                except workflow_engine.RequestReplayConflict as exc:
+                    return self._json({"error": str(exc)}, 409)
+                except workflow_engine.InvalidTransition as exc:
+                    return self._json({"error": str(exc)}, 400)
+                if replayed:
+                    return self._json({"success": True, "already_processed": True, "job": job})
         if action in TRADES_ONLY:
             ids = self.account_party_ids(
                 stage, self.user or {}, "trades"
@@ -3019,7 +3673,7 @@ class H(SimpleHTTPRequestHandler):
                     job["status"] = "awaiting_prework_approval"
                     stage.setdefault("approvals", [])
                     stage["approvals"].append({
-                        "id": "appr-" + str(len(stage["approvals"]) + 1),
+                        "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION,
                         "approval_type": "prework_quote",
                         "job_id": job["id"], "property_id": job["property_id"],
                         "landlord": prop.get("landlord", "Landlord"),
@@ -3147,7 +3801,7 @@ class H(SimpleHTTPRequestHandler):
                         return self._json({"error": "active linked landlord required"}, 409)
                     variation["status"] = "pending_landlord"
                     stage.setdefault("approvals", []).append({
-                        "id": f"appr-{len(stage.get('approvals', [])) + 1}",
+                        "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION,
                         "approval_type": "variation_quote",
                         "job_id": job["id"], "property_id": job["property_id"],
                         "landlord_party_id": landlord_id,
@@ -3169,7 +3823,7 @@ class H(SimpleHTTPRequestHandler):
             prop = self.find_prop(stage, job["property_id"]) or {}
             stage.setdefault("approvals", [])
             stage["approvals"].append({
-                "id": f"appr-{len(stage['approvals']) + 1}", "job_id": job["id"],
+                "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION, "job_id": job["id"],
                 "property_id": job["property_id"], "landlord": prop.get("landlord", "Landlord"),
                     "landlord_party_id": prop.get("landlord_party_id"),
                     "landlord_party_ids": prop.get("landlord_party_ids", []),
@@ -3216,7 +3870,7 @@ class H(SimpleHTTPRequestHandler):
                 prop = self.find_prop(stage, job["property_id"]) or {}
                 stage.setdefault("approvals", [])
                 appr = {
-                    "id": f"appr-{len(stage['approvals']) + 1}",
+                    "id": next_canonical_id(stage, "approvals", "appr-"), "model_version": canonical_records.MODEL_VERSION,
                     "job_id": job["id"],
                     "property_id": job["property_id"],
                     "landlord": prop.get("landlord", "Landlord"),
@@ -3301,6 +3955,25 @@ class H(SimpleHTTPRequestHandler):
         else:
             return self._json({"error": f"invalid action {action} for status {job['status']}"}, 400)
 
+        try:
+            workflow_engine.validate_domain_action(
+                "job", action=action, previous=previous_job_status,
+                target=job.get("status"), role=role)
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 409)
+        workflow_engine.record_status_change(
+            job, previous_job_status, action=str(action),
+            actor=(self.user or {}).get("username") or "unknown",
+            role=(self.user or {}).get("role"), at=now(),
+            include_noop=action in {
+                "record_payment", "record_credit", "submit_variation",
+                "approve_variation", "decline_variation",
+            })
+        if action in AGENT_ONLY or action in TRADES_ONLY:
+            workflow_engine.remember_action_request(
+                job, request_id=data.get("request_id"), action=action,
+                actor=(self.user or {}).get("username") or "unknown",
+                role=role, at=now(), payload=data)
         self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "job": job})
@@ -3311,10 +3984,11 @@ class H(SimpleHTTPRequestHandler):
         appr = next((a for a in stage.get("approvals", []) if a["id"] == data.get("id")), None)
         if not appr:
             return self._json({"error": "approval not found"}, 404)
+        previous_approval_status = appr.get("status")
         user = self.user or {}
         role = user.get("role")
-        if role not in ("agent", "landlord"):
-            return self._json({"error": "not authorised"}, 403)
+        if role != "landlord":
+            return self._json({"error": "landlord approval must be decided by the linked landlord"}, 403)
         prework = appr.get("approval_type") == "prework_quote"
         variation_approval = appr.get("approval_type") == "variation_quote"
         # A costly quote must be explicitly approved by the correct landlord.
@@ -3327,15 +4001,26 @@ class H(SimpleHTTPRequestHandler):
                     or not self.has_party_link(prop, "landlord", ids)
                     or not self.has_party_link(appr, "landlord", ids)):
                 return self._json({"error": "not your approval"}, 403)
-        if appr["status"] != "pending":
-            return self._json({"error": "already decided"}, 409)
         action = data.get("action")
         if action not in ("approve", "reject"):
             return self._json({"error": "action must be approve|reject"}, 400)
+        try:
+            replayed = workflow_engine.check_action_replay(
+                appr, request_id=data.get("request_id"), action=action,
+                actor=user.get("username") or "unknown", payload=data)
+        except workflow_engine.RequestReplayConflict as exc:
+            return self._json({"error": str(exc)}, 409)
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 400)
+        if replayed:
+            return self._json({"success": True, "already_processed": True, "approval": appr})
+        if appr["status"] != "pending":
+            return self._json({"error": "already decided"}, 409)
         reason = str(data.get("reason", "")).strip()[:300]
         if action == "reject" and not reason:
             return self._json({"error": "a reason is required when rejecting"}, 400)
         job = next((j for j in stage.get("jobs", []) if j["id"] == appr["job_id"]), None)
+        previous_job_status = job.get("status") if job else None
         if prework:
             if not job or not self.verified_contractor_for_new_repair(
                     stage, job.get("assigned_to_party_id"), job.get("required_trade"), job.get("property_id")):
@@ -3371,6 +4056,14 @@ class H(SimpleHTTPRequestHandler):
             if not self.verified_contractor_for_new_repair(
                     stage, job.get("assigned_to_party_id"), job.get("required_trade"), job.get("property_id")):
                 return self._json({"error": "contractor no longer approved for extra work"}, 409)
+        # Audit the domain transition before any status or financial effect.
+        try:
+            workflow_engine.validate_domain_action(
+                "approval", action=action, previous=previous_approval_status,
+                target="approved" if action == "approve" else "rejected",
+                role=role, approval_type=appr.get("approval_type"))
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 409)
         appr["status"] = "approved" if action == "approve" else "rejected"
         appr["reason_given"] = reason if action == "reject" else None
         appr["decided_at"] = now()
@@ -3437,6 +4130,25 @@ class H(SimpleHTTPRequestHandler):
             "target": appr["id"], "note": reason or None
         })
         if job:
+            try:
+                workflow_engine.validate_domain_action(
+                    "landlord_job", action=action, previous=previous_job_status,
+                    target=job.get("status"), role=role,
+                    approval_type=appr.get("approval_type"))
+            except workflow_engine.InvalidTransition as exc:
+                return self._json({"error": str(exc)}, 409)
+        workflow_engine.record_status_change(
+            appr, previous_approval_status, action=str(action),
+            actor=user.get("username") or "unknown", role=role, at=now())
+        workflow_engine.remember_action_request(
+            appr, request_id=data.get("request_id"), action=action,
+            actor=user.get("username") or "unknown", role=role,
+            at=now(), payload=data)
+        if job:
+            workflow_engine.record_status_change(
+                job, previous_job_status, action="landlord_"+str(action),
+                actor=user.get("username") or "unknown", role=role, at=now(),
+                include_noop=variation_approval)
             self.update_case_from_job(stage, job)
         save_stage(stage)
         self._json({"success": True, "approval": appr})
@@ -3447,10 +4159,13 @@ class H(SimpleHTTPRequestHandler):
         due = int(entry.get("amount_due_pence", 0)) + sum(int(a.get("amount_pence", 0)) for a in entry.get("adjustments", []))
         received = sum(int(p.get("amount_pence", 0)) for p in entry.get("payments", []))
         balance = due - received
+        matched = sum(int(p.get("amount_pence",0)) for p in entry.get("payments",[])
+                      if p.get("reconciliation_status") in ("agent_matched","bank_verified"))
         status = "paid" if balance == 0 else ("partial" if received else "due")
         if balance > 0 and entry.get("due_date") and entry["due_date"] < datetime.now(timezone.utc).date().isoformat():
             status = "overdue"
         return {**entry, "amount_due_pence": due, "amount_received_pence": received,
+                "reconciled_pence": matched, "unverified_receipts_pence": received-matched,
                 "balance_pence": balance, "status": status}
 
     def safe_compliance_record(self, record):
@@ -3481,6 +4196,31 @@ class H(SimpleHTTPRequestHandler):
                 pass
         return {**record, "status": status, "reminder_due": reminder_due}
 
+    def handle_property_registration_action(self, data):
+        """Agent records independently obtained PRS registration evidence."""
+        stage = load_stage()
+        prop = self.find_prop(stage, data.get("property_id"))
+        if not prop:
+            return self._json({"error": "property not found"}, 404)
+        actor = (self.user or {}).get("username", "agent")
+        at = now()
+        try:
+            updated = prs_register.tracked_registration(
+                stage, prop, data, actor, at)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        previous = prop.get("prs_registration")
+        if previous:
+            prop.setdefault("prs_registration_history", []).append(previous)
+        prop["prs_registration"] = updated
+        self.audit(stage, {"actor": actor,
+                           "action": "prs_registration_evidence_recorded",
+                           "target": prop["id"],
+                           "note": updated["region"] + " / " + updated["status"]})
+        save_stage(stage)
+        return self._json({"success": True, "registration": updated,
+                           "warning": "Not submitted or verified through the government service"})
+
     def handle_compliance_action(self, data):
         """Record missing evidence or a dated compliance record and retain replaced versions."""
         stage = load_stage()
@@ -3491,7 +4231,10 @@ class H(SimpleHTTPRequestHandler):
         requirement = str(data.get("requirement_type", ""))
         allowed = {"gas_safety", "eicr", "epc", "smoke_co_alarms",
                    "deposit_protection", "right_to_rent", "tenancy_agreement",
-                   "inventory", "landlord_authority", "trades_credentials", "other"}
+                   "inventory", "landlord_authority", "trades_credentials",
+                   "hmo_licence", "additional_licence", "selective_licence",
+                   "prs_landlord_registration", "redress_scheme",
+                   "client_money_protection", "other"}
         if requirement not in allowed:
             return self._json({"error": "invalid compliance requirement type"}, 400)
         action = str(data.get("action", "record"))
@@ -3587,6 +4330,7 @@ class H(SimpleHTTPRequestHandler):
                         "rent_entry_id": entry.get("id"), "tenancy_id": entry.get("tenancy_id"),
                         "property_id": entry.get("property_id"), "received_date": paid_date,
                         "rent_received_pence": int(payment.get("amount_pence", 0)),
+                        "reconciliation_status": payment.get("reconciliation_status","legacy_unverified"),
                         "agency_fee_pence": int(payment.get("agency_fee_pence", 0)),
                     })
         maintenance_lines = []
@@ -3645,6 +4389,33 @@ class H(SimpleHTTPRequestHandler):
                            "note": start_iso + " to " + end_iso})
         save_stage(stage)
         return self._json({"success": True, "statement": statement})
+
+    def handle_bank_reconciliation_preview(self, data):
+        """Preview the potential matches; no transaction is reconciled here."""
+        stage = load_stage()
+        try:
+            body = bank_reconciliation.statement_preview(
+                data.get("csv_text"), stage)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        return self._json(body)
+
+    def handle_bank_reconciliation_action(self, data):
+        stage = load_stage()
+        if data.get("action") != "match_receipt":
+            return self._json({"error": "unsupported reconciliation action"}, 400)
+        actor = (self.user or {}).get("username", "agent")
+        at = now()
+        try:
+            receipt = bank_reconciliation.apply_match(stage,data,at,actor)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 400)
+        self.audit(stage, {"actor": actor,
+                           "action": "rent_receipt_evidence_matched",
+                           "target": receipt["payment_id"],
+                           "note": "Bank statement matching recorded by human"})
+        save_stage(stage)
+        return self._json({"success": True, **receipt})
 
     def handle_rent_ledger_action(self, data):
         """Create rent schedules and record manual payments or adjustments."""
@@ -3727,6 +4498,8 @@ class H(SimpleHTTPRequestHandler):
             if received_date > datetime.now(timezone.utc).date():
                 return self._json({"error": "receipt date cannot be in the future"}, 400)
             payment = {
+                "id": "rentpayment-" + secrets.token_hex(9),
+                "reconciliation_status": "recorded_unverified",
                 "amount_pence": amount, "received_date": received_date.isoformat(),
                 "note": str(data.get("note", "")).strip()[:500], "recorded_at": now(),
                 "recorded_by": (self.user or {}).get("username", "agent"),
@@ -3852,7 +4625,7 @@ class H(SimpleHTTPRequestHandler):
             mailbox.logout()
             return self._json({"success": True, "imported": imported, "count": len(imported)})
         except (OSError, imaplib.IMAP4.error, ValueError) as exc:
-            return self._json({"error": "mailbox sync failed: " + str(exc)[:240]}, 502)
+            return self._json({"error": "mailbox sync failed; check agency mail configuration"}, 502)
 
     def handle_email_reply(self, data):
         """Send a deliberate agent-authored reply to the contact email on a case."""
@@ -3897,7 +4670,7 @@ class H(SimpleHTTPRequestHandler):
                         client.login(username, password)
                     client.send_message(message)
         except (OSError, smtplib.SMTPException) as exc:
-            return self._json({"error": "email provider could not accept this message: " + str(exc)[:240]}, 502)
+            return self._json({"error": "email provider could not accept the message"}, 502)
         at = now()
         case.setdefault("thread", []).append({
             "author": (self.user or {}).get("display_name", "Agent"),
@@ -3915,6 +4688,7 @@ class H(SimpleHTTPRequestHandler):
         c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(data.get("id"))), None)
         if not c:
             return self._json({"error": "case not found"}, 404)
+        previous_case_status = c.get("status")
         action = data.get("action")
         u = getattr(self, "user", None) or {}
         agent_actions = {
@@ -3958,6 +4732,18 @@ class H(SimpleHTTPRequestHandler):
             participating = self.has_party_link(c, "trades", ids)
             if not (assigned or participating):
                 return self._json({"error": "not your case"}, 403)
+        # All case actions are checked after the per-case permission boundary.
+        # In particular, a retried reply cannot append the message twice.
+        try:
+            replayed = workflow_engine.check_action_replay(
+                c, request_id=data.get("request_id"), action=action,
+                actor=u.get("username") or "unknown", payload=data)
+        except workflow_engine.RequestReplayConflict as exc:
+            return self._json({"error": str(exc)}, 409)
+        except workflow_engine.InvalidTransition as exc:
+            return self._json({"error": str(exc)}, 400)
+        if replayed:
+            return self._json({"success": True, "already_processed": True})
         if action in ("reply", "inform"):
             to = data.get("to") or (
                 ["agent"] if role == "tenant" else ["tenant"]
@@ -4036,7 +4822,7 @@ class H(SimpleHTTPRequestHandler):
                        if isinstance(j.get("id"), str) and re.fullmatch(r"job-\d+", j["id"])]
             jid = "job-" + str(max(job_ids, default=0) + 1)
             job = {
-                "id": jid, "case_id": c["id"], "property_id": c["property_id"],
+                "id": jid, "model_version": canonical_records.MODEL_VERSION, "case_id": c["id"], "property_id": c["property_id"],
                 "message": c.get("message", ""), "triage": triage,
                 "required_trade": trade or None, "status": "triaged",
                 "requires_prework_quote": True,
@@ -4137,9 +4923,275 @@ class H(SimpleHTTPRequestHandler):
                                "target": c["id"], "note": reason[:120]})
         else:
             return self._json({"error": f"unknown action {action}"}, 400)
+        workflow_engine.record_status_change(
+            c, previous_case_status, action=str(action),
+            actor=u.get("username") or "unknown", role=role, at=now())
+        workflow_engine.remember_action_request(
+            c, request_id=data.get("request_id"), action=action,
+            actor=u.get("username") or "unknown", role=role,
+            at=now(), payload=data)
         save_stage(stage)
         self._json({"success": True})
 
+
+    # ---------- B02 account security: explicit credentials and session controls ----------
+    def security_identity(self, data):
+        """Only the currently authenticated account can administer its security."""
+        actor = self.user or {}
+        if not actor.get("username") or not isinstance(data.get("current_password"), str):
+            return None, None
+        users = load_users()
+        account = next((item for item in users.get("users", [])
+                        if item.get("username") == actor["username"]
+                        and item.get("role") == actor.get("role")
+                        and item.get("account_id") == actor.get("account_id")
+                        and not item.get("disabled_at")), None)
+        if not account or not auth_security.password_matches(account, data["current_password"]):
+            return None, None
+        return users, account
+
+    def handle_sessions_revoke(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        choice = data.get("scope")
+        if choice not in ("other", "all"):
+            return self._json({"error": "scope must be other or all"}, 400)
+        current_token = self.parse_cookies().get("stage_session")
+        sessions = users.get("sessions", {})
+        previous = len(sessions)
+        users["sessions"] = {
+            token: session for token, session in sessions.items()
+            if session.get("username") != account["username"]
+            or (choice == "other" and token == current_token)
+        }
+        save_users(users)
+        return self._json({"success": True, "sessions_revoked": previous - len(users["sessions"]),
+                           "login_required": choice == "all"})
+
+    def handle_mfa_start(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        if account.get("mfa_secret"):
+            return self._json({"error": "two-factor authentication is already enabled"}, 409)
+        secret = auth_security.new_totp_secret(secrets.token_bytes(20))
+        account["mfa_pending_secret"] = secret
+        save_users(users)
+        # Only this password-verified response contains the enrolment secret.
+        # It is never returned by /api/stage, /api/whoami or the audit log.
+        issuer = os.environ.get("ROGER_AGENCY_NAME", "Roger")
+        uri = ("otpauth://totp/" +
+               urllib.parse.quote(issuer + ":" + account["username"], safe="") +
+               "?secret=" + secret + "&issuer=" + urllib.parse.quote(issuer, safe="") +
+               "&algorithm=SHA1&digits=6&period=30")
+        return self._json({"success": True, "secret": secret, "otpauth_uri": uri,
+                           "notice": "Verify a code to activate. Keep this secret private."})
+
+    def handle_mfa_confirm(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        pending = account.get("mfa_pending_secret")
+        if not pending or account.get("mfa_secret"):
+            return self._json({"error": "no pending two-factor enrolment"}, 409)
+        code = auth_security.verify_totp(pending, data.get("totp"))
+        if code is None:
+            return self._json({"error": "invalid verification code"}, 400)
+        account["mfa_secret"] = pending
+        account["mfa_last_step"] = code
+        account.pop("mfa_pending_secret", None)
+        users["sessions"] = {
+            token: session for token, session in users.get("sessions", {}).items()
+            if session.get("username") != account["username"]
+        }
+        save_users(users)
+        return self._json({"success": True, "mfa_enabled": True, "login_required": True})
+
+    def handle_mfa_disable(self, data):
+        users, account = self.security_identity(data)
+        if account is None:
+            return self._json({"error": "current password incorrect"}, 401)
+        if (account.get("role") == "agent"
+                and os.environ.get("ROGER_REQUIRE_AGENT_MFA") == "1"):
+            return self._json({"error": "staff two-factor policy requires administrator recovery"}, 403)
+        secret = account.get("mfa_secret")
+        if not secret or auth_security.verify_totp(
+                secret, data.get("totp"), last_step=account.get("mfa_last_step", -1)) is None:
+            return self._json({"error": "invalid verification code"}, 400)
+        account.pop("mfa_secret", None)
+        account.pop("mfa_last_step", None)
+        account.pop("mfa_pending_secret", None)
+        users["sessions"] = {
+            token: session for token, session in users.get("sessions", {}).items()
+            if session.get("username") != account["username"]
+        }
+        save_users(users)
+        return self._json({"success": True, "mfa_enabled": False, "login_required": True})
+
+    def staff_admin(self, data):
+        actor = self.user or {}
+        if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                or os.environ.get("ROGER_STORAGE_BACKEND") != "postgres"
+                or actor.get("role") != "agent" or actor.get("username") != "agency-admin"):
+            return None, None
+        return self.security_identity(data)
+
+    def handle_staff_invitation(self, data):
+        """Only the confirmed agency administrator can issue agent privileges."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "administrator reauthentication required"}, 403)
+        email = str(data.get("email") or "").strip().lower()
+        name = str(data.get("display_name") or "").strip()
+        if (not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
+                or len(email) > 254 or not 2 <= len(name) <= 100):
+            return self._json({"error": "valid staff name and email required"}, 400)
+        stage = load_stage()
+        profile = stage.get("agency_profile") or {}
+        if profile.get("plan") != "unassigned" and type(profile.get("staff_limit")) is int:
+            active_seats = sum(1 for account in users.get("users", [])
+                               if account.get("role") == "agent" and not account.get("disabled_at"))
+            pending_seats = sum(1 for invite in stage.get("invitations", [])
+                                if invite.get("staff_invitation") and self.invitation_active(invite))
+            if active_seats + pending_seats >= profile["staff_limit"]:
+                return self._json({"error": "agency staff plan limit reached; contact the operator"}, 409)
+        if (any(x.get("email", "").casefold() == email.casefold()
+                for x in users.get("users", []))
+                or any(x.get("email") == email and x.get("status") == "pending"
+                       and self.invitation_active(x) for x in stage.get("invitations", []))):
+            return self._json({"error": "account or pending invitation already exists"}, 409)
+        token = secrets.token_urlsafe(32)
+        record = {
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "role": "agent", "staff_invitation": True, "email": email,
+            "display_name": name, "status": "pending",
+            "created_by": admin["username"], "created_at": now(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
+        }
+        stage.setdefault("invitations", []).append(record)
+        self.audit(stage, {"actor": admin["username"], "action": "staff_invitation_created",
+                           "target": "staff", "note": "privileged onboarding approved"})
+        save_stage(stage)
+        return self._json({"success": True, "invite_url": "/invite#token=" + token,
+                           "expires_at": record["expires_at"], "delivery": "manual-verified-only"})
+
+    def handle_staff_suspend(self, data):
+        """Administrator-only suspension immediately revokes a staff login."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "administrator reauthentication required"}, 403)
+        target = str(data.get("username") or "")
+        reason = str(data.get("reason") or "").strip()
+        if target == "agency-admin" or not 12 <= len(reason) <= 500:
+            return self._json({"error": "another staff username and written reason required"}, 400)
+        staff = next((x for x in users.get("users", []) if x.get("username") == target
+                      and x.get("role") == "agent" and not x.get("disabled_at")), None)
+        if not staff:
+            return self._json({"error": "active staff account not found"}, 404)
+        stage = load_stage()
+        staff["disabled_at"] = now()
+        staff["disabled_by"] = admin["username"]
+        old = users.get("sessions", {})
+        users["sessions"] = {
+            token: session for token, session in old.items()
+            if session.get("username") != target
+        }
+        self.audit(stage, {"actor": admin["username"], "action": "staff_account_suspended",
+                           "target": "staff", "note": reason})
+        self.persist_invite_registration(users, stage)
+        return self._json({"success": True,
+                           "sessions_revoked": len(old) - len(users["sessions"])})
+
+    # ---------- Reviewed staff password recovery: separate from staff invitations ----------
+    def handle_staff_reset_request(self, data):
+        """Administrator reauth creates a 30-minute manual, one-use reset link."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "administrator reauthentication required"}, 403)
+        target = str(data.get("username") or "")
+        reason = str(data.get("reason") or "").strip()
+        if target == "agency-admin" or not 12 <= len(reason) <= 500:
+            return self._json({"error": "staff username and a recorded recovery reason required"}, 400)
+        account = next((item for item in users.get("users", [])
+                        if item.get("username") == target
+                        and item.get("role") == "agent"
+                        and not item.get("disabled_at")), None)
+        if not account:
+            return self._json({"error": "staff account not found"}, 404)
+        stage = load_stage()
+        if any(item.get("username") == target and item.get("status") == "pending"
+               and self.invitation_active(item)
+               for item in stage.get("staff_password_resets", [])):
+            return self._json({"error": "existing active reset must expire before reissuing"}, 409)
+        token = secrets.token_urlsafe(32)
+        reset = {
+            "id": "staffreset-" + secrets.token_hex(12),
+            "agency_id": stage.get("agency_id"),
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "username": target, "status": "pending",
+            "requested_by": admin["username"], "requested_at": now(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+        }
+        stage.setdefault("staff_password_resets", []).append(reset)
+        self.audit(stage, {"actor": admin["username"],
+                           "action": "staff_reset_requested", "target": "staff",
+                           "note": reason})
+        save_stage(stage)
+        return self._json({"success": True,
+                           "reset_url": "/staff-reset#token=" + token,
+                           "expires_at": reset["expires_at"],
+                           "delivery": "verify staff recipient before manual sharing"})
+
+    def handle_staff_reset_acceptance(self, data):
+        """Token is sent in POST body, never URL, never retained in stored data."""
+        if (os.environ.get("ROGER_SAAS_MODE") != "1"
+                or os.environ.get("ROGER_STORAGE_BACKEND") != "postgres"):
+            return self._json({"error": "reset not available on this site"}, 409)
+        token = data.get("token")
+        replacement = data.get("new_password")
+        if (not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{30,128}", token)
+                or not isinstance(replacement, str) or not 14 <= len(replacement) <= 128
+                or len(replacement.encode("utf-8")) > 512
+                or replacement.strip() != replacement):
+            return self._json({"error": "valid reset token and strong password required"}, 400)
+        stage = load_stage()
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        reset = next((item for item in stage.get("staff_password_resets", [])
+                      if isinstance(item.get("token_hash"), str)
+                      and hmac.compare_digest(item["token_hash"], digest)), None)
+        if not self.invitation_active(reset):
+            return self._json({"error": "reset token invalid, expired or used"}, 400)
+        users = load_users()
+        account = next((person for person in users.get("users", [])
+                        if person.get("username") == reset.get("username")
+                        and person.get("role") == "agent"
+                        and person.get("username") != "agency-admin"
+                        and not person.get("disabled_at")), None)
+        if not account or (account.get("agency_id")
+                           not in (None, stage.get("agency_id"))):
+            return self._json({"error": "reset no longer eligible"}, 409)
+        if (account["username"] in replacement.casefold()
+                or auth_security.password_matches(account, replacement)):
+            return self._json({"error": "choose a new unique password"}, 400)
+        salt = secrets.token_hex(16)
+        account["salt"] = salt
+        account["hash"] = hashlib.scrypt(
+            replacement.encode(), salt=bytes.fromhex(salt), n=2**14, r=8, p=1).hex()
+        account.pop("mfa_pending_secret", None)
+        # Existing MFA is deliberately NOT bypassed by a password reset.
+        reset["status"] = "used"
+        reset["used_at"] = now()
+        before = users.get("sessions", {})
+        users["sessions"] = {
+            k: v for k, v in before.items()
+            if v.get("username") != account["username"]
+        }
+        self.audit(stage, {"actor": account["username"], "action": "staff_password_reset",
+                           "target": "staff", "note": "verified token consumed; sessions revoked"})
+        self.persist_invite_registration(users, stage)
+        return self._json({"success": True, "login": "/login",
+                           "sessions_revoked": len(before) - len(users["sessions"])})
 
     # ---------- agency-bound invitation onboarding ----------
     @staticmethod
@@ -4239,6 +5291,8 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "invitation not found"}, 404)
         if data.get("action") != "revoke":
             return self._json({"error": "only revoke is supported here; invitees redeem through /invite"}, 400)
+        if inv.get("staff_invitation") and (self.user or {}).get("username") != "agency-admin":
+            return self._json({"error": "staff invitations require the agency administrator"}, 403)
         if inv.get("status") != "pending":
             return self._json({"error": "invitation already closed"}, 409)
         inv["status"] = "revoked"
@@ -4253,7 +5307,20 @@ class H(SimpleHTTPRequestHandler):
             return {"valid": False}
         stage = load_stage()
         inv = self.invitation_lookup(stage, token)
-        if not self.invitation_active(inv) or not self.invitation_party(stage, inv):
+        if not self.invitation_active(inv):
+            return {"valid": False}
+        if inv.get("staff_invitation"):
+            if inv.get("role") != "agent":
+                return {"valid": False}
+            users = load_users()
+            if any(u.get("email", "").casefold() == inv.get("email", "").casefold()
+                   for u in users.get("users", [])):
+                return {"valid": False}
+            if not any(u.get("username") == inv.get("created_by")
+                       and u.get("role") == "agent" and not u.get("disabled_at")
+                       for u in users.get("users", [])):
+                return {"valid": False}
+        elif not self.invitation_party(stage, inv):
             return {"valid": False}
         return {"valid": True, "role": inv["role"],
                 "agency": os.environ.get("ROGER_AGENCY_NAME", "Roger Agency")[:100]}
@@ -4284,6 +5351,8 @@ class H(SimpleHTTPRequestHandler):
             return self._json({"error": "registration not available on this site"}, 409)
         stage = load_stage()
         inv = self.invitation_lookup(stage, data.get("token"))
+        if inv and inv.get("staff_invitation") and self.invitation_active(inv):
+            return self.handle_staff_invite_acceptance(stage, inv, data)
         party = self.invitation_party(stage, inv) if self.invitation_active(inv) else None
         if not party:
             return self._json({"error": "invitation is invalid, expired or revoked"}, 400)
@@ -4319,6 +5388,46 @@ class H(SimpleHTTPRequestHandler):
         inv.pop("token", None)
         self.audit(stage, {"actor": username, "action": "invitation_redeemed",
                            "target": party["id"], "note": inv["role"]})
+        self.persist_invite_registration(users, stage)
+        return self._json({"success": True, "login": "/login"})
+
+    def handle_staff_invite_acceptance(self, stage, invitation, data):
+        """Privileged onboarding is single-use, agency-scoped, never public signup."""
+        if not invitation.get("staff_invitation") or invitation.get("role") != "agent":
+            return self._json({"error": "invalid staff invitation"}, 400)
+        username = data.get("username")
+        password = data.get("password")
+        if (not isinstance(username, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_.-]{4,39}", username)
+                or username in {"admin", "agency-admin", "dev", "root", "agent"}):
+            return self._json({"error": "choose a valid unique staff username"}, 400)
+        if (not isinstance(password, str) or not 14 <= len(password) <= 128
+                or len(password.encode("utf-8")) > 512
+                or password.strip() != password
+                or username in password.casefold()):
+            return self._json({"error": "staff password must be a unique 14-128 character passphrase"}, 400)
+        users = load_users()
+        if (not any(u.get("username") == invitation.get("created_by")
+                    and u.get("role") == "agent" and not u.get("disabled_at")
+                    for u in users.get("users", []))
+                or any(u.get("username", "").casefold() == username.casefold()
+                       or u.get("email", "").casefold() == invitation["email"].casefold()
+                       for u in users.get("users", []))):
+            return self._json({"error": "staff invitation no longer eligible"}, 409)
+        salt = secrets.token_hex(16)
+        users.setdefault("users", []).append({
+            "username": username, "role": "agent",
+            "display_name": invitation["display_name"],
+            "email": invitation["email"], "agency_id": stage.get("agency_id"),
+            "account_id": "account-" + secrets.token_hex(16),
+            "salt": salt,
+            "hash": hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt),
+                                   n=2**14, r=8, p=1).hex(),
+        })
+        invitation["status"] = "used"
+        invitation["used_at"] = now()
+        self.audit(stage, {"actor": username, "action": "staff_invitation_redeemed",
+                           "target": "staff", "note": "invited agent account linked"})
         self.persist_invite_registration(users, stage)
         return self._json({"success": True, "login": "/login"})
 
@@ -4487,7 +5596,15 @@ class H(SimpleHTTPRequestHandler):
         return key
 
     def safe_document(self, d):
-        out = {k: v for k, v in d.items() if k != "data_b64"}
+        """Allowlist metadata: never reveal file bytes, storage keys or notes."""
+        visible = {
+            "id", "file_name", "title", "description", "document_type",
+            "property_id", "tenancy_id", "case_id", "job_id", "party_id",
+            "access_roles", "content_type", "file_size", "created_at",
+            "uploaded_at", "verified_at", "expiry_date", "status",
+            "supersedes_id", "replaced_by_id", "version",
+        }
+        out = {k: v for k, v in d.items() if k in visible}
         out["has_file"] = bool(d.get("storage_key") or d.get("data_b64"))
         return out
 
@@ -4497,6 +5614,8 @@ class H(SimpleHTTPRequestHandler):
         stage = load_stage()
         case_id = data.get("case_id")
         c = next((c for c in stage.get("cases", []) if str(c.get("id")) == str(case_id)), None)
+        if case_id not in (None, "") and not c:
+            return self._json({"error": "case not found"}, 404)
         property_id = data.get("property_id")
         if not property_id and c:
             property_id = c.get("property_id")
@@ -4517,7 +5636,21 @@ class H(SimpleHTTPRequestHandler):
         party_id = str(data.get("party_id", ""))[:100] or None
         if party_id and not any(p.get("id") == party_id for p in stage.get("parties", [])):
             return self._json({"error": "party not found"}, 404)
+        # A document must not join different properties via valid-but-unrelated
+        # IDs. Enforce this for new uploads, even if all referenced records are
+        # still legacy and have no model_version tag.
+        linked = [row for row in (c, tenancy, job) if row is not None]
+        linked_property_ids = {str(row["property_id"]) for row in linked
+                               if row.get("property_id") is not None}
+        if (len(linked_property_ids) > 1
+                or (property_id is not None and linked_property_ids
+                    and str(property_id) not in linked_property_ids)):
+            return self._json({"error": "document references conflicting properties"}, 409)
+        if job and c and str(job.get("case_id")) != str(c.get("id")):
+            return self._json({"error": "document job and case are unrelated"}, 409)
         prop = self.find_prop(stage, property_id)
+        if property_id is not None and not prop:
+            return self._json({"error": "property not found"}, 404)
         if not prop and not party_id:
             return self._json({"error": "property not found (pass property_id, tenancy_id, job_id, party_id or a valid case_id)"}, 404)
         dtype = str(data.get("document_type", "other"))[:40]
@@ -4542,6 +5675,20 @@ class H(SimpleHTTPRequestHandler):
             superseded = next((d for d in stage.get("documents", []) if d.get("id") == supersedes_id), None)
             if not superseded:
                 return self._json({"error": "superseded document not found"}, 404)
+            # Preserve compatibility with unclassified historical versions.
+            # Once any subject link is present, replacement must keep them all;
+            # unclassified old documents are retained for B04 manual review.
+            subject_links = ("property_id", "party_id", "tenancy_id", "case_id", "job_id")
+            if any(superseded.get(field) is not None for field in subject_links):
+                for field, requested in (
+                        ("property_id", prop["id"] if prop else None),
+                        ("party_id", party_id), ("tenancy_id", tenancy_id),
+                        ("case_id", c["id"] if c else None),
+                        ("job_id", job_id)):
+                    stored = superseded.get(field)
+                    if stored is not None or requested is not None:
+                        if str(stored) != str(requested):
+                            return self._json({"error": "replacement document has different " + field}, 409)
         b64 = str(data.get("content_b64", ""))
         import base64
         try:
@@ -4553,10 +5700,15 @@ class H(SimpleHTTPRequestHandler):
         storage_key = self.store_document_body(raw)
         fname = os.path.basename(str(data.get("file_name", "document"))[:120]) or "document"
         fname = re.sub(r"[^A-Za-z0-9._ -]", "_", fname)
-        doc_id = f"doc-{len(stage.get('documents', [])) + 1}"
         flist = stage.setdefault("documents", [])
+        used_ids = {str(row.get("id")) for row in flist}
+        next_doc = len(flist) + 1
+        while f"doc-{next_doc}" in used_ids:
+            next_doc += 1
+        doc_id = f"doc-{next_doc}"
         doc = {
             "id": doc_id,
+            "model_version": canonical_records.MODEL_VERSION,
             "case_id": case_id if c else None,
             "property_id": prop["id"] if prop else None,
             "party_id": party_id,
@@ -4632,10 +5784,21 @@ class H(SimpleHTTPRequestHandler):
                 return self._json({"error": "document file is missing"}, 404)
         except (OSError, ValueError):
             return self._json({"error": "document file could not be read"}, 404)
+        # Never serve an uploaded HTML/SVG/script as executable same-origin
+        # content. Attachment-only + safe filename protects session-bearing
+        # browsers even when the stored MIME label was supplied by a user.
+        original_name = str(doc.get("file_name") or "document")
+        filename = re.sub(r"[^A-Za-z0-9._-]", "_",
+                          os.path.basename(original_name.replace("\\\\", "/")))[:100]
+        filename = filename.strip(".") or "document"
         self.send_response(200)
-        self.send_header("Content-Type", doc.get("content_type", "application/octet-stream"))
+        self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Content-Disposition", f'inline; filename="{doc.get("file_name", "document")}"')
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "sandbox")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)
 
@@ -4745,6 +5908,29 @@ class H(SimpleHTTPRequestHandler):
         save_stage(stage)
         return self._json({"success": True, "revoked_party_ids": [p["id"] for p in linked],
                            "sessions_closed": len(sessions)-len(users["sessions"])})
+
+    # ---------- B03 independent agency profile ----------
+    def handle_agency_profile(self, data):
+        """Agency administrator changes contact/branch details, not plan or billing."""
+        users, admin = self.staff_admin(data)
+        if admin is None:
+            return self._json({"error": "agency administrator reauthentication required"}, 403)
+        stage = load_stage()
+        profile = stage.get("agency_profile")
+        if not isinstance(profile, dict):
+            return self._json({"error": "agency profile is not provisioned"}, 409)
+        if profile.get("agency_id") != stage.get("agency_id"):
+            raise AgencyBoundaryError("agency profile is foreign")
+        payload = {key: value for key, value in data.items() if key != "current_password"}
+        try:
+            edited = agency_admin.update_settings(profile, payload)
+        except ValueError as error:
+            return self._json({"error": str(error)}, 409 if "reload" in str(error) else 400)
+        stage["agency_profile"] = edited
+        self.audit(stage, {"actor": admin["username"], "action": "agency_profile_updated",
+                           "target": stage["agency_id"], "note": "version " + str(edited["version"])})
+        save_stage(stage)
+        return self._json({"success": True, "profile": edited})
 
     # ---------- office policy and real contacts ----------
     @staticmethod
@@ -5322,9 +6508,14 @@ class H(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
-        if name == "invite.html":
+        # Strict referrer suppression only for secret-bearing setup pages:
+        # portal logout forms still need same-origin Referer CSRF fallback.
+        if name in ("invite.html", "security.html", "staff-reset.html"):
             self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        if name.endswith(".html"):
             self.send_header("Cache-Control", "no-store")
+        if name == "invite.html":
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)

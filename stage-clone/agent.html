@@ -75,7 +75,9 @@ input,textarea,select{accent-color:#2b6045}
     <div class="mvp-userbar">
       <span class="who" id="stamp">Connecting to Roger…</span>
       <a class="mvp-site-link" href="/">Public website ↗</a>
-      <form action="/logout" method="POST"><input type="hidden" name="intent" value="logout"><button class="mvp-signout" type="submit">Log out</button></form>
+      <a href="/security">Account security</a>
+      <a href="/agency-admin" id="agencyAdminMenuLink" hidden>Agency administration</a>
+<form action="/logout" method="POST"><input type="hidden" name="intent" value="logout"><button class="mvp-signout" type="submit">Log out</button></form>
     </div>
     <nav class="tabs mvp-nav" aria-label="Agent workspace">
       <a href="#" class="tab on" data-view="overview">Today &amp; inbox</a>
@@ -92,6 +94,7 @@ input,textarea,select{accent-color:#2b6045}
           <a href="#" class="tab" data-view="tasks">Tasks</a>
           <a href="#" class="tab" data-view="compliance">Compliance</a>
           <a href="#" class="tab" data-view="appointments">Appointments</a>
+          <a href="#" class="tab" data-view="inventories">Inspections &amp; inventories</a>
           <a href="#" class="tab" data-view="documents">Documents</a>
           <a href="#" class="tab" data-view="registrations">Registrations</a>
           <a href="#" class="tab" data-view="prospects">Prospects</a>
@@ -113,6 +116,7 @@ input,textarea,select{accent-color:#2b6045}
     <section id="view-money" style="display:none"></section>
     <section id="view-compliance" style="display:none"></section>
     <section id="view-appointments" style="display:none"></section>
+    <section id="view-inventories" style="display:none"></section>
     <section id="view-documents" style="display:none"></section>
     <section id="view-registrations" style="display:none"></section>
     <section id="view-prospects" style="display:none"></section>
@@ -192,14 +196,25 @@ function markFlips(){ const cur={};
   prevStatus=cur; FL={flip,res}; }
 const fl=k=>FL.flip[k]?'flash-once':'';
 
+function tenancyDraftInProgress(){
+  return [...document.querySelectorAll('#view-people details[open]')]
+    .some(d=>d.dataset.rogerFormEdited==='1');
+}
 async function load(manual){
+  // Do not replace a user's active rent/pet form during 15-second polling.
+  // Explicit successful actions call load(true) to fetch the saved state.
+  if(!manual&&tenancyDraftInProgress())return;
+  try{const who=await api('/api/whoami');document.getElementById('agencyAdminMenuLink').hidden=!(who.authenticated&&who.username==='agency-admin')}catch(e){document.getElementById('agencyAdminMenuLink').hidden=true}
   try{ stage=await api('/api/stage'); try{ pool=(await api('/api/trades-pool')).trades||[] }catch(e){pool=[]}
     try{ const a=await api('/api/appointments'); window._appts=a.appointments||[] }catch(e){ window._appts=[] }
+    try{ const i=await api('/api/inventories'); window._inventories=i.inventories||[] }catch(e){ window._inventories=[] }
     try{ const t=await api('/api/tasks'); window._tasks=t.tasks||[] }catch(e){ window._tasks=[] }
+    try{ window._briefing=await api('/api/agent/briefing') }catch(e){ window._briefing=null }
     try{ const n=await api('/api/notifications'); window._notifications=n.notifications||[] }catch(e){ window._notifications=[] }
     try{ const o=await api('/api/office-settings'); window._office=o.office||{} }catch(e){ window._office={} }
     try{ const d=await api('/api/documents'); window._docs=d.documents||[] }catch(e){ window._docs=[] }
     try{ ledgerEntries=(await api('/api/rent-ledger')).entries||[] }catch(e){ ledgerEntries=[] }
+    try{ window._deposits=(await api('/api/deposits')).deposits||[] }catch(e){ window._deposits=[] }
     try{ window.landlordStatements=(await api('/api/landlord-statements')).statements||[] }catch(e){ window.landlordStatements=[] }
     try{ complianceRecords=(await api('/api/compliance')).records||[]; window.complianceRecords=complianceRecords }catch(e){ complianceRecords=[]; window.complianceRecords=[] }
     lastGood=new Date().toLocaleTimeString('en-GB');
@@ -207,11 +222,47 @@ async function load(manual){
     document.getElementById('stamp').textContent='live · updated '+lastGood+' · every 15s';
     document.getElementById('stamp').title='Portal data last refreshed at '+lastGood;
   }catch(e){ document.getElementById('api-error').style.display=stage?'none':'flex'; if(!stage)return; }
+  // An older fetch may finish after the user starts typing: never overwrite it.
+  if(tenancyDraftInProgress())return;
   renderAll();
 }
+// Protect in-progress edits from the 15-second data refresh, globally in Agent Desk.
+// Only explicit field IDs are restored; anonymous fields are not guessed, to avoid
+// putting private data into a different record when the list order changes.
+document.addEventListener('input',e=>{
+ const tenancyDetails=e.target?.closest?.('#view-people details');
+ if(tenancyDetails && e.target.matches('input,textarea,select')) tenancyDetails.dataset.rogerFormEdited='1';
+ if(e.target?.matches?.('#main input[id],#main textarea[id],#main select[id]'))
+   e.target.dataset.rogerEdited='1';
+},true);
+document.addEventListener('change',e=>{
+ const tenancyDetails=e.target?.closest?.('#view-people details');
+ if(tenancyDetails && e.target.matches('input,textarea,select')) tenancyDetails.dataset.rogerFormEdited='1';
+ if(e.target?.matches?.('#main input[id],#main textarea[id],#main select[id]'))
+   e.target.dataset.rogerEdited='1';
+},true);
+function snapshotAgentEdits(){
+ const records=[];
+ for(const el of document.querySelectorAll('#main [data-roger-edited="1"][id]')){
+   if(!el.matches('input,textarea,select')||['file','password','hidden'].includes(el.type))continue;
+   records.push({id:el.id,type:el.type,value:el.value,checked:!!el.checked});
+ }
+ return records;
+}
+function restoreAgentEdits(records){
+ for(const entry of records){
+   const el=document.getElementById(entry.id);
+   if(!el||!el.matches('input,textarea,select')||el.type!==entry.type||el.disabled)continue;
+   if(entry.type==='checkbox'||entry.type==='radio')el.checked=entry.checked;
+   else el.value=entry.value;
+   el.dataset.rogerEdited='1';
+ }
+}
 function renderAll(){
+  const edits=snapshotAgentEdits();
   const y=window.scrollY, activeId=document.activeElement?.id, activeSelection=(activeId==='desk-search'||activeId==='comm-search')?document.activeElement.selectionStart:null;
-    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderOffice(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+    markFlips(); renderOverview(); renderCases(); renderJobs(); renderCommunications(); renderNotifications(); renderOffice(); renderTasks(); renderMoney(); renderCompliance(); renderAppointments(); renderInventories(); renderDocuments(); renderRegs(); renderProspects(); renderProps(); renderPeopleTenancies(); renderHistory();
+  restoreAgentEdits(edits);
   if(activeId==='desk-search'||activeId==='comm-search'){const input=document.getElementById(activeId);input?.focus();if(activeSelection!==null)input?.setSelectionRange(activeSelection,activeSelection);}
   document.getElementById('main').setAttribute('aria-busy','false');
   if(window.scrollY!==y) window.scrollTo(0,y);
@@ -327,6 +378,28 @@ function renderAttentionBoard(){
   const panel=(title,items,empty)=>'<div class="card"><div class="cardtop"><h3>'+title+'</h3><span class="badge '+(items.length?'pending':'completed')+'">'+items.length+'</span></div>'+(items.length?items.slice(0,6).map(x=>deskLink(x.label,x.detail,x.view,x.id,x.tag)).join('')+(items.length>6?'<div class="meta">Showing 6 of '+items.length+' matching items.</div>':''):'<div class="meta">'+empty+'</div>')+'</div>';
   return '<div class="move">daily command centre</div>'+cockpit+'<div class="grid2">'+panel('Needs your attention',needs,'Nothing currently needs an agent action.')+panel('Waiting on someone else',waiting,'No open items are marked as waiting on another person.')+panel('Upcoming this week',upcoming,'No confirmed appointments in the next seven days.')+panel('Overdue / needs an update',overdue,'No explicit overdue dates or past confirmed appointments found. Roger only flags recorded deadlines; it does not guess from record age.')+'</div>';
 }
+function renderAgentBriefing(){
+  const b=window._briefing;
+  if(!b)return '<div class="card"><div class="fineprint">Operational priorities are temporarily unavailable. Check cases and tasks directly.</div></div>';
+  const counts=b.priority_counts||{};
+  const allowedViews=new Set(['cases','jobs','tasks','compliance','registrations','people','properties','money']);
+  const rows=(b.cards||[]).slice(0,10).map(card=>{
+    const view=allowedViews.has(card.view)?card.view:'cases';
+    return '<div class="thread" style="margin:8px 0">'+
+      '<div><b>'+esc(card.title)+'</b> · '+esc(card.priority)+'</div>'+
+      '<div class="meta">'+esc(card.detail)+' · '+esc(card.reason)+'</div>'+
+      (card.due_date?'<div class="fineprint">Recorded date: '+esc(card.due_date)+'</div>':'')+
+      '<a href="#" onclick="show(\''+view+'\');return false">Open '+esc(view)+' →</a></div>';
+  }).join('');
+  return '<section class="card" aria-label="Operational priorities">'+
+    '<div class="cardtop"><h3>Operational priorities</h3><span class="fineprint">Read-only · recorded evidence · '+esc(b.as_of)+'</span></div>'+
+    '<div class="meta">'+esc(b.total_actions)+' recorded actions · '+esc(counts.urgent||0)+' urgent · '+
+      esc(counts.high||0)+' high · '+esc(counts.normal||0)+' normal</div>'+
+    (rows||'<div class="fineprint">No due or flagged records were found. This does not prove every obligation is complete.</div>')+
+    (b.total_actions>10?'<div class="fineprint">Showing ten highest-ranked items. Use the linked workspaces for all records.</div>':'')+
+    '<div class="fineprint">'+esc(b.limitations||'')+'</div>'+
+    '</section>';
+}
 function renderOverview(){
   const cases=(stage.cases||[]).filter(c=>!['closed','resolved','declined'].includes(c.status));
   const urg=cases.filter(c=>c.triage&&c.triage.urgency>=2).length;
@@ -340,6 +413,7 @@ function renderOverview(){
   const tile=(n,label,view,hot)=>`<a class="stat ${hot?'hot':''}" href="#" onclick="show('${view}');return false"><div class="value">${n}</div><div class="label">${label}</div></a>`;
   const quiet=(urg+gated+unassigned+waiting.length+regs)===0;
   document.getElementById('view-overview').innerHTML=`
+      ${renderAgentBriefing()}
       ${renderAttentionBoard()}
       <div class="card"><label class="field"><span>Search Roger</span><input id="desk-search" type="text" value="${esc(deskSearch)}" placeholder="Name, property, case, job or email" aria-label="Search Roger records"></label><div id="desk-search-results" aria-live="polite">${deskSearch?'<div class="meta">Updating search…</div>':'<div class="meta">Search names and contacts, properties, cases, jobs, tasks, notifications, registrations, appointments and documents.</div>'}</div></div>
       <div class="move">overview</div>
@@ -616,6 +690,20 @@ async function sendCommunicationReply(btn,id){
  const to=['tenant'];if(document.getElementById('comm-landlord-'+id)?.checked)to.push('landlord');if(document.getElementById('comm-trades-'+id)?.checked)to.push('trades');
  await busy(btn,async()=>{try{await post('/api/case-action',{id,action:'reply',to,text:textValue});window.commQuery='';toast('Reply sent and added to the case timeline.');load();}catch(e){}});
 }
+function repairDossierLine(d){
+  if(!d||d.schema!=='roger-repair-interview-v1')return '';
+  const questions=(d.answers||[]).map((a,i)=>
+    '<div class="thread"><b>Question '+(i+1)+':</b> '+esc(a.question||'')+
+    '<div>'+esc(a.answer||'')+'</div></div>').join('');
+  const flags=(d.safety_flags||[]).map(v=>esc(v)).join(', ');
+  return '<details class="msgs"><summary>Tenant diagnostic interview · unverified</summary>'+
+    '<div class="fineprint">Tenant-provided account, not a professional diagnosis. Agent must review before work is authorised.</div>'+
+    '<div class="details">'+esc(d.description||'')+'</div>'+
+    questions+
+    '<div class="fineprint">Suggested trade (unverified): '+esc(d.suggested_trade||'general')+'</div>'+
+    (flags?'<div class="banner emergency">Possible hazard: '+flags+' — review promptly</div>':'')+
+    '</details>';
+}
 function renderCases(){
   const order={new:1,reported:1,dispatched:2,in_progress:2,awaiting_approval:3,resolved:4,declined:4,closed:5,open:1};
   const rank=c=>((c.triage?.urgency>=2)?0:10)+(order[c.status]||1);
@@ -626,6 +714,7 @@ function renderCases(){
       <div class="cardtop"><h3>#${c.id} · ${esc(c.type||'case')}</h3><span class="badge ${esc(c.status)}">${esc(c.status.replace('_',' '))}</span></div>
       <div class="meta">${propLine(c.property_id)} · ${esc(c.name)}${c.email?' · '+esc(c.email):''} · ${when(c.submitted_at)}</div>
       <div class="details">${esc(c.message)}</div>
+      ${repairDossierLine(c.diagnostic_dossier)}
       ${c.next_actor?`<div class="triage-line"><b>Next: ${esc(c.next_actor)}</b> · ${esc(c.next_action||'Action needed')}${c.next_due_at?' · internal target '+esc(c.next_due_at):' · no date set'}</div>`:c.status!=='closed'?'<div class="triage-line hot">No next step — assign an owner and date.</div>':''}
       ${c.status!=='closed'?'<div class="actions"><button class="btn" onclick="setCaseNext(this,'+JSON.stringify(String(c.id))+')">Set next person and deadline</button></div>':''}
       ${(c.internal_notes||[]).length?'<details class="msgs"><summary>Agency-only notes · '+c.internal_notes.length+'</summary>'+c.internal_notes.map(n=>'<div class="thread">'+esc(n.text)+'</div>').join('')+'</details>':''}
@@ -1032,6 +1121,124 @@ async function revokePortalAccount(btn,partyId){
     toast('Access revoked; '+result.sessions_closed+' active sessions removed.');load();
   }catch(e){toast(e.message||'Could not revoke account.','bad');}});
 }
+function rentPolicyBlock(t){
+ if(t.tenancy_type!=='assured_periodic')return '<div class="fineprint">Older tenancy type: arrange manual legal review before rent changes or a renewal.</div>';
+ const p=t.pending_rent_increase||null, id=esc(t.id);
+ const isActive=['active','notice_given'].includes(t.status);
+ const requests=(t.pet_requests||[]).map(r=>'<div class="thread"><b>Pet request: '+esc(r.description)+'</b> · '+esc(r.status)+
+   (r.reason?'<div class="meta">Reason: '+esc(r.reason)+'</div>':'')+
+   (r.status==='pending_agent_review'?'<div class="field"><label>Reason for decision<input class="pet-reason" data-request-id="'+esc(r.id)+'" maxlength="1000" placeholder="Explain your decision"></label></div>'+
+   '<div class="actions"><button class="btn" data-request-id="'+esc(r.id)+'" data-tenancy-id="'+id+'" onclick="decidePet(this,\'approved\')">Approve pet</button>'+
+   '<button class="btn" data-request-id="'+esc(r.id)+'" data-tenancy-id="'+id+'" onclick="decidePet(this,\'refused\')">Refuse with reason</button>'+
+   '<button class="btn" data-request-id="'+esc(r.id)+'" data-tenancy-id="'+id+'" onclick="decidePet(this,\'request_information\')">Ask for information</button></div>':'')+'</div>').join('');
+ return '<details class="msgs"><summary>2026 tenancy management · rent notices & pet requests</summary>'+
+   '<p class="fineprint">Assured periodic tenancy: there is no fixed term to renew. Section 13/Form 4A rent notices require human service and legal checks. This panel does not serve notices or recalculate existing ledger entries.</p>'+
+   (p?'<div class="thread"><b>Proposed rent: '+money(p.proposed_rent_pence)+'</b> from '+esc(p.effective_on)+' · '+esc(p.status)+
+     ' · notice recorded '+esc(p.notice_served_on)+' · dispute '+esc(p.tenant_objection_status||'not recorded')+'</div>'+
+     '<div class="actions">'+
+       '<button class="btn" data-tenancy-id="'+id+'" onclick="tenancyRentAction(this,\'apply_rent_increase\')">Record effective rent (review first)</button>'+
+       '<button class="btn" data-tenancy-id="'+id+'" onclick="tenancyRentAction(this,\'mark_rent_increase_disputed\')">Mark disputed</button>'+
+       '<button class="btn danger" data-tenancy-id="'+id+'" onclick="tenancyRentAction(this,\'withdraw_rent_increase\')">Withdraw proposed change</button></div>':
+     isActive?'<div class="grid2">'+
+       '<label class="field"><span>Proposed rent (£ / period)</span><input class="rent-change-amount" type="number" min="0" step="0.01"></label>'+
+       '<label class="field"><span>Form 4A notice served (recorded date)</span><input class="rent-change-notice" type="date"></label>'+
+       '<label class="field"><span>Proposed effective date</span><input class="rent-change-effective" type="date"></label></div>'+
+       '<button class="btn" data-tenancy-id="'+id+'" onclick="tenancyRentAction(this,\'propose_rent_increase\')">Record proposed rent increase</button>':
+     '<p class="fineprint">Rent review is available after the tenancy becomes active.</p>')+
+   '<h3>Tenant pet requests</h3>'+(requests||'<div class="fineprint">No pet requests recorded for this tenancy.</div>')+
+   '</details>';
+}
+async function tenancyRentAction(btn,action){
+ const t=(stage.tenancies||[]).find(x=>x.id===btn.dataset.tenancyId);
+ if(!t)return;
+ const card=document.getElementById(t.id);
+ const body={tenancy_id:t.id,action};
+ if(action==='propose_rent_increase'){
+   const value=Number(card.querySelector('.rent-change-amount')?.value);
+   if(!Number.isFinite(value)||value<=0){toast('Enter a valid proposed rent.','bad');return;}
+   body.amount_pence=Math.round(value*100);
+   body.notice_served_on=card.querySelector('.rent-change-notice')?.value;
+   body.effective_on=card.querySelector('.rent-change-effective')?.value;
+ }else if(!confirm('Confirm this action after checking the notice and tenancy evidence?'))return;
+ await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',body);toast('Tenancy record updated; check all ledger entries separately.');btn.closest('details')?.removeAttribute('data-roger-form-edited');await load(true);}catch(e){}});
+}
+async function decidePet(btn,decision){
+ const t=(stage.tenancies||[]).find(x=>x.id===btn.dataset.tenancyId);
+ const card=document.getElementById(t?.id||'');
+ if(!card)return;
+ const reason=Array.from(card.querySelectorAll('.pet-reason')).find(el=>el.dataset.requestId===btn.dataset.requestId)?.value||'';
+ if(reason.trim().length<8){toast('Record a reason (at least 8 characters).','bad');return;}
+ await busy(btn,async()=>{try{await post('/api/tenancy-policy-action',{action:'decide_pet',tenancy_id:t.id,request_id:btn.dataset.requestId,decision,reason});toast('Pet request decision recorded.');btn.closest('details')?.removeAttribute('data-roger-form-edited');await load(true);}catch(e){}});
+}
+function renderInventories(){
+ const list=window._inventories||[],tenancies=stage.tenancies||[];
+ const select=tenancies.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc((stage.properties||[]).find(p=>p.id===t.property_id)?.title||t.property_id)+'</option>').join('');
+ const display=list.slice().reverse().map(i=>{
+   const rooms=(i.rooms||[]).map(r=>'<div class="thread"><b>'+esc(r.name)+'</b> · '+esc(r.condition)+
+     (r.document_ids?.length?' · evidence: '+r.document_ids.map(esc).join(', '):'')+'</div>').join('');
+   const meter=Object.entries(i.meter_readings||{}).map(([type,r])=>esc(type)+': '+esc(r.reading)).join(' · ');
+   const keys=(i.keys||[]).map(k=>esc(k.description)+' ('+k.count+')').join(' · ');
+   const draft=i.status==='draft';
+   return '<div class="card" id="inventory-'+esc(i.id)+'"><div class="cardtop"><h3>'+
+     esc(i.id)+' · '+esc(i.kind.replace(/_/g,' '))+'</h3><span class="badge">'+esc(i.status)+'</span></div>'+
+     '<div class="meta">Tenancy '+esc(i.tenancy_id)+' · '+esc(i.inspection_date)+' · property '+esc(i.property_id)+'</div>'+
+     '<div class="fineprint">'+esc(i.summary||'No summary')+'</div>'+rooms+
+     (meter?'<div class="meta">Meters: '+meter+'</div>':'')+
+     (keys?'<div class="meta">Keys: '+keys+'</div>':'')+
+     (i.tenant_feedback||[]).map(f=>'<div class="thread">'+(f.accepted?'Tenant confirmed':'Tenant disputes')+
+       ': '+esc(f.comment||'')+'</div>').join('')+
+     (draft?'<div class="grid2"><label class="field"><span>Room</span><input class="room-label" maxlength="100"></label>'+
+       '<label class="field"><span>Observed condition</span><textarea class="room-condition" maxlength="1000" rows="2"></textarea></label>'+
+       '<label class="field"><span>Evidence document IDs (comma-separated; upload documents first)</span><input class="room-docs" placeholder="doc-1, doc-2"></label></div>'+
+       '<button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'room\')">Record room condition</button>'+
+       '<div class="grid2"><label class="field"><span>Meter</span><select class="meter-type"><option>electricity</option><option>gas</option><option>water</option><option>heat</option><option>other</option></select></label>'+
+       '<label class="field"><span>Meter reading</span><input class="meter-reading" maxlength="80"></label>'+
+       '<label class="field"><span>Serial (optional)</span><input class="meter-serial" maxlength="90"></label></div>'+
+       '<button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'meter\')">Record meter</button>'+
+       '<div class="grid2"><label class="field"><span>Keys / access item</span><input class="keys-description" maxlength="160"></label>'+
+       '<label class="field"><span>Count</span><input class="keys-count" type="number" min="0" max="100" value="1"></label></div>'+
+       '<div class="actions"><button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'keys\')">Record keys</button>'+
+       '<button class="btn primary" data-inventory-id="'+esc(i.id)+'" onclick="inventoryAction(this,\'issue\')">Issue inventory to tenant</button></div>':
+       '<div class="fineprint">Issued record is immutable. Create a new dated inspection if more evidence is required.</div>')+
+   '</div>';
+ }).join('');
+ document.getElementById('view-inventories').innerHTML=
+   '<div class="move">inspection and inventory book</div>'+
+   '<p class="fineprint">Room condition, photographs, meter readings and keys are recorded against the tenancy. Evidence photos use the authenticated document library. Issuing freezes the record for tenant feedback.</p>'+
+   '<div class="card"><h2>New inspection</h2><div class="grid2">'+
+     '<label class="field"><span>Tenancy</span><select id="inventory-tenancy">'+select+'</select></label>'+
+     '<label class="field"><span>Type</span><select id="inventory-kind"><option value="check_in">Check-in</option><option value="mid_term">Mid-term</option><option value="check_out">Check-out</option></select></label>'+
+     '<label class="field"><span>Inspection date</span><input id="inventory-date" type="date"></label>'+
+     '<label class="field"><span>Summary</span><input id="inventory-summary" maxlength="1000"></label></div>'+
+     '<button class="btn primary" onclick="inventoryAction(this,\'create\')">Create inspection</button></div>'+
+   (display||'<div class="empty">No inspections recorded.</div>');
+}
+async function inventoryAction(btn,action){
+ const id=btn.dataset.inventoryId;
+ const card=id?document.getElementById('inventory-'+id):null;
+ const data={action};
+ if(action==='create'){
+   data.tenancy_id=document.getElementById('inventory-tenancy')?.value;
+   data.kind=document.getElementById('inventory-kind')?.value;
+   data.inspection_date=document.getElementById('inventory-date')?.value;
+   data.summary=document.getElementById('inventory-summary')?.value;
+ } else {
+   data.inventory_id=id;
+   if(action==='room'){
+     data.room=card?.querySelector('.room-label')?.value;
+     data.condition=card?.querySelector('.room-condition')?.value;
+     data.document_ids=(card?.querySelector('.room-docs')?.value||'').split(',').map(x=>x.trim()).filter(Boolean);
+   }else if(action==='meter'){
+     data.meter=card?.querySelector('.meter-type')?.value;
+     data.reading=card?.querySelector('.meter-reading')?.value;
+     data.serial=card?.querySelector('.meter-serial')?.value;
+   }else if(action==='keys'){
+     data.description=card?.querySelector('.keys-description')?.value;
+     data.count=Number(card?.querySelector('.keys-count')?.value);
+   }else if(action==='issue'&&!confirm('Issue this frozen inventory to the linked tenants? Future edits will require a new inventory.'))return;
+ }
+ await busy(btn,async()=>{try{await post('/api/inventory-action',data);toast('Inspection record saved.');await load();}catch(e){}});
+}
 function renderPeopleTenancies(){
  const parties=stage.parties||[],tenancies=stage.tenancies||[],props=stage.properties||[];
  const partyOptions=(role,selected)=>parties.filter(p=>p.status==='active'&&(p.roles||[]).includes(role)).map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.display_name)+' · '+esc(p.id)+'</option>').join('');
@@ -1047,14 +1254,14 @@ function renderPeopleTenancies(){
    const tenants=(t.tenant_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
    const landlords=(t.landlord_party_ids||[]).map(id=>(parties.find(p=>p.id===id)||{}).display_name||id).join(', ');
    const p=props.find(x=>x.id===t.property_id)||{};
-   const choices=[t.status,...(TENANCY_TRANSITIONS[t.status]||[])];
+   const choices=[t.status,...(TENANCY_TRANSITIONS[t.status]||[]).filter(next=>!(t.tenancy_type==='assured_periodic'&&next==='renewal'))];
    return '<div class="card" id="'+esc(t.id)+'"><div class="cardtop"><h3>'+esc(t.id)+' · '+esc(p.title||t.property_id)+'</h3><span class="badge '+esc(t.status)+'">'+esc(t.status.replace(/_/g,' '))+'</span></div>'+
     '<div class="meta">Tenant: '+esc(tenants)+' · Landlord: '+esc(landlords)+(t.source_prospect_id?' · from enquiry #'+esc(t.source_prospect_id):'')+'</div>'+
-    '<div class="meta">From '+esc(t.start_date||'—')+(t.end_date?' to '+esc(t.end_date):'')+' · £'+((t.rent_amount_pence||0)/100).toFixed(2)+' / '+esc(t.rent_frequency||'period')+' · Agreement '+esc(t.agreement_status||'draft')+'</div>'+
+    '<div class="meta">From '+esc(t.start_date||'—')+(t.tenancy_type==='assured_periodic'?' · assured periodic; no fixed end date':(t.end_date?' to '+esc(t.end_date):''))+' · £'+((t.rent_amount_pence||0)/100).toFixed(2)+' / '+esc(t.rent_frequency||'period')+' · Agreement '+esc(t.agreement_status||'draft')+'</div>'+
     '<div class="fineprint">Portal access is not linked by this record. Link a verified account separately before granting access.</div>'+
     '<div class="grid2"><div><label class="field"><span>Agreement state</span><select class="agreement-status"><option value="draft"'+(t.agreement_status==='draft'?' selected':'')+'>draft</option><option value="sent"'+(t.agreement_status==='sent'?' selected':'')+'>sent</option><option value="signed"'+(t.agreement_status==='signed'?' selected':'')+'>signed</option><option value="cancelled"'+(t.agreement_status==='cancelled'?' selected':'')+'>cancelled</option></select></label><label class="field"><span>Signed date (required when signed)</span><input class="agreement-date" type="date" value="'+esc(t.agreement_signed_at||'')+'"></label><button class="btn" data-tenancy-id="'+esc(t.id)+'" onclick="saveTenancyAgreement(this)">Save agreement state</button></div>'+
     '<div><label class="field"><span>Tenancy stage</span><select class="tenancy-stage">'+choices.map(s=>'<option value="'+esc(s)+'">'+esc(s.replace(/_/g,' '))+'</option>').join('')+'</select></label><label class="field"><span>Notice / checkout date</span><input class="tenancy-date" type="date"></label><button class="btn primary" data-tenancy-id="'+esc(t.id)+'" onclick="saveTenancyStage(this)">Advance tenancy</button></div></div>'+
-    '<div class="meta">History: '+(t.history||[]).slice(-4).map(h=>esc((h.from||'new')+' → '+(h.to||h.event)+' · '+(h.at||''))).join(' · ')+'</div></div>';
+    '<div class="meta">History: '+(t.history||[]).slice(-4).map(h=>esc((h.from||'new')+' → '+(h.to||h.event)+' · '+(h.at||''))).join(' · ')+'</div>'+rentPolicyBlock(t)+'</div>';
  }).join(''):'<div class="empty">No tenancy records yet.</div>';
  document.getElementById('view-people').innerHTML='<div class="move">people and tenancies</div>'+
  '<p class="fineprint">Create explicit Party records and link tenancies by stable IDs. This does not merge records by email or grant portal access.</p>'+
@@ -1072,7 +1279,7 @@ function renderPeopleTenancies(){
  '<label class="field"><span>Tenant Party (select multiple with Ctrl/Cmd)</span><select id="tenancy-tenants" multiple>'+partyOptions('tenant')+'</select></label>'+
  '<label class="field"><span>Landlord Party (select multiple with Ctrl/Cmd)</span><select id="tenancy-landlords" multiple>'+partyOptions('landlord')+'</select></label>'+
  '<label class="field"><span>Start date</span><input id="tenancy-start" type="date"></label><label class="field"><span>Rent (£ per period)</span><input id="tenancy-rent" type="number" min="0" step="0.01"></label>'+
- '<label class="field"><span>Frequency</span><select id="tenancy-frequency"><option>monthly</option><option>weekly</option><option>fortnightly</option><option>quarterly</option><option>annually</option></select></label>'+
+ '<label class="field"><span>Rent period (assured periodic: weekly, fortnightly or monthly)</span><select id="tenancy-frequency"><option>monthly</option><option>weekly</option><option>fortnightly</option></select></label>'+
  '<label class="field"><span>Deposit (£; optional if unknown)</span><input id="tenancy-deposit" type="number" min="0" step="0.01" value="0"></label></div>'+
  '<button class="btn primary" onclick="createTenancy(this)">Create tenancy record</button></div>'+
  '<div class="move">tenancy records</div>'+tenancyCards;
@@ -1160,23 +1367,144 @@ function renderContractorInvoices(){
    ).join(""):"<div class=\"empty\">No contractor invoices received yet. Completed jobs with submitted invoices appear here.</div>";
  return `<div class="move">contractor invoices</div><div class="card"><div class="cardtop"><h3>Invoices from tradespeople</h3><span class="badge ${action.length?"pending":"completed"}">${action.length} need follow-up</span></div><p class="fineprint">Every entry links to its job. Invoice approval does not mean payment. Only manually verified external payments can be marked paid; Roger does not transfer money.</p>${records}</div>`;
 }
+window.bankPreviewRows=[];
+function renderDeposits(){
+ const records=window._deposits||[];
+ const tOptions=(stage.tenancies||[]).map(t=>'<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc(t.property_id)+'</option>').join('');
+ const dOptions=(window._docs||[]).filter(d=>d.status==='verified').map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.id)+'</option>').join('');
+ const cards=records.slice().reverse().map(d=>'<div class="card" id="deposit-'+esc(d.id)+'">'+
+   '<h3>'+esc(d.id)+' · '+esc(d.kind)+' · '+money(d.amount_pence)+'</h3>'+
+   '<div class="meta">Tenancy '+esc(d.tenancy_id)+' · '+esc(d.status)+' · recorded '+esc(d.received_date)+
+   (d.protection_deadline?' · protect by '+esc(d.protection_deadline):'')+
+   (d.decision_deadline?' · holding-deposit decision by '+esc(d.decision_deadline):'')+'</div>'+
+   (d.protection_late?'<div class="banner danger">Late protection / notice evidence: human legal review required.</div>':'')+
+   (d.status==='received_unverified'?
+      '<div class="grid2"><label class="field"><span>Verified evidence</span><select class="deposit-evidence"><option value="">Choose</option>'+dOptions+'</select></label>'+
+      (d.kind==='tenancy'?'<label class="field"><span>Protection scheme</span><select class="deposit-scheme"><option>Deposit Protection Service</option><option>MyDeposits</option><option>Tenancy Deposit Scheme</option></select></label>'+
+        '<label class="field"><span>Scheme reference</span><input class="deposit-ref" maxlength="120"></label>'+
+        '<label class="field"><span>Protected date</span><input class="deposit-protected" type="date"></label>'+
+        '<label class="field"><span>Prescribed information given date</span><input class="deposit-informed" type="date"></label>':
+        '<label class="field"><span>Holding outcome</span><select class="deposit-outcome"><option value="refunded">Refunded</option><option value="applied_to_tenancy">Applied to tenancy</option><option value="forfeiture_recorded">Forfeiture recorded</option></select></label>'+
+        '<label class="field"><span>Decision reason</span><input class="deposit-reason" maxlength="1000"></label>'+
+        '<label><input class="deposit-consent" type="checkbox"> Consent to applying deposit verified</label>'+
+        '<label><input class="deposit-signed" type="checkbox"> Agreement signed</label>')+'</div>'+
+      '<button class="btn" data-deposit-id="'+esc(d.id)+'" onclick="saveDepositReview(this)">Record human-reviewed outcome</button>':
+      '<div class="fineprint">A protected or settled record cannot be silently overwritten.</div>')+
+   '</div>').join('');
+ return '<div class="move">deposit compliance and funds evidence</div>'+
+   '<p class="fineprint">Holding and tenancy deposits are separate. Roger records evidence but does not transfer money, verify bank receipts or protect funds in a scheme.</p>'+
+   '<div class="card"><h3>Record deposit receipt</h3><div class="grid2">'+
+   '<label class="field"><span>Tenancy</span><select id="dep-tenancy">'+tOptions+'</select></label>'+
+   '<label class="field"><span>Kind</span><select id="dep-kind"><option value="holding">Holding deposit</option><option value="tenancy">Tenancy deposit</option></select></label>'+
+   '<label class="field"><span>Amount (£)</span><input id="dep-amount" type="number" min="0.01" step="0.01"></label>'+
+   '<label class="field"><span>Receipt date</span><input id="dep-date" type="date"></label></div>'+
+   '<button class="btn" onclick="createDeposit(this)">Record receipt (unverified)</button></div>'+
+   (cards||'<div class="empty">No deposit records.</div>');
+}
+async function createDeposit(btn){
+ const amount=Number(document.getElementById('dep-amount')?.value);
+ if(!Number.isFinite(amount)||amount<=0){toast('Choose a deposit amount.','bad');return;}
+ const payload={action:'create',tenancy_id:document.getElementById('dep-tenancy')?.value,
+   kind:document.getElementById('dep-kind')?.value,amount_pence:Math.round(amount*100),
+   received_date:document.getElementById('dep-date')?.value};
+ await busy(btn,async()=>{try{await post('/api/deposit-action',payload);
+   toast('Unverified deposit receipt recorded.');await load();}catch(e){}});
+}
+async function saveDepositReview(btn){
+ const card=document.getElementById('deposit-'+btn.dataset.depositId);
+ const deposit=(window._deposits||[]).find(d=>d.id===btn.dataset.depositId);
+ if(!deposit)return;
+ const payload={action:deposit.kind==='tenancy'?'record_protection':'holding_outcome',
+    deposit_id:deposit.id,evidence_document_id:card?.querySelector('.deposit-evidence')?.value};
+ if(deposit.kind==='tenancy')Object.assign(payload,{
+   scheme:card?.querySelector('.deposit-scheme')?.value,
+   scheme_reference:card?.querySelector('.deposit-ref')?.value,
+   protected_on:card?.querySelector('.deposit-protected')?.value,
+   prescribed_info_provided_on:card?.querySelector('.deposit-informed')?.value
+ });else Object.assign(payload,{
+   decision:card?.querySelector('.deposit-outcome')?.value,
+   reason:card?.querySelector('.deposit-reason')?.value,
+   tenant_consented:!!card?.querySelector('.deposit-consent')?.checked,
+   agreement_signed:!!card?.querySelector('.deposit-signed')?.checked
+ });
+ if(!confirm('Confirm you checked the evidence independently? Roger will only record it, not transfer or verify funds.'))return;
+ await busy(btn,async()=>{try{await post('/api/deposit-action',payload);
+   toast('Deposit evidence recorded.');await load();}catch(e){}});
+}
+function renderBankMatching(){
+ const docs=(window._docs||[]).filter(d=>d.status==='verified' &&
+   JSON.stringify(d.access_roles||['agent'])==='["agent"]');
+ const options=docs.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.file_name||d.id)+'</option>').join('');
+ const rows=(window.bankPreviewRows||[]).slice(0,50).map((r,idx)=>{
+   const candidate=r.candidate_count===1?r.candidates?.[0]:null;
+   return '<div class="thread"><b>'+esc(r.transaction_id)+'</b> · '+esc(r.date)+' · '+money(r.amount_pence)+
+     ' · '+esc(r.status)+' · '+esc(r.candidate_count)+' possible matches'+
+     (candidate?'<div class="meta">Ledger '+esc(candidate.rent_entry_id)+'; receipt '+esc(candidate.payment_id)+'</div>'+
+       '<label class="field"><span>Private, agent-only verified bank-statement document</span>'+
+       '<select class="bank-evidence" data-bank-index="'+idx+'"><option value="">Choose evidence</option>'+options+'</select></label>'+
+       '<button class="btn" data-bank-index="'+idx+'" onclick="confirmBankMatch(this)">Record reviewed statement match</button>':
+       '<div class="fineprint">No unique candidate. Investigate manually before matching.</div>')+
+     '</div>';
+ }).join('');
+ return '<div class="card"><h2>Bank-statement matching</h2>'+
+   '<p class="fineprint">Upload a CSV of bank transactions for read-only matching. No money is moved and no statement is trusted automatically. Upload the private evidence document in Documents first.</p>'+
+   '<label class="field"><span>Bank CSV (transaction_id,date,amount_pence)</span>'+
+   '<input id="bank-statement-csv" type="file" accept=".csv,text/csv"></label>'+
+   '<button class="btn" onclick="previewBankStatement(this)">Preview matching candidates</button>'+
+   (rows?'<h3>Review candidates</h3>'+rows:'<p class="fineprint">No bank statement preview.</p>')+
+   '</div>';
+}
+async function previewBankStatement(btn){
+ const file=document.getElementById('bank-statement-csv')?.files?.[0];
+ if(!file||file.size>250000){toast('Choose a bank CSV under 250 KB.','bad');return;}
+ await busy(btn,async()=>{
+   try{
+     const result=await post('/api/bank-reconciliation-preview',{csv_text:await file.text()});
+     window.bankPreviewRows=result.rows||[];
+     toast('Preview ready; confirm matches individually.');
+     renderMoney();
+   }catch(e){window.bankPreviewRows=[];}
+ });
+}
+async function confirmBankMatch(btn){
+ const idx=Number(btn.dataset.bankIndex),row=window.bankPreviewRows?.[idx];
+ if(!row||row.candidate_count!==1)return;
+ const match=row.candidates?.[0];
+ const select=Array.from(document.querySelectorAll('.bank-evidence')).find(e=>Number(e.dataset.bankIndex)===idx);
+ const evidence=select?.value||'';
+ if(!evidence){toast('Choose a private verified bank-statement evidence document.','bad');return;}
+ if(!confirm('You independently checked the statement evidence, receipt amount and payer identity?'))return;
+ await busy(btn,async()=>{
+   try{
+     await post('/api/bank-reconciliation-action',{
+       action:'match_receipt',entry_id:match.rent_entry_id,payment_id:match.payment_id,
+       transaction_id:row.transaction_id,bank_date:row.date,
+       amount_pence:row.amount_pence,evidence_document_id:evidence
+     });
+     window.bankPreviewRows=[];
+     toast('Manual bank-statement match recorded. Not independent bank confirmation.');
+     await load();
+   }catch(e){}
+ });
+}
 function renderMoney(){
  const eligible=(stage.tenancies||[]).filter(t=>t.agreement_status==='signed'&&['move_in_scheduled','active','renewal','notice_given'].includes(t.status));
  const tenOptions=eligible.map(t=>{const p=(stage.properties||[]).find(x=>x.id===t.property_id)||{};return '<option value="'+esc(t.id)+'">'+esc(t.id)+' · '+esc(p.title||t.property_id)+' · '+money(t.rent_amount_pence)+'</option>';}).join('');
  const totalOutstanding=ledgerEntries.reduce((n,x)=>n+Math.max(0,x.balance_pence||0),0);
+ const unreconciled=ledgerEntries.reduce((n,x)=>n+Math.max(0,x.unverified_receipts_pence||0),0);
  const feeTotal=ledgerEntries.reduce((n,x)=>n+(x.payments||[]).reduce((m,p)=>m+(p.agency_fee_pence||0),0),0);
  const landlords=(stage.parties||[]).filter(p=>p.status==='active'&&(p.roles||[]).includes('landlord'));
  const landlordOptions=landlords.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.display_name)+' · '+esc(p.id)+'</option>').join('');
  const overdue=ledgerEntries.filter(x=>x.status==='overdue').reduce((n,x)=>n+(x.balance_pence||0),0);
  const rows=ledgerEntries.slice().sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date))).map(x=>{
   const t=(stage.tenancies||[]).find(t=>t.id===x.tenancy_id)||{},p=(stage.properties||[]).find(p=>p.id===x.property_id)||{};
-  return '<div class="card" id="'+esc(x.id)+'"><div class="cardtop"><h3>'+esc(p.title||x.property_id)+' · '+esc(x.due_date)+'</h3><span class="badge '+esc(x.status)+'">'+esc(x.status)+'</span></div><div class="meta">Tenancy '+esc(x.tenancy_id)+' · due '+money(x.amount_due_pence)+' · received '+money(x.amount_received_pence)+' · balance '+money(x.balance_pence)+'</div>'+
-   (x.payments||[]).map(pay=>'<div class="thread">Receipt '+esc(pay.received_date)+' · '+money(pay.amount_pence)+(pay.agency_fee_pence?' · fee '+money(pay.agency_fee_pence):'')+(pay.note?' · '+esc(pay.note):'')+'</div>').join('')+
+  return '<div class="card" id="'+esc(x.id)+'"><div class="cardtop"><h3>'+esc(p.title||x.property_id)+' · '+esc(x.due_date)+'</h3><span class="badge '+esc(x.status)+'">'+esc(x.status)+'</span></div><div class="meta">Tenancy '+esc(x.tenancy_id)+' · due '+money(x.amount_due_pence)+' · received '+money(x.amount_received_pence)+' · bank-matched '+money(x.reconciled_pence||0)+' · balance '+money(x.balance_pence)+'</div>'+
+   (x.payments||[]).map(pay=>'<div class="thread">Receipt '+esc(pay.received_date)+' · '+money(pay.amount_pence)+(pay.agency_fee_pence?' · fee '+money(pay.agency_fee_pence):'')+(pay.note?' · '+esc(pay.note):'')+' · '+esc(pay.reconciliation_status||'legacy-unverified')+'</div>').join('')+
    (x.adjustments||[]).map(a=>'<div class="thread">Adjustment '+(a.amount_pence>=0?'+':'')+money(a.amount_pence)+' · '+esc(a.reason)+'</div>').join('')+
    '<div class="actions"><input class="receipt-amount" type="number" min="0.01" step="0.01" placeholder="Receipt (£)" aria-label="Receipt amount in pounds"><input class="receipt-date" type="date" value="'+new Date().toISOString().slice(0,10)+'" aria-label="Receipt date"><button class="btn primary" data-entry-id="'+esc(x.id)+'" onclick="recordRentReceipt(this)">Record receipt</button><button class="btn" data-entry-id="'+esc(x.id)+'" onclick="adjustRentEntry(this)">Adjust charge</button></div></div>';
  }).join('');
- document.getElementById('view-money').innerHTML=renderContractorInvoices()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
- '<div class="stats"><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat"><div class="value">'+money(feeTotal)+'</div><div class="label">management fees recorded</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
+ document.getElementById('view-money').innerHTML=renderContractorInvoices()+renderDeposits()+renderBankMatching()+'<div class="move">rent ledger</div><p class="fineprint">Record scheduled charges, receipts and adjustments manually. Roger does not move money or verify a bank payment.</p>'+
+ '<div class="stats"><div class="stat"><div class="value">'+money(unreconciled)+'</div><div class="label">receipts not matched to statement evidence</div></div><div class="stat"><div class="value">'+money(totalOutstanding)+'</div><div class="label">outstanding balance</div></div><div class="stat"><div class="value">'+money(feeTotal)+'</div><div class="label">management fees recorded</div></div><div class="stat '+(overdue?'hot':'')+'"><div class="value">'+money(overdue)+'</div><div class="label">overdue balance</div></div></div>'+
  '<div class="card"><h2>Generate rent schedule</h2><div class="grid2"><label class="field"><span>Signed tenancy</span><select id="ledger-tenancy">'+tenOptions+'</select></label><label class="field"><span>First due date</span><input id="ledger-first-due" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label class="field"><span>Periods (max 36)</span><input id="ledger-periods" type="number" min="1" max="36" value="12"></label></div><button class="btn primary" onclick="generateRentSchedule(this)">Generate schedule</button>'+(eligible.length?'':'<div class="fineprint">A signed tenancy with move-in scheduled or active status is required.</div>')+'</div>'+
  '<div class="card"><h2>Generate landlord statement</h2><div class="grid2"><label class="field"><span>Landlord</span><select id="statement-landlord">'+landlordOptions+'</select></label><label class="field"><span>Period start</span><input id="statement-start" type="date"></label><label class="field"><span>Period end</span><input id="statement-end" type="date"></label></div><button class="btn primary" onclick="createLandlordStatement(this)">Create statement snapshot</button>'+(landlords.length?'':'<div class="fineprint">Create a landlord Party and active management authority first.</div>')+'</div>'+
  '<div class="move">landlord statements</div>'+((window.landlordStatements||[]).slice().reverse().map(s=>'<div class="card"><div class="cardtop"><h3>'+esc(s.id)+' · '+esc(s.period_start)+' to '+esc(s.period_end)+'</h3><span class="badge">snapshot</span></div><div class="meta">Rent '+money(s.rent_received_pence)+' · Fees −'+money(s.agency_fee_pence)+' · Maintenance −'+money(s.maintenance_pence)+' · Net '+money(s.net_payout_pence)+'</div><div class="meta">'+esc((s.property_ids||[]).join(', '))+'</div></div>').join('')||'<div class="empty">No statements generated.</div>')+
@@ -1201,14 +1529,56 @@ async function adjustRentEntry(btn){
  if(!Number.isFinite(amount)||amount===0||!reason){toast('Enter a non-zero amount and a reason.','bad');return;}
  await busy(btn,async()=>{try{await post('/api/rent-ledger-action',{action:'adjustment',entry_id:btn.dataset.entryId,amount_pence:Math.round(amount*100),reason});toast('Rent adjustment recorded.');load();}catch(e){}});
 }
+const PRS_REGIONS=['West Midlands','East of England','East Midlands','South East',
+   'Yorkshire and Humber','North West','North East','London','South West'];
+function renderPRSRegistration(){
+ const props=stage.properties||[],docs=window._docs||[];
+ const propOpts=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+'</option>').join('');
+ const regionOptions=PRS_REGIONS.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+ const docOptions=docs.filter(d=>d.status==='verified').map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.id)+'</option>').join('');
+ const listing=props.map(p=>{
+   const x=p.prs_registration||{};
+   return '<div class="thread"><b>'+esc(p.title||p.id)+'</b> · '+esc(x.status||'Not recorded')+
+     (x.region?' · '+esc(x.region):'')+
+     (x.rollout_deadline?' · deadline '+esc(x.rollout_deadline):'')+
+     (x.property_registration_number?' · property number '+esc(x.property_registration_number):'')+'</div>';
+ }).join('');
+ return '<div class="card"><h2>Register your rental property — England</h2>'+
+   '<p class="fineprint">Record official landlord/property registration details after checking them externally. Roger does NOT submit to or verify with GOV.UK. First regional deadline: West Midlands, 14 March 2027. Check other regions and council areas.</p>'+
+   (listing||'<div class="fineprint">No properties recorded.</div>')+
+   '<div class="grid2"><label class="field"><span>Property</span><select id="prs-property">'+propOpts+'</select></label>'+
+   '<label class="field"><span>Region (confirm against council)</span><select id="prs-region">'+regionOptions+'</select></label>'+
+   '<label class="field"><span>Registration state</span><select id="prs-status"><option value="not_started">Not started</option><option value="in_progress">In progress</option><option value="registered">Registered</option><option value="exempt">Exempt (needs written basis)</option></select></label>'+
+   '<label class="field"><span>Landlord registration number</span><input id="prs-landlord-number" maxlength="120"></label>'+
+   '<label class="field"><span>Property registration number</span><input id="prs-property-number" maxlength="120"></label>'+
+   '<label class="field"><span>Registered on</span><input id="prs-registered-on" type="date"></label>'+
+   '<label class="field"><span>Renewal date</span><input id="prs-renewal" type="date"></label>'+
+   '<label class="field"><span>Verified private evidence document</span><select id="prs-evidence"><option value="">Select evidence</option>'+docOptions+'</select></label></div>'+
+   '<label class="field"><span>Notes / exemption reason</span><textarea id="prs-notes" maxlength="1000" rows="2"></textarea></label>'+
+   '<button class="btn" onclick="savePRSRegistration(this)">Record registration evidence</button></div>';
+}
+async function savePRSRegistration(btn){
+ await busy(btn,async()=>{try{
+   const field=id=>document.getElementById(id)?.value||'';
+   const result=await post('/api/property-registration-action',{
+     property_id:field('prs-property'),region:field('prs-region'),
+     status:field('prs-status'),landlord_registration_number:field('prs-landlord-number'),
+     property_registration_number:field('prs-property-number'),
+     registered_on:field('prs-registered-on'),renewal_date:field('prs-renewal'),
+     evidence_document_id:field('prs-evidence'),notes:field('prs-notes')
+   });
+   toast('Registration evidence recorded; government verification remains external.');
+   await load();
+ }catch(e){}});
+}
 function renderCompliance(){
  const props=stage.properties||[],docs=window._docs||[];
  const propOptions=props.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.title||p.id)+' · '+esc(p.area||'')+'</option>').join('');
  const docOptions=docs.map(d=>'<option value="'+esc(d.id)+'">'+esc(d.title||d.file_name||d.id)+'</option>').join('');
- const labels={gas_safety:'Gas safety',eicr:'EICR',epc:'EPC',smoke_co_alarms:'Smoke / CO alarms',deposit_protection:'Deposit protection',right_to_rent:'Right to Rent',tenancy_agreement:'Tenancy agreement',inventory:'Inventory',landlord_authority:'Landlord authority',trades_credentials:'Trades credentials',other:'Other'};
+ const labels={gas_safety:'Gas safety',eicr:'EICR',epc:'EPC',smoke_co_alarms:'Smoke / CO alarms',deposit_protection:'Deposit protection',right_to_rent:'Right to Rent',tenancy_agreement:'Tenancy agreement',inventory:'Inventory',landlord_authority:'Landlord authority',trades_credentials:'Trades credentials',hmo_licence:'HMO licence',additional_licence:'Additional licence',selective_licence:'Selective licence',prs_landlord_registration:'PRS landlord registration',redress_scheme:'Agency redress scheme',client_money_protection:'Client money protection',other:'Other'};
  const typeOptions=Object.entries(labels).map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
  const rows=(window.complianceRecords||[]).slice().reverse().map(r=>{const p=props.find(x=>x.id===r.property_id)||{};const d=docs.find(x=>x.id===r.document_id)||{};return '<div class="card" id="'+esc(r.id)+'"><div class="cardtop"><h3>'+esc(p.title||r.property_id)+' · '+esc(labels[r.requirement_type]||r.requirement_type)+'</h3><span class="badge '+esc(r.status)+'">'+esc(r.status.replace(/_/g,' '))+'</span></div><div class="meta">'+(r.issue_date?'Issued '+esc(r.issue_date):'No evidence date')+(r.expiry_date?' · expires '+esc(r.expiry_date):' · no expiry date')+(r.reminder_date?' · reminder '+esc(r.reminder_date):'')+(r.reminder_due?' · reminder due':'')+'</div>'+(d.id?'<div class="meta">Document: '+esc(d.title||d.file_name||d.id)+'</div>':'')+(r.notes?'<div class="details">'+esc(r.notes)+'</div>':'')+'</div>';}).join('');
- document.getElementById('view-compliance').innerHTML='<div class="move">property compliance</div><p class="fineprint">Record evidence and dates supplied by the agent. Expiry and reminder states use those recorded dates; Roger does not decide which legal requirements apply.</p>'+
+ document.getElementById('view-compliance').innerHTML='<div class="move">property compliance</div>'+renderPRSRegistration()+'<p class="fineprint">Record evidence and dates supplied by the agent. Expiry and reminder states use those recorded dates; Roger does not decide which legal requirements apply.</p>'+
  '<div class="card"><h2>Record requirement or missing evidence</h2><div class="grid2"><label class="field"><span>Property</span><select id="compliance-property">'+propOptions+'</select></label><label class="field"><span>Requirement</span><select id="compliance-type">'+typeOptions+'</select></label><label class="field"><span>Record state</span><select id="compliance-action"><option value="record">Evidence recorded</option><option value="missing">Evidence missing</option></select></label><label class="field"><span>Linked document (optional)</span><select id="compliance-document"><option value="">No linked document</option>'+docOptions+'</select></label><label class="field"><span>Issue date</span><input id="compliance-issue" type="date"></label><label class="field"><span>Expiry date (optional)</span><input id="compliance-expiry" type="date"></label><label class="field"><span>Reminder date (optional)</span><input id="compliance-reminder" type="date"></label></div><label class="field"><span>Notes</span><textarea id="compliance-notes" rows="2" maxlength="1000"></textarea></label><button class="btn primary" onclick="saveComplianceRecord(this)">Save compliance record</button></div>'+
  '<div class="move">record history</div>'+(rows||'<div class="empty">No compliance records yet.</div>');
 }

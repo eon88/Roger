@@ -1,0 +1,58 @@
+name: Roger v1 mandatory bundle acceptance
+
+# Every commit on the ONE dev branch must pass all suites. No deploy job exists.
+# This is CI evidence, not an administrator-enforced branch-protection ruleset.
+on:
+  push:
+    branches:
+      - feature/roger-v1-single-release-20261108
+  pull_request:
+    branches:
+      - feature/roger-saas-hostinger-staging-safeguards-20261013
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Safe source and CI policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reject deployment-capable CI and untracked workflow changes
+        run: python3 scripts/check_v1_ci_policy.py
+      - name: Validate the deterministic cross-agency scenario
+        run: python3 -m unittest discover -s tests -p test_b00_fixture.py -v
+
+  unit:
+    needs: policy
+    uses: ./.github/workflows/tests.yml
+
+  browser:
+    needs: policy
+    uses: ./.github/workflows/browser-smoke.yml
+
+  saas:
+    needs: policy
+    uses: ./.github/workflows/saas-two-agency-pilot.yml
+
+  gate:
+    name: Bundle acceptance — all required suites must succeed
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [policy, unit, browser, saas]
+    steps:
+      - name: Require independent green policy, Python, Chromium and agency stacks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ needs.policy.result }}" = "success"
+          test "${{ needs.unit.result }}" = "success"
+          test "${{ needs.browser.result }}" = "success"
+          test "${{ needs.saas.result }}" = "success"
+          echo 'PASS: one commit meets the mandatory B00 aggregate CI conditions'
+          echo 'NOT a Roger v1 production release certification'

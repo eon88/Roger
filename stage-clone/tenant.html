@@ -9,7 +9,8 @@
 <div class="shell">
   <header class="header">
     <div class="brand"><h1>My Home</h1><span class="who">Signed in as <b id="who">…</b></span></div>
-    <nav class="tabs"><a href="/" class="tab">Lettings site</a><a href="/?newsletter=tenant#newsletter" class="tab">Tenant newsletter</a><form action="/logout" method="POST" style="display:contents"><input type="hidden" name="intent" value="logout"><button class="tab" type="submit">Log out</button></form></nav>
+    <nav class="tabs"><a href="/" class="tab">Lettings site</a><a href="/?newsletter=tenant#newsletter" class="tab">Tenant newsletter</a><a href="/security">Account security</a>
+<form action="/logout" method="POST" style="display:contents"><input type="hidden" name="intent" value="logout"><button class="tab" type="submit">Log out</button></form></nav>
   </header>
 
   <main id="main" aria-busy="true">
@@ -19,6 +20,24 @@
   <section class="section">
     <div class="move">your home</div>
     <div id="home-card"><div class="skel c"></div></div>
+  </section>
+
+  <section class="section">
+    <div class="move">your tenancy</div>
+    <h2>Tenancy and pet requests</h2>
+    <div id="tenancy-info" aria-live="polite"><div class="fineprint">Loading tenancy information…</div></div>
+  </section>
+
+  <section class="section">
+    <div class="move">deposits</div>
+    <h2>Your deposit records</h2>
+    <div id="tenant-deposits"><div class="fineprint">Loading deposit records…</div></div>
+  </section>
+
+  <section class="section">
+    <div class="move">property condition</div>
+    <h2>Inventories and inspections</h2>
+    <div id="tenant-inventories"><div class="fineprint">Loading inspection records…</div></div>
   </section>
 
   <section class="section">
@@ -36,6 +55,24 @@
       <div class="field"><label for="issue-files">Photos or PDFs (optional)</label>
         <input id="issue-files" type="file" accept="image/*,application/pdf" multiple>
         <div class="hint">Attach up to four photos or PDFs, 5 MB each. These are kept with the case as maintenance evidence.</div>
+      </div>
+      <div class="field" style="border-top:1px solid #ddd;padding-top:14px">
+        <button type="button" class="btn" id="diagnose-start" onclick="startRepairInterview()">Help me describe this problem (experimental)</button>
+        <div class="hint">Optional guided questions before you send the report. This does not book a repair or contact emergency services.</div>
+        <div id="repair-interview" style="display:none;margin-top:12px" aria-live="polite">
+          <div id="repair-engine" class="fineprint"></div>
+          <div id="repair-warning" class="banner emergency" style="display:none"></div>
+          <p id="repair-question" style="font-weight:600"></p>
+          <div id="repair-answer-field">
+            <label for="repair-answer">Your answer</label>
+            <textarea id="repair-answer" rows="2" maxlength="500" placeholder="Describe only what you have observed"></textarea>
+            <button type="button" class="btn" id="repair-next" onclick="repairInterviewNext()">Next question</button>
+          </div>
+          <div id="repair-summary" style="display:none">
+            <div class="hint">Review this unverified interview before sending your report. Photos remain attached separately.</div>
+            <button type="button" class="btn" onclick="useRepairReport()">Use interview in my report</button>
+          </div>
+        </div>
       </div>
       <div class="actions">
         <button class="btn primary" id="report-btn" onclick="report()">Send report</button>
@@ -93,15 +130,17 @@ async function post(p,b){const r=await fetch(p,{method:'POST',headers:{'Content-
   const j=await r.json().catch(()=>({})); if(!r.ok)throw new Error(j.error||'failed'); return j;}
 function toast(msg,kind){const el=document.createElement('div');el.className='toast '+(kind||'');el.textContent=msg;
   document.getElementById('toast-host').appendChild(el);setTimeout(()=>el.remove(),3500);}
-let stage, prevStatus={};
+let stage, prevStatus={}, tenantPolicyData={tenancies:[]}, pendingPetId=null;
 async function boot(){
   try{ const w=await api('/api/whoami'); if(!w.role){location='/login';return;} ME=w.display_name; await load(); }
   catch(e){ toast('Could not reach the portal. Try reloading in a moment.','bad'); }
 }
-async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
+async function load(){ try{ stage=await api('/api/stage'); await loadExtras(); try{tenantPolicyData=await api('/api/tenancy-policy');}catch(e){tenantPolicyData={tenancies:[]};} try{const o=await api('/api/office-settings');window.rogerOffice=o.office||{};}catch(e){window.rogerOffice={};} render(); }
   catch(e){ toast('Could not refresh your cases. We will try again with the next update.','bad'); } }
-let appts=[], docs=[];
+let appts=[], docs=[], inventories=[], depositRecords=[];
 async function loadExtras(){
+  try{ const d=await api('/api/deposits'); depositRecords=d.deposits||[]; }catch(e){ depositRecords=[]; }
+  try{ const i=await api('/api/inventories'); inventories=i.inventories||[]; }catch(e){ inventories=[]; }
   try{ const a=await api('/api/appointments'); appts=a.appointments||[]; }catch(e){ appts=[]; }
   try{ const d=await api('/api/documents'); docs=d.documents||[]; }catch(e){ docs=[]; }
 }
@@ -120,7 +159,91 @@ function renderOfficeContacts(){
     '<div>Outside hours: '+(numbers[1]||'No separate emergency telephone provided')+' · '+esc(o.out_of_hours_instructions||'')+'</div>'+
     '<div class="fineprint">'+esc(o.emergency_policy||'')+' This portal is not monitored continuously.</div>';
 }
-function render(){ renderOfficeContacts();
+function renderTenancyPolicy(){
+ const box=document.getElementById('tenancy-info');
+ if(!box)return;
+ const list=(tenantPolicyData?.tenancies||[]);
+ box.innerHTML=list.length?list.map(t=>{
+   const pets=(t.pet_requests||[]).map(p=>'<div class="thread"><b>'+esc(p.description)+'</b> · '+esc(p.status)+
+     (p.reason?'<div class="fineprint">Decision reason: '+esc(p.reason)+'</div>':'')+'</div>').join('');
+   const pending=t.pending_rent_increase;
+   return '<div class="card"><h3>'+esc(t.property_id||t.id)+'</h3>'+
+     '<div class="meta">'+esc(t.tenancy_type||'Tenancy')+' · '+esc(t.status||'')+
+     ' · Rent £'+(Number(t.rent_amount_pence||0)/100).toFixed(2)+' / '+esc(t.rent_frequency||'period')+'</div>'+
+     '<div class="fineprint">For assured periodic tenancies there is no fixed term end date. Ask the office about formal rent notices or tenancy paperwork.</div>'+
+     (pending?'<div class="thread">Recorded proposed rent £'+(Number(pending.proposed_rent_pence||0)/100).toFixed(2)+
+       ' from '+esc(pending.effective_on)+'; '+esc(pending.status)+'. This is not proof a notice was legally served.</div>':'')+
+     '<h4>Pet requests</h4>'+(pets||'<div class="fineprint">No pet requests recorded.</div>')+
+     '<div class="field"><label for="pet-request-'+esc(t.id)+'">Ask to keep a pet</label>'+
+     '<textarea id="pet-request-'+esc(t.id)+'" maxlength="500" rows="2" placeholder="What kind of animal and how many?"></textarea></div>'+
+     '<button class="btn" data-tenancy-id="'+esc(t.id)+'" onclick="sendPetRequest(this)">Send pet request</button>'+
+     '<div class="fineprint">Your agent reviews requests. This portal does not approve or refuse pets automatically.</div></div>';
+ }).join(''):'<div class="empty">No active tenancy is linked to your account. Ask the office to check your account link.</div>';
+}
+async function sendPetRequest(btn){
+ const t=btn.dataset.tenancyId;
+ const answer=document.getElementById('pet-request-'+t)?.value.trim()||'';
+ if(answer.length<2){toast('Describe the pet before sending.','bad');return;}
+ pendingPetId=pendingPetId||('pet-'+(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)));
+ await (async()=>{btn.disabled=true;
+   try{
+     await post('/api/tenancy-policy-action',{
+       action:'request_pet',tenancy_id:t,request_id:pendingPetId,description:answer
+     });
+     pendingPetId=null;toast('Pet request recorded for your agent to review.');
+     await load();
+   }catch(e){toast(e.message||'Could not send the request','bad');}
+   finally{btn.disabled=false;}
+ })();
+}
+function renderInventories(){
+ const box=document.getElementById('tenant-inventories');
+ if(!box)return;
+ box.innerHTML=inventories.length?inventories.slice().reverse().map(i=>{
+   const rooms=(i.rooms||[]).map(r=>'<div class="thread"><b>'+esc(r.name)+'</b> · '+esc(r.condition)+
+      (r.document_ids?.length?' · Shared evidence '+r.document_ids.map(esc).join(', '):'')+'</div>').join('');
+   const responses=(i.tenant_feedback||[]).map(f=>'<div class="thread">'+(f.accepted?'Confirmed':'Disputed')+': '+esc(f.comment||'')+'</div>').join('');
+   return '<div class="card" id="tenant-inventory-'+esc(i.id)+'"><h3>'+esc(i.kind.replace(/_/g,' '))+' · '+esc(i.inspection_date)+'</h3>'+
+     '<div class="meta">Property '+esc(i.property_id)+' · '+esc(i.status)+'</div>'+
+     '<div class="fineprint">'+esc(i.summary||'')+'</div>'+rooms+responses+
+     '<div class="meta">Meter readings: '+Object.entries(i.meter_readings||{}).map(([k,v])=>esc(k)+' '+esc(v.reading)).join(', ')+'</div>'+
+     '<div class="meta">Keys: '+(i.keys||[]).map(k=>esc(k.description)+' ('+k.count+')').join(', ')+'</div>'+
+     (['issued','acknowledged','disputed'].includes(i.status)?
+      '<label class="field"><span>Comments or differences from the recorded condition</span>'+
+       '<textarea class="inspection-feedback" maxlength="1000" rows="2" placeholder="Write any disagreement, or leave blank to confirm"></textarea></label>'+
+       '<div class="actions"><button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="respondToInventory(this,true)">Confirm accurate</button>'+
+       '<button class="btn" data-inventory-id="'+esc(i.id)+'" onclick="respondToInventory(this,false)">Dispute an item</button></div>'+
+       '<div class="fineprint">You can submit one response. Further corrections must be arranged through your agent.</div>':'')+
+    '</div>';
+ }).join(''):'<div class="empty">No issued inventories have been shared with your tenancy.</div>';
+}
+async function respondToInventory(btn,accepted){
+ const card=document.getElementById('tenant-inventory-'+btn.dataset.inventoryId);
+ const comment=card?.querySelector('.inspection-feedback')?.value||'';
+ if(!accepted&&comment.trim().length<5){toast('Describe what you disagree with.','bad');return;}
+ btn.disabled=true;
+ try{
+   await post('/api/inventory-action',{action:'acknowledge',inventory_id:btn.dataset.inventoryId,
+                                       accepted,comment});
+   toast('Your inventory response was saved.');await load();
+ }catch(e){toast(e.message||'Could not save inventory response','bad');}
+ finally{btn.disabled=false;}
+}
+function renderDepositRecords(){
+ const box=document.getElementById('tenant-deposits');
+ if(!box)return;
+ box.innerHTML=depositRecords.length?depositRecords.slice().reverse().map(d=>
+   '<div class="card"><h3>'+esc(d.kind==='holding'?'Holding deposit':'Tenancy deposit')+' · £'+
+   (Number(d.amount_pence||0)/100).toFixed(2)+'</h3>'+
+   '<div class="meta">Recorded '+esc(d.received_date)+' · '+esc(d.status)+'</div>'+
+   (d.protection_deadline?'<div class="meta">Protection / prescribed information deadline: '+esc(d.protection_deadline)+'</div>':'')+
+   (d.decision_deadline?'<div class="meta">Holding-deposit decision deadline: '+esc(d.decision_deadline)+'</div>':'')+
+   (d.scheme?'<div class="meta">Recorded scheme: '+esc(d.scheme)+' · reference '+esc(d.scheme_reference||'')+'</div>':'')+
+   (d.protection_late?'<div class="banner danger">Protection or prescribed information was recorded late. Contact the agency to verify your rights.</div>':'')+
+   '<div class="fineprint">Roger displays agent-recorded information. It does not confirm a bank payment or verify your scheme membership; check with the deposit provider.</div></div>'
+ ).join(''):'<div class="empty">No deposits are recorded against your linked tenancy. Contact your agency if you expect one.</div>';
+}
+function render(){ renderOfficeContacts(); renderTenancyPolicy(); renderInventories(); renderDepositRecords();
   const y=window.scrollY;
   document.getElementById('who').textContent=ME;
   // Preserve the user's own email input across rerenders.
@@ -221,6 +344,76 @@ async function fileAttachment(file){
   const raw=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=reject;r.readAsDataURL(file);});
   return {file_name:file.name,content_type:file.type||'application/octet-stream',content_b64:raw.split(',')[1]||''};
 }
+// Repair assistant is intentionally opt-in and stateless; no report is sent until Send report.
+let repairHistory=[], repairDescription='', repairState=null, repairImage=null, repairPreparedContext=null;
+function repairEl(id){ return document.getElementById(id); }
+async function startRepairInterview(){
+  repairDescription=msg.value.trim();
+  if(!repairDescription){ toast('Describe the problem first, then start the interview.','bad'); msg.focus(); return; }
+  const prop=stage?.properties?.[0];
+  if(!prop){ toast('No linked home was found.','bad'); return; }
+  repairHistory=[]; repairState=null; repairImage=null; repairPreparedContext=null;
+  const files=Array.from(repairEl('issue-files').files||[]);
+  const photo=files.find(f=>['image/jpeg','image/png','image/webp'].includes(f.type));
+  if(photo&&photo.size<=1024*1024){
+    const attachment=await fileAttachment(photo);
+    repairImage={image_b64:attachment.content_b64,image_mime:photo.type};
+  }else if(photo){
+    toast('Photo is saved with your report but is too large for assistant analysis (1 MB limit).');
+  }
+  repairEl('repair-interview').style.display='block';
+  repairEl('repair-warning').style.display='none';
+  repairEl('repair-summary').style.display='none';
+  await repairInterviewRound();
+}
+async function repairInterviewRound(){
+  const next=repairEl('repair-next');
+  next.disabled=true;
+  repairEl('repair-question').textContent='Reviewing your description…';
+  try{
+    const prop=stage?.properties?.[0];
+    repairState=await post('/api/repair-diagnose',{
+      property_id:prop.id,description:repairDescription,
+      history:repairHistory,...(repairImage||{})
+    });
+    repairEl('repair-engine').textContent=repairState.engine==='local-ollama'?
+      'Local AI suggestions — not verified': 'Guided rules — no AI model connected';
+    if(repairState.image_supplied){
+      repairEl('repair-engine').textContent+=repairState.photo_analyzed?
+        ' · photo analysed by local AI (unverified)': ' · photo not analysed';
+    }
+    const warning=repairEl('repair-warning');
+    warning.style.display=repairState.safety_flags.length?'block':'none';
+    warning.textContent=repairState.safety_flags.length?
+      repairState.safety_flags.join('; ')+'. '+repairState.next_step:'';
+    repairEl('repair-question').textContent=repairState.complete?
+      'Interview summary ready. The agent still needs to review this report.': repairState.question;
+    repairEl('repair-answer-field').style.display=repairState.complete?'none':'block';
+    repairEl('repair-summary').style.display='block';
+    repairEl('repair-answer').value='';
+  }catch(e){
+    repairEl('repair-question').textContent='Assistant unavailable. You can still send your original report.';
+    toast(e.message||'Interview failed','bad');
+  }finally{next.disabled=false;}
+}
+async function repairInterviewNext(){
+  if(!repairState||repairState.complete)return;
+  const answer=repairEl('repair-answer').value.trim();
+  if(!answer){ toast('Please enter an answer.','bad');return; }
+  repairHistory.push({question:repairState.question,answer:answer.slice(0,500)});
+  await repairInterviewRound();
+}
+function useRepairReport(){
+  if(!repairState)return;
+  msg.value=repairState.report;
+  repairPreparedContext={description:repairDescription,history:repairHistory.map(a=>({question:a.question,answer:a.answer}))};
+  if(repairState.safety_flags.length){
+    toast('Potential danger: do not wait for this form. Follow the safety advice above.','bad');
+  }else{
+    toast('Interview copied. Check it and click Send report when ready.');
+  }
+  msg.focus();
+}
 async function report(){
   const text=msg.value.trim();
   if(!text){ toast('Tell us what is going on first.','bad'); msg.focus();
@@ -234,8 +427,8 @@ async function report(){
     const prop=(stage.properties||[])[0];
     const files=Array.from(document.getElementById('issue-files').files||[]).slice(0,4);
     const attachments=await Promise.all(files.map(fileAttachment));
-    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments,request_id:pendingReportId});
-    pendingReportId=null;
+    const res=await post('/api/tenant/issue',{property_id:prop?prop.id:null,name:ME,email:email.value.trim(),message:text,attachments,request_id:pendingReportId,...(repairPreparedContext?{diagnostic:repairPreparedContext}:{})});
+    pendingReportId=null; repairPreparedContext=null;
     msg.value=''; document.getElementById('issue-files').value='';
     toast(`${res.already_received?'Already received':'Logged'} as #${res.case_id}. ${res.document_ids?.length?res.document_ids.length+' evidence file(s) saved. ':''}${res.job_id?'A job has been opened for a tradesperson.':'Your agent will reply.'}`);
     await load();

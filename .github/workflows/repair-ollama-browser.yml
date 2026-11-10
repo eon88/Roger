@@ -1,0 +1,65 @@
+name: Roger repair assistant — real Ollama browser experiment
+
+on:
+  push:
+    branches:
+      - experiment/roger-repair-diagnostics-20261108
+    paths:
+      - .github/workflows/repair-ollama-browser.yml
+      - stage-clone/repair_diagnosis.py
+      - stage-clone/tenant.html
+      - tests/repair_diagnosis_browser.cjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-ollama:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install browser dependencies
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Start a disposable genuine Ollama service and download a small model
+        run: |
+          docker run --rm -d --name roger-repair-ollama --cpus 3 --memory 5g             -p 127.0.0.1:11434:11434 ollama/ollama:latest
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:11434/api/tags >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent --show-error http://127.0.0.1:11434/api/tags >/dev/null
+          docker exec roger-repair-ollama ollama pull qwen2.5:0.5b
+          docker exec roger-repair-ollama ollama run qwen2.5:0.5b 'Reply with READY and nothing else'
+      - name: Test the real local model through Roger's tenant browser screen
+        env:
+          ROGER_OLLAMA_BASE_URL: http://127.0.0.1:11434
+          ROGER_REPAIR_TEXT_MODEL: qwen2.5:0.5b
+          ROGER_REPAIR_VISION_MODEL: ""
+          EXPECT_OLLAMA: "1"
+        run: node tests/repair_diagnosis_browser.cjs
+      - name: Collect failure details
+        if: failure()
+        run: |
+          docker logs roger-repair-ollama --tail 80 2>&1 || true
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roger-repair-real-model-browser-failure
+          path: browser-results/repair-diagnosis-failure.png
+          if-no-files-found: ignore
+      - name: Remove disposable model container
+        if: always()
+        run: docker rm -f roger-repair-ollama >/dev/null 2>&1 || true
