@@ -604,6 +604,10 @@ class H(SimpleHTTPRequestHandler):
             if not self.require():
                 return
             return self.serve_file("change-password.html")
+        if path == "/security":
+            if not self.require({"agent", "tenant", "landlord", "trades"}):
+                return
+            return self.serve_file("security.html")
         if path == "/logout":
             self.send_response(405)
             self.send_header("Allow", "POST")
