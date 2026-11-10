@@ -169,6 +169,105 @@ def remember_action_request(record, *, request_id, action, actor, role, at, payl
     return True
 
 
+# A shared, defensive contract for repair/job/approval status transitions.
+# Handler-level evidence checks (contractor credential, quote authority, bank
+# reference, ownership) remain mandatory and run before commit. This layer
+# prevents handler branches from silently skipping the recorded workflow.
+JOB_ACTION_ROLES = {
+    "accept": frozenset({"trades"}), "start": frozenset({"trades"}),
+    "complete": frozenset({"trades"}), "release": frozenset({"trades"}),
+    "submit_quote": frozenset({"trades"}),
+    "submit_variation": frozenset({"trades"}),
+    "assign": frozenset({"agent"}), "request_quote": frozenset({"agent"}),
+    "approve_quote": frozenset({"agent"}), "decline_quote": frozenset({"agent"}),
+    "verify_approve": frozenset({"agent"}), "verify_decline": frozenset({"agent"}),
+    "approve_variation": frozenset({"agent"}),
+    "decline_variation": frozenset({"agent"}),
+    "send_to_landlord": frozenset({"agent"}),
+    "approve_invoice": frozenset({"agent"}),
+    "record_payment": frozenset({"agent"}),
+    "record_credit": frozenset({"agent"}),
+}
+# Each entry: permitted starting states and permitted destination states.
+# No-op actions deliberately require the status to remain unchanged.
+JOB_ACTION_STATES = {
+    "accept": ({"open"}, {"in_progress", "pending_verification"}),
+    "verify_approve": ({"pending_verification"}, {"in_progress"}),
+    "verify_decline": ({"pending_verification"}, {"open"}),
+    "release": ({"in_progress", "assigned", "quote_requested"}, {"triaged", "open"}),
+    "assign": ({"open", "quote_requested", "quoted", "pending_verification"}, {"assigned"}),
+    "request_quote": ({"triaged", "open", "assigned"}, {"quote_requested"}),
+    "submit_quote": ({"quote_requested"}, {"quoted"}),
+    "approve_quote": ({"quoted"}, {"assigned", "in_progress", "awaiting_prework_approval"}),
+    "decline_quote": ({"quoted"}, {"quote_requested"}),
+    "submit_variation": ({"assigned", "in_progress"}, {"assigned", "in_progress"}),
+    "approve_variation": ({"assigned", "in_progress"}, {"assigned", "in_progress"}),
+    "decline_variation": ({"assigned", "in_progress"}, {"assigned", "in_progress"}),
+    "send_to_landlord": ({"invoice_submitted", "invoice_approved"}, {"awaiting_approval"}),
+    "start": ({"assigned"}, {"in_progress"}),
+    "complete": ({"in_progress"}, {"invoice_submitted", "awaiting_approval"}),
+    "approve_invoice": ({"invoice_submitted"}, {"invoice_approved"}),
+    "record_payment": ({"invoice_approved", "partially_paid"}, {"partially_paid", "paid"}),
+    "record_credit": ({"invoice_approved", "partially_paid"}, {"partially_paid", "paid", "credited"}),
+}
+APPROVAL_STATES = {
+    "approve": ("pending", "approved"),
+    "reject": ("pending", "rejected"),
+}
+LANDLORD_JOB_STATES = {
+    "prework_quote": {
+        "approve": ("awaiting_prework_approval", "assigned"),
+        "reject": ("awaiting_prework_approval", "quote_requested"),
+    },
+    "variation_quote": {
+        "approve": ("assigned", "assigned"),
+        "reject": ("assigned", "assigned"),
+    },
+    "invoice": {
+        "approve": ("awaiting_approval", "invoice_approved"),
+        "reject": ("awaiting_approval", "rejected"),
+    },
+}
+
+
+def validate_domain_action(kind, *, action, previous, target, role,
+                           approval_type=None):
+    """Check that a committed change is an allowed action/role/status move.
+
+    Server's authenticated role, NOT the request body, supplies role. Call after
+    the detailed business checks but before save_stage() while holding the lock.
+    Unknown action/status fails closed; existing unversioned data can be read
+    but cannot create an invalid new transition.
+    """
+    if kind == "job":
+        if action not in JOB_ACTION_ROLES or role not in JOB_ACTION_ROLES[action]:
+            raise InvalidTransition("job action is not permitted for this role")
+        start, ends = JOB_ACTION_STATES[action]
+        if previous not in start or target not in ends:
+            raise InvalidTransition("invalid job action transition")
+    elif kind == "approval":
+        if action not in APPROVAL_STATES or role not in {"agent", "landlord"}:
+            raise InvalidTransition("approval action is not permitted")
+        start, end = APPROVAL_STATES[action]
+        if previous != start or target != end:
+            raise InvalidTransition("invalid approval action transition")
+        if approval_type in {"prework_quote", "variation_quote"} and role != "landlord":
+            raise InvalidTransition("landlord approval required")
+    elif kind == "landlord_job":
+        category = approval_type if approval_type in ("prework_quote", "variation_quote") else "invoice"
+        pair = LANDLORD_JOB_STATES.get(category, {}).get(action)
+        if pair is None or previous != pair[0] or target != pair[1]:
+            # Variations also apply to jobs already in progress.
+            if not (category == "variation_quote" and action in ("approve", "reject")
+                    and previous == target == "in_progress"):
+                raise InvalidTransition("approval does not match current job state")
+        if category in ("prework_quote", "variation_quote") and role != "landlord":
+            raise InvalidTransition("landlord approval required")
+    else:
+        raise InvalidTransition("unknown workflow domain")
+    return True
+
+
 def record_status_change(record, previous, *, action, actor, at, role):
     """One shared event shape for case, job, invoice-status and approval moves.
 
