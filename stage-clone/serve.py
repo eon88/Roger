@@ -861,6 +861,36 @@ class H(SimpleHTTPRequestHandler):
                 and any(isinstance(x, str) and x in party_ids
                         for x in many))
 
+    @staticmethod
+    def public_property_for_role(prop, role):
+        """Exact keys for role portals; no bank, personal contact or office notes."""
+        keys = {"id", "title", "area", "beds", "rent", "status"}
+        if role == "landlord":
+            keys |= {"tenant"}
+        return {k: v for k, v in prop.items() if k in keys}
+
+    @staticmethod
+    def public_case_for_role(case, role):
+        """Keep repair progress, not email addresses, access codes or office data."""
+        keys = {
+            "id", "type", "property_id", "status", "message", "triage",
+            "submitted_at", "status_at", "thread", "next_action", "next_due_at",
+            "resolved_at", "confirmed_at", "appointment_ids",
+        }
+        return {k: v for k, v in case.items() if k in keys}
+
+    @staticmethod
+    def public_job_for_role(job, role):
+        """Supplier settlement and private contractor details are not tenant data."""
+        keys = {
+            "id", "case_id", "property_id", "status", "assigned_to",
+            "required_trade", "created_at", "completed_at",
+            "approved_quote_pence", "approved_quote_version",
+        }
+        if role == "landlord":
+            keys |= {"invoice_pence", "paid_at", "balance_due_pence"}
+        return {k: v for k, v in job.items() if k in keys}
+
     def serve_scoped_stage(self):
         """The audit's biggest hole closed: the SERVER decides what each role may see."""
         u = self.session_user()
@@ -872,16 +902,17 @@ class H(SimpleHTTPRequestHandler):
         props = d.get("properties", [])
         if u["role"] == "tenant":
             party_ids = self.account_party_ids(stage, u, "tenant")
-            myprops = [p for p in props
+            myprops = [self.public_property_for_role(p, "tenant") for p in props
                        if self.has_party_link(p, "tenant", party_ids)]
             property_ids = {p["id"] for p in myprops}
-            mycases = [c for c in d.get("cases", [])
+            mycases = [self.public_case_for_role(c, "tenant") for c in d.get("cases", [])
                        if self.has_party_link(c, "tenant", party_ids)
                        and (not c.get("property_id")
                             or c.get("property_id") in property_ids)]
             cids = {c["id"] for c in mycases}
-            myjobs = [{k: v for k, v in j.items() if k != "email"}
-                      for j in d.get("jobs", []) if j.get("case_id") in cids]
+            myjobs = [self.public_job_for_role(j, "tenant")
+                      for j in d.get("jobs", [])
+                      if j.get("case_id") in cids and j.get("property_id") in property_ids]
             for c in mycases:
                 c.pop("internal_notes", None)
                 c["thread"] = [t for t in (c.get("thread") or []) if "tenant" in (t.get("to") or [])
@@ -890,10 +921,11 @@ class H(SimpleHTTPRequestHandler):
                  "authority": d.get("authority"), "role": "tenant"}
         elif u["role"] == "landlord":
             party_ids = self.account_party_ids(stage, u, "landlord")
-            myprops = [p for p in props
+            myprops = [self.public_property_for_role(p, "landlord") for p in props
                        if self.has_party_link(p, "landlord", party_ids)]
             pids = {p["id"] for p in myprops}
-            mycases = [c for c in d.get("cases", []) if c.get("property_id") in pids]
+            mycases = [self.public_case_for_role(c, "landlord") for c in d.get("cases", [])
+                       if c.get("property_id") in pids]
             for c in mycases:
                 c.pop("internal_notes", None)
                 c["thread"] = [t for t in (c.get("thread") or []) if "landlord" in (t.get("to") or [])
@@ -905,7 +937,8 @@ class H(SimpleHTTPRequestHandler):
                      and s.get("created_by_account_id") == u.get("account_id")
                  ],
                  "cases": mycases,
-                 "jobs": [j for j in d.get("jobs", []) if j.get("property_id") in pids],
+                 "jobs": [self.public_job_for_role(j, "landlord")
+                          for j in d.get("jobs", []) if j.get("property_id") in pids],
                  "approvals": [a for a in d.get("approvals", []) if (self.has_party_link(a, "landlord", party_ids)
                                    and a.get("property_id") in pids)],
                  "repair_authority": {p["id"]: self.repair_authority(stage, p["id"]) for p in myprops},
