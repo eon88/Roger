@@ -75,7 +75,7 @@ with serve.storage_write_lock():
     j["agency_id"]="foreign-agency"
     try:
         serve.save_stage(foreign_job)
-    except (canonical_records.RecordIntegrityError, ValueError):
+    except (canonical_records.RecordIntegrityError, serve.AgencyBoundaryError):
         pass
     else:
         raise AssertionError("PostgreSQL accepted foreign agency job identity")
