@@ -936,6 +936,10 @@ class H(SimpleHTTPRequestHandler):
             "submitted_at", "status_at", "thread", "next_action", "next_due_at",
             "resolved_at", "confirmed_at", "appointment_ids",
         }
+        if role == "tenant":
+            # A tenant may review the diagnostic interview they personally
+            # submitted, but that raw detail is not shared to landlords.
+            keys.add("diagnostic_dossier")
         return {k: v for k, v in case.items() if k in keys}
 
     @staticmethod
